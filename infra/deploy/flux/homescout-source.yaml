@@ -1,0 +1,57 @@
+# homescout Flux source + reconciler. Lives in homescout's OWN bootstrap path.
+# Mirrors doxus-infra/deploy/flux-system/gotk-sync.yaml but points at the
+# private lynxsyn/homescout repo and homescout's pve1 overlay, decrypting with
+# homescout's OWN age secret (sops-age-homescout) — NOT Doxus's sops-age.
+#
+# These objects are applied imperatively during bootstrap (see
+# infra/deploy/flux/README.md). They are NOT part of Doxus's root Flux graph;
+# they register an independent GitRepository + Kustomization in flux-system on
+# the SAME shared k3s cluster, scoped entirely to homescout resources.
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: homescout
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  ref:
+    branch: main
+  secretRef:
+    name: homescout-git-deploy-key
+  url: ssh://git@github.com/lynxsyn/homescout
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: homescout
+  namespace: flux-system
+  labels:
+    environment: pve1
+    owner: homescout
+spec:
+  interval: 10m0s
+  retryInterval: 2m
+  timeout: 10m
+  path: ./infra/deploy/overlays/pve1
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: homescout
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age-homescout
+  healthChecks:
+    - apiVersion: v1
+      kind: Namespace
+      name: homescout
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: homescout-postgres
+      namespace: homescout
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: homescout-redis
+      namespace: homescout

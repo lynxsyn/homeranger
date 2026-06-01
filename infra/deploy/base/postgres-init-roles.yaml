@@ -1,0 +1,135 @@
+# One-shot Job that ensures the homescout application roles and database exist
+# in the dedicated homescout-postgres instance. COPIED AS A PATTERN from
+# doxus-infra/deploy/overlays/pve1/base-overlay/postgres-init-databases.yaml.
+#
+# The pgvector image's docker-entrypoint creates POSTGRES_USER (the bootstrap
+# SUPERUSER, taken from the homescout-secret) and the `homescout` database
+# (POSTGRES_DB) on first boot. This Job then provisions the two LOGIN roles the
+# application stack uses:
+#   - homescout            -> the app/runtime role (DATABASE_URL connects as this)
+#   - homescout_migrator   -> the schema-migration role (MIGRATION_DATABASE_URL),
+#                             owns the schema, runs prisma migrate deploy
+# Passwords are synced from homescout-secret every run (idempotent).
+#
+# `CREATE EXTENSION vector` IS run here by the bootstrap SUPERUSER, because the
+# extension is untrusted and requires SUPERUSER to install — the non-superuser
+# `homescout_migrator` cannot create it. The M2 Prisma migration still declares
+# `CREATE EXTENSION IF NOT EXISTS vector` (idempotent no-op against this), so the
+# extension remains captured in migration history while M2 runs as the migrator.
+#
+# Role-existence guard mirrors the Doxus pattern from the RLS migration
+# (doxus-web .../20260411141500_add_rls_policies/migration.sql):
+#   DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='...') THEN ...
+#
+# Idempotent: re-runnable; CREATE DATABASE guarded by a pg_database probe.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: homescout-postgres-init-roles
+  namespace: homescout
+  labels:
+    app.kubernetes.io/part-of: homescout-app
+    app.kubernetes.io/component: postgres-init
+  annotations:
+    homescout.app/init-rollout-at: "2026-06-01T00:00:00Z"
+    # Flux force-recreate: Job spec.template is immutable after creation. This
+    # annotation instructs FluxCD to delete and recreate the Job when the spec
+    # cannot be patched in place (e.g. new env vars / role tweaks).
+    kustomize.toolkit.fluxcd.io/force: enabled
+spec:
+  ttlSecondsAfterFinished: 86400
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: homescout-app
+        app.kubernetes.io/component: postgres-init
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      containers:
+        - name: psql
+          image: pgvector/pgvector:pg17
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PGHOST
+              value: homescout-postgres.homescout.svc.cluster.local
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: POSTGRES_USER
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: POSTGRES_PASSWORD
+            - name: PGDATABASE
+              value: postgres
+            - name: HOMESCOUT_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: HOMESCOUT_APP_PASSWORD
+            - name: HOMESCOUT_MIGRATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: HOMESCOUT_MIGRATOR_PASSWORD
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              # Ensure the homescout database exists (the entrypoint creates it on
+              # first boot via POSTGRES_DB, but guard for restored/re-run cases).
+              if psql -tA -c "SELECT 1 FROM pg_database WHERE datname='homescout'" | grep -q 1; then
+                echo "Database homescout already exists — skipping"
+              else
+                echo "Creating database homescout"
+                psql -c "CREATE DATABASE \"homescout\""
+              fi
+              # App role (runtime CRUD). Idempotent + injection-safe: ensure the
+              # role exists, then ALTER its password. Password embedded as a
+              # single-quoted SQL literal with any single quotes doubled (SQL
+              # escaping), so arbitrary passwords are safe on rotation.
+              APP_PW_ESC=$(printf '%s' "$HOMESCOUT_APP_PASSWORD" | sed "s/'/''/g")
+              psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='homescout'" | grep -q 1 \
+                || psql -c "CREATE ROLE homescout LOGIN"
+              psql -c "ALTER ROLE homescout WITH LOGIN ENCRYPTED PASSWORD '$APP_PW_ESC'"
+              # Migrator role: owns the schema, runs prisma migrate deploy.
+              # Same idempotent + injection-safe pattern as the app role.
+              MIG_PW_ESC=$(printf '%s' "$HOMESCOUT_MIGRATOR_PASSWORD" | sed "s/'/''/g")
+              psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='homescout_migrator'" | grep -q 1 \
+                || psql -c "CREATE ROLE homescout_migrator LOGIN"
+              psql -c "ALTER ROLE homescout_migrator WITH LOGIN ENCRYPTED PASSWORD '$MIG_PW_ESC'"
+              # The migrator owns the database so `prisma migrate deploy` can run
+              # DDL (CREATE EXTENSION vector, ALTER TABLE, CREATE INDEX) in M2.
+              psql -c "ALTER DATABASE homescout OWNER TO homescout_migrator;"
+              # PostgreSQL 15+ revoked CREATE on public from PUBLIC. The migrator
+              # needs schema DDL; the app role needs USAGE. (CREATE EXTENSION is
+              # run by the migrator inside the M2 migration, not here.)
+              psql -d homescout -c "GRANT ALL ON SCHEMA public TO homescout_migrator;"
+              psql -d homescout -c "GRANT USAGE ON SCHEMA public TO homescout;"
+              # pgvector extension (untrusted -> needs SUPERUSER). Created by the
+              # bootstrap superuser so the non-superuser migrator role doesn't need
+              # SUPERUSER. M2's `CREATE EXTENSION IF NOT EXISTS vector` is then a no-op.
+              psql -d homescout -c "CREATE EXTENSION IF NOT EXISTS vector;"
+              echo "Done"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault

@@ -1,0 +1,22 @@
+{
+  "name": "@homescout/scheduler",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/scheduler.ts",
+    "build": "tsc",
+    "start": "node dist/scheduler.js",
+    "typecheck": "tsc --noEmit",
+    "test": "cd ../.. && vitest run --project unit"
+  },
+  "dependencies": {
+    "@homescout/backend-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.2",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.7"
+  }
+}

@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data-lh
+  namespace: homescout
+  labels:
+    app: homescout-redis
+    app.kubernetes.io/name: homescout-redis
+    app.kubernetes.io/part-of: homescout-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homescout-redis
+  namespace: homescout
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: enabled
+  labels:
+    app: homescout-redis
+    app.kubernetes.io/name: homescout-redis
+    app.kubernetes.io/part-of: homescout-app
+spec:
+  revisionHistoryLimit: 3
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: homescout-redis
+  template:
+    metadata:
+      labels:
+        app: homescout-redis
+        app.kubernetes.io/name: homescout-redis
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: platform-critical
+      tolerations:
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-redis
+      securityContext:
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: redis:7.4.8-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: 10m
+              memory: 96Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction", "--requirepass", "$(REDIS_PASSWORD)", "--appendonly", "yes", "--appendfsync", "everysec", "--auto-aof-rewrite-percentage", "50", "--auto-aof-rewrite-min-size", "8mb"]
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: REDIS_PASSWORD
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "REDISCLI_AUTH=$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "REDISCLI_AUTH=$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: redis-data-lh
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homescout-redis
+  namespace: homescout
+  labels:
+    app: homescout-redis
+    app.kubernetes.io/name: homescout-redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    app: homescout-redis

@@ -1,0 +1,44 @@
+{
+  "name": "@homescout/web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:related": "vitest related --run --passWithNoTests",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@homescout/backend-core": "workspace:*",
+    "@homescout/shared": "workspace:*",
+    "@tanstack/react-query": "5.100.14",
+    "@trpc/client": "11.16.0",
+    "@trpc/react-query": "11.16.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-router-dom": "7.15.1",
+    "superjson": "2.2.6",
+    "supertokens-web-js": "0.16.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.60.0",
+    "@tailwindcss/vite": "4.2.4",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "25.6.2",
+    "@types/react": "19.2.15",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitest/coverage-v8": "4.1.7",
+    "happy-dom": "20.9.0",
+    "tailwindcss": "4.2.4",
+    "tsx": "4.22.3",
+    "typescript": "5.9.3",
+    "vite": "8.0.14",
+    "vitest": "4.1.7"
+  }
+}
