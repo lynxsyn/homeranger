@@ -9,8 +9,9 @@ import { z } from "zod";
  * input and return `CursorPage<T>` for its output. The response shape is
  * `{ items: T[]; nextCursor: string | null }` — `nextCursor` is ALWAYS
  * present, `null` means "no more pages". Default page size is 20; max is
- * 100. Cursors are opaque base64-encoded JSON of `{ createdAt, id }` and
- * MUST be round-tripped via `encodeCursor` / `decodeCursor`.
+ * 100. Cursors are opaque base64-encoded JSON of `{ id }` — we keyset on the
+ * time-sortable uuid(7) primary key (unique + exact, equals creation order)
+ * and MUST be round-tripped via `encodeCursor` / `decodeCursor`.
  *
  * Mirrors the Doxus contract (doxus-web .../lib/pagination/cursor.ts) verbatim
  * so the repository layering is identical across both products.
@@ -41,14 +42,14 @@ export function clampLimit(limit?: number): number {
 }
 
 /**
- * Encode the (createdAt, id) of a single row as an opaque base64 cursor.
- * The createdAt field is embedded so composite-cursor paginators can do a
- * `(createdAt, id) < (cursor.createdAt, cursor.id)` keyset comparison.
+ * Encode a row's id as an opaque base64 cursor. We keyset on the primary key
+ * alone because ids are uuid(7) — time-sortable, unique, and exact — so `id`
+ * ordering equals creation order with no precision loss. (Embedding a JS Date
+ * would truncate the DB's microsecond @db.Timestamptz(6) to milliseconds and
+ * could duplicate a row at a same-millisecond page boundary.)
  */
-export function encodeCursor(row: { createdAt: Date; id: string }): string {
-  return Buffer.from(
-    JSON.stringify({ createdAt: row.createdAt.toISOString(), id: row.id }),
-  ).toString("base64");
+export function encodeCursor(row: { id: string }): string {
+  return Buffer.from(JSON.stringify({ id: row.id })).toString("base64");
 }
 
 /**
@@ -57,7 +58,7 @@ export function encodeCursor(row: { createdAt: Date; id: string }): string {
  * malformed input — the static message is intentional so no internal ids or
  * field names leak to the client.
  */
-export function decodeCursor(cursor: string): { id: string; createdAt: Date } {
+export function decodeCursor(cursor: string): { id: string } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(Buffer.from(cursor, "base64").toString("utf8"));
@@ -68,20 +69,11 @@ export function decodeCursor(cursor: string): { id: string; createdAt: Date } {
     typeof parsed !== "object" ||
     parsed === null ||
     !("id" in parsed) ||
-    typeof (parsed as { id: unknown }).id !== "string" ||
-    !("createdAt" in parsed) ||
-    typeof (parsed as { createdAt: unknown }).createdAt !== "string"
+    typeof (parsed as { id: unknown }).id !== "string"
   ) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid cursor" });
   }
-  const createdAtMs = Date.parse((parsed as { createdAt: string }).createdAt);
-  if (Number.isNaN(createdAtMs)) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid cursor" });
-  }
-  return {
-    id: (parsed as { id: string }).id,
-    createdAt: new Date(createdAtMs),
-  };
+  return { id: (parsed as { id: string }).id };
 }
 
 /**
@@ -92,7 +84,7 @@ export function decodeCursor(cursor: string): { id: string; createdAt: Date } {
  * is dropped from `items` and the last included row is encoded as
  * `nextCursor`. Otherwise `nextCursor` is `null`.
  */
-export function paginate<TRow extends { id: string; createdAt: Date }>(
+export function paginate<TRow extends { id: string }>(
   rows: TRow[],
   limit: number,
 ): CursorPage<TRow> {

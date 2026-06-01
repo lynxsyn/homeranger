@@ -46,16 +46,9 @@ export interface ListAgentsInput {
   includeOptedOut?: boolean;
 }
 
-function buildAgentCursorFilter(cursor: {
-  id: string;
-  createdAt: Date;
-}): Prisma.AgentWhereInput {
-  return {
-    OR: [
-      { createdAt: { lt: cursor.createdAt } },
-      { createdAt: cursor.createdAt, id: { lt: cursor.id } },
-    ],
-  };
+function buildAgentCursorFilter(cursor: { id: string }): Prisma.AgentWhereInput {
+  // Keyset on the uuid(7) id (DESC) — exact, no timestamp-precision risk.
+  return { id: { lt: cursor.id } };
 }
 
 export class AgentRepository {
@@ -112,7 +105,7 @@ export class AgentRepository {
       : {};
     const rows = await prisma.agent.findMany({
       where: { ...where, ...cursorFilter },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      orderBy: [{ id: "desc" }],
       take: limit + 1,
       select: AGENT_SELECT,
     });

@@ -57,6 +57,31 @@ function toVectorLiteral(embedding: number[]): string {
   return `[${embedding.join(",")}]`;
 }
 
+/**
+ * Parse a pgvector text literal `[a,b,c]` back into a validated number[].
+ * Mirrors the write-path guarantees (exactly EMBEDDING_DIMENSIONS, all finite)
+ * so a malformed/wrong-dimension stored vector surfaces as a clear error rather
+ * than a silent bad array (e.g. an empty literal parsing to [NaN]).
+ */
+function fromVectorLiteral(raw: string): number[] {
+  const inner = raw.trim().replace(/^\[/, "").replace(/\]$/, "").trim();
+  if (inner === "") {
+    throw new Error("Stored preference embedding is empty");
+  }
+  const values = inner.split(",").map((value) => Number(value));
+  if (values.length !== EMBEDDING_DIMENSIONS) {
+    throw new Error(
+      `Stored embedding must have ${EMBEDDING_DIMENSIONS} dimensions, read ${values.length}`,
+    );
+  }
+  for (const value of values) {
+    if (!Number.isFinite(value)) {
+      throw new Error("Stored embedding contains a non-finite value");
+    }
+  }
+  return values;
+}
+
 export class SearchProfileRepository {
   /** Fetch the singleton profile, creating an empty one on first access. */
   async getOrCreate(tx?: Prisma.TransactionClient): Promise<SearchProfileRecord> {
@@ -135,10 +160,7 @@ export class SearchProfileRepository {
     if (!raw) {
       return null;
     }
-    return raw
-      .slice(1, -1)
-      .split(",")
-      .map((value) => Number(value));
+    return fromVectorLiteral(raw);
   }
 }
 

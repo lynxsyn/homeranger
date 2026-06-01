@@ -26,12 +26,10 @@ describe("clampLimit", () => {
 });
 
 describe("encodeCursor / decodeCursor", () => {
-  it("round-trips an id + createdAt", () => {
-    const createdAt = new Date("2026-06-01T12:00:00.000Z");
+  it("round-trips an id", () => {
     const id = "11111111-1111-1111-1111-111111111111";
-    const decoded = decodeCursor(encodeCursor({ createdAt, id }));
+    const decoded = decodeCursor(encodeCursor({ id }));
     expect(decoded.id).toBe(id);
-    expect(decoded.createdAt.toISOString()).toBe(createdAt.toISOString());
   });
 
   it("throws a BAD_REQUEST TRPCError on garbage", () => {
@@ -51,7 +49,7 @@ describe("encodeCursor / decodeCursor", () => {
 });
 
 describe("paginate", () => {
-  const row = (id: string) => ({ id, createdAt: new Date() });
+  const row = (id: string) => ({ id });
 
   it("returns nextCursor null when not over-fetched", () => {
     const page = paginate([row("a"), row("b")], 2);

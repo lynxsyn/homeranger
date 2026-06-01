@@ -4,9 +4,12 @@
 // lib helpers (prisma client + cursor pagination); later milestones add
 // routers/services/providers.
 
-// Repository layer (the ONLY place that touches Prisma).
+// Repository layer (the ONLY place that touches Prisma). The raw `prisma`
+// client is deliberately NOT re-exported from the package surface — routers and
+// services must go through repositories (backend.md: "repositories own ALL
+// Prisma"). When M4+ services need transactions, export `runTransaction`
+// specifically here rather than the client.
 export * from "./repositories/index.js";
 
-// Shared lib helpers consumed by routers/services.
-export * from "./lib/prisma.js";
+// Cursor-pagination contract consumed by routers/services.
 export * from "./lib/pagination/cursor.js";

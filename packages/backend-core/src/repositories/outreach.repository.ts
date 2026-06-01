@@ -89,14 +89,9 @@ export interface CreateInboundResult {
 
 function buildMessageCursorFilter(cursor: {
   id: string;
-  createdAt: Date;
 }): Prisma.OutreachMessageWhereInput {
-  return {
-    OR: [
-      { createdAt: { lt: cursor.createdAt } },
-      { createdAt: cursor.createdAt, id: { lt: cursor.id } },
-    ],
-  };
+  // Keyset on the uuid(7) id (DESC) — exact, no timestamp-precision risk.
+  return { id: { lt: cursor.id } };
 }
 
 export class OutreachRepository {
@@ -191,7 +186,7 @@ export class OutreachRepository {
       : {};
     const rows = await prisma.outreachMessage.findMany({
       where: { threadId: input.threadId, ...cursorFilter },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      orderBy: [{ id: "desc" }],
       take: limit + 1,
       select: MESSAGE_SELECT,
     });

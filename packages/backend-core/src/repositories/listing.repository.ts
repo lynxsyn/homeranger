@@ -184,26 +184,18 @@ export function toVectorLiteral(embedding: number[]): string {
   return `[${embedding.join(",")}]`;
 }
 
-function buildCursorFilter(cursor: {
-  id: string;
-  createdAt: Date;
-}): Prisma.ListingWhereInput {
-  // Keyset pagination on (firstSeenAt DESC, id DESC). The cursor's createdAt
-  // slot carries firstSeenAt (see `list`), so compare against firstSeenAt.
-  return {
-    OR: [
-      { firstSeenAt: { lt: cursor.createdAt } },
-      { firstSeenAt: cursor.createdAt, id: { lt: cursor.id } },
-    ],
-  };
+function buildCursorFilter(cursor: { id: string }): Prisma.ListingWhereInput {
+  // Keyset on the uuid(7) primary key (DESC) — time-sortable, unique, exact, so
+  // it equals firstSeen/creation order with no timestamp-precision risk.
+  return { id: { lt: cursor.id } };
 }
 
 export class ListingRepository {
   /**
    * Cursor-paginated list with an optional structured filter. Stable keyset
-   * ordering on (firstSeenAt DESC, id DESC); over-fetches `limit + 1` so
-   * `paginate()` can compute `nextCursor`. Returns `{ items, nextCursor }`,
-   * default 20 / max 100.
+   * ordering on the uuid(7) id (DESC = newest first); over-fetches `limit + 1`
+   * to compute `nextCursor`. Returns `{ items, nextCursor }`, default 20 / max
+   * 100. (M3 adds user-selectable sorts by price/lastSeenAt/combinedScore.)
    */
   async list(input: ListListingsInput = {}): Promise<CursorPage<ListingRecord>> {
     const limit = clampLimit(input.limit);
@@ -214,7 +206,7 @@ export class ListingRepository {
     // Over-fetch one row so we can detect whether more pages exist.
     const rows = await prisma.listing.findMany({
       where: { ...where, ...cursorFilter },
-      orderBy: [{ firstSeenAt: "desc" }, { id: "desc" }],
+      orderBy: [{ id: "desc" }],
       take: limit + 1,
       select: LISTING_SELECT,
     });
@@ -223,11 +215,9 @@ export class ListingRepository {
     }
     const items = rows.slice(0, limit);
     const last = items[items.length - 1]!;
-    // The keyset axis is firstSeenAt (DESC, id DESC); encode the cursor against
-    // firstSeenAt by mapping it onto encodeCursor()'s createdAt slot.
     return {
       items,
-      nextCursor: encodeCursor({ id: last.id, createdAt: last.firstSeenAt }),
+      nextCursor: encodeCursor({ id: last.id }),
     };
   }
 
