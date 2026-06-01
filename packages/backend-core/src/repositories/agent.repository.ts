@@ -1,0 +1,148 @@
+/**
+ * Agent repository — owns all Prisma access for the Agent aggregate (estate
+ * agents we discover and contact). Single-user: no tenant scoping. Mirrors the
+ * Doxus optional-tx + cursor-pagination + explicit-select conventions.
+ */
+import { Prisma, type MailboxType } from "@prisma/client";
+import { prisma } from "../lib/prisma.js";
+import {
+  clampLimit,
+  decodeCursor,
+  paginate,
+  type CursorPage,
+} from "../lib/pagination/cursor.js";
+
+type PrismaLike = typeof prisma | Prisma.TransactionClient;
+
+const AGENT_SELECT = Prisma.validator<Prisma.AgentSelect>()({
+  id: true,
+  email: true,
+  agencyName: true,
+  mailboxType: true,
+  optedOut: true,
+  coveredOutcodes: true,
+  lastContactedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type AgentRecord = Prisma.AgentGetPayload<{
+  select: typeof AGENT_SELECT;
+}>;
+
+export interface UpsertAgentByEmailInput {
+  email: string;
+  agencyName: string | null;
+  mailboxType?: MailboxType;
+  coveredOutcodes?: string[];
+}
+
+export interface ListAgentsInput {
+  cursor?: string;
+  limit?: number;
+  /** When set, only agents covering at least one of these outcodes. */
+  outcodes?: string[];
+  /** When false (default), suppress opted-out agents. */
+  includeOptedOut?: boolean;
+}
+
+function buildAgentCursorFilter(cursor: { id: string }): Prisma.AgentWhereInput {
+  // Keyset on the uuid(7) id (DESC) — exact, no timestamp-precision risk.
+  return { id: { lt: cursor.id } };
+}
+
+export class AgentRepository {
+  async getById(id: string): Promise<AgentRecord | null> {
+    return prisma.agent.findUnique({ where: { id }, select: AGENT_SELECT });
+  }
+
+  async findByEmail(email: string): Promise<AgentRecord | null> {
+    return prisma.agent.findUnique({
+      where: { email: email.trim().toLowerCase() },
+      select: AGENT_SELECT,
+    });
+  }
+
+  /** Idempotent upsert keyed on the unique `email`. */
+  async upsertByEmail(
+    input: UpsertAgentByEmailInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<AgentRecord> {
+    const db: PrismaLike = tx ?? prisma;
+    const email = input.email.trim().toLowerCase();
+    return db.agent.upsert({
+      where: { email },
+      create: {
+        email,
+        agencyName: input.agencyName,
+        ...(input.mailboxType ? { mailboxType: input.mailboxType } : {}),
+        coveredOutcodes: input.coveredOutcodes ?? [],
+      },
+      update: {
+        ...(input.agencyName !== undefined
+          ? { agencyName: input.agencyName }
+          : {}),
+        ...(input.mailboxType ? { mailboxType: input.mailboxType } : {}),
+        ...(input.coveredOutcodes
+          ? { coveredOutcodes: input.coveredOutcodes }
+          : {}),
+      },
+      select: AGENT_SELECT,
+    });
+  }
+
+  async list(input: ListAgentsInput = {}): Promise<CursorPage<AgentRecord>> {
+    const limit = clampLimit(input.limit);
+    const where: Prisma.AgentWhereInput = {};
+    if (!input.includeOptedOut) {
+      where.optedOut = false;
+    }
+    if (input.outcodes && input.outcodes.length > 0) {
+      where.coveredOutcodes = { hasSome: input.outcodes };
+    }
+    const cursorFilter = input.cursor
+      ? buildAgentCursorFilter(decodeCursor(input.cursor))
+      : {};
+    const rows = await prisma.agent.findMany({
+      where: { ...where, ...cursorFilter },
+      orderBy: [{ id: "desc" }],
+      take: limit + 1,
+      select: AGENT_SELECT,
+    });
+    return paginate(rows, limit);
+  }
+
+  async markOptedOut(
+    email: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db: PrismaLike = tx ?? prisma;
+    await db.agent.updateMany({
+      where: { email: email.trim().toLowerCase() },
+      data: { optedOut: true },
+    });
+  }
+
+  async markContacted(
+    id: string,
+    contactedAt: Date,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db: PrismaLike = tx ?? prisma;
+    await db.agent.update({
+      where: { id },
+      data: { lastContactedAt: contactedAt },
+      select: { id: true },
+    });
+  }
+}
+
+const defaultAgentRepository = new AgentRepository();
+
+export let agentRepository = defaultAgentRepository;
+
+export function _setAgentRepositoryForTesting(
+  repository: AgentRepository | null,
+): void {
+  agentRepository = repository ?? defaultAgentRepository;
+}

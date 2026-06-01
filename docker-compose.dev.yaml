@@ -1,0 +1,37 @@
+## Local development compose — persistent pgvector + redis.
+## `pnpm dev:services` brings this up (mirror doxus-web/docker-compose.dev.yaml).
+## Host port 5434 matches the live hs-pgvector-dev container + the
+## DATABASE_URL/MIGRATION_DATABASE_URL used for local integration runs.
+## For ephemeral integration tests prefer docker-compose.ci.yaml.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: homescout-db
+    environment:
+      POSTGRES_DB: homescout
+      POSTGRES_USER: homescout
+      POSTGRES_PASSWORD: homescout
+    ports:
+      - "5434:5432"
+    volumes:
+      - homescout-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "homescout"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: homescout-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  homescout-pgdata:
