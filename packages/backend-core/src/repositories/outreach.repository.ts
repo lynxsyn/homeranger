@@ -5,7 +5,11 @@
  * createMany+skipDuplicates+findUnique idiom from Doxus
  * notification.repository.ts so a redelivered webhook is a no-op.
  */
-import { Prisma, type EmailAuthVerdict } from "@prisma/client";
+import {
+  Prisma,
+  type EmailAuthVerdict,
+  type MessageDirection,
+} from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import {
   clampLimit,
@@ -97,21 +101,42 @@ function buildMessageCursorFilter(cursor: {
 
 export class OutreachRepository {
   async createThread(
-    _input: CreateThreadInput,
-    _tx?: Prisma.TransactionClient,
+    input: CreateThreadInput,
+    tx?: Prisma.TransactionClient,
   ): Promise<OutreachThreadRecord> {
-    throw new Error("not implemented");
+    const db: PrismaLike = tx ?? prisma;
+    return db.outreachThread.create({
+      data: { agentId: input.agentId, subject: input.subject },
+      select: THREAD_SELECT,
+    });
   }
 
-  async getThreadById(_id: string): Promise<OutreachThreadRecord | null> {
-    throw new Error("not implemented");
+  async getThreadById(id: string): Promise<OutreachThreadRecord | null> {
+    return prisma.outreachThread.findUnique({
+      where: { id },
+      select: THREAD_SELECT,
+    });
   }
 
   async createOutboundMessage(
-    _input: CreateOutboundMessageInput,
-    _tx?: Prisma.TransactionClient,
+    input: CreateOutboundMessageInput,
+    tx?: Prisma.TransactionClient,
   ): Promise<OutreachMessageRecord> {
-    throw new Error("not implemented");
+    const db: PrismaLike = tx ?? prisma;
+    return db.outreachMessage.create({
+      data: {
+        threadId: input.threadId,
+        direction: "outbound" satisfies MessageDirection,
+        providerMessageId: input.providerMessageId,
+        fromEmail: input.fromEmail,
+        toEmail: input.toEmail,
+        subject: input.subject,
+        bodyText: input.bodyText,
+        parsedListingIds: [],
+        sentAt: input.sentAt,
+      },
+      select: MESSAGE_SELECT,
+    });
   }
 
   /**
@@ -121,26 +146,58 @@ export class OutreachRepository {
    * back. `created` tells the caller whether this was the first delivery.
    */
   async createInboundMessageOrIgnore(
-    _input: CreateInboundMessageInput,
-    _tx?: Prisma.TransactionClient,
+    input: CreateInboundMessageInput,
+    tx?: Prisma.TransactionClient,
   ): Promise<CreateInboundResult> {
-    throw new Error("not implemented");
+    const db: PrismaLike = tx ?? prisma;
+    const { count } = await db.outreachMessage.createMany({
+      data: [
+        {
+          threadId: input.threadId,
+          direction: "inbound" satisfies MessageDirection,
+          providerMessageId: input.providerMessageId,
+          fromEmail: input.fromEmail,
+          toEmail: input.toEmail,
+          subject: input.subject,
+          bodyText: input.bodyText,
+          spfVerdict: input.spfVerdict,
+          dkimVerdict: input.dkimVerdict,
+          parsedListingIds: input.parsedListingIds,
+          receivedAt: input.receivedAt,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    const message = await db.outreachMessage.findUnique({
+      where: { providerMessageId: input.providerMessageId },
+      select: MESSAGE_SELECT,
+    });
+    if (!message) {
+      throw new Error(
+        `OutreachMessage not found after createInboundMessageOrIgnore for ${input.providerMessageId}`,
+      );
+    }
+    return { message, created: count > 0 };
   }
 
-  async listMessagesByThread(_input: {
+  async listMessagesByThread(input: {
     threadId: string;
     cursor?: string;
     limit?: number;
   }): Promise<CursorPage<OutreachMessageRecord>> {
-    throw new Error("not implemented");
+    const limit = clampLimit(input.limit);
+    const cursorFilter = input.cursor
+      ? buildMessageCursorFilter(decodeCursor(input.cursor))
+      : {};
+    const rows = await prisma.outreachMessage.findMany({
+      where: { threadId: input.threadId, ...cursorFilter },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      select: MESSAGE_SELECT,
+    });
+    return paginate(rows, limit);
   }
 }
-
-void MESSAGE_SELECT;
-void buildMessageCursorFilter;
-void clampLimit;
-void decodeCursor;
-void paginate;
 
 const defaultOutreachRepository = new OutreachRepository();
 

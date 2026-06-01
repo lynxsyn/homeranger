@@ -59,17 +59,43 @@ function toVectorLiteral(embedding: number[]): string {
 
 export class SearchProfileRepository {
   /** Fetch the singleton profile, creating an empty one on first access. */
-  async getOrCreate(
-    _tx?: Prisma.TransactionClient,
-  ): Promise<SearchProfileRecord> {
-    throw new Error("not implemented");
+  async getOrCreate(tx?: Prisma.TransactionClient): Promise<SearchProfileRecord> {
+    const db: PrismaLike = tx ?? prisma;
+    return db.searchProfile.upsert({
+      where: { id: SEARCH_PROFILE_SINGLETON_ID },
+      create: { id: SEARCH_PROFILE_SINGLETON_ID, outcodes: [] },
+      update: {},
+      select: PROFILE_SELECT,
+    });
   }
 
   async update(
-    _input: UpdateSearchProfileInput,
-    _tx?: Prisma.TransactionClient,
+    input: UpdateSearchProfileInput,
+    tx?: Prisma.TransactionClient,
   ): Promise<SearchProfileRecord> {
-    throw new Error("not implemented");
+    const db: PrismaLike = tx ?? prisma;
+    // Ensure the singleton exists, then apply the partial update so callers do
+    // not have to seed it first.
+    await this.getOrCreate(tx);
+    return db.searchProfile.update({
+      where: { id: SEARCH_PROFILE_SINGLETON_ID },
+      data: {
+        ...(input.freeTextPreferences !== undefined
+          ? { freeTextPreferences: input.freeTextPreferences ?? "" }
+          : {}),
+        ...(input.minBedrooms !== undefined
+          ? { minBedrooms: input.minBedrooms }
+          : {}),
+        ...(input.maxPricePence !== undefined
+          ? { maxPricePence: input.maxPricePence }
+          : {}),
+        ...(input.outcodes !== undefined ? { outcodes: input.outcodes } : {}),
+        ...(input.requiredTenure !== undefined
+          ? { requiredTenure: input.requiredTenure }
+          : {}),
+      },
+      select: PROFILE_SELECT,
+    });
   }
 
   /**
@@ -77,10 +103,17 @@ export class SearchProfileRepository {
    * a single `::vector` parameter; the singleton id is bound and cast `::uuid`.
    */
   async writePreferenceEmbedding(
-    _embedding: number[],
-    _tx?: Prisma.TransactionClient,
+    embedding: number[],
+    tx?: Prisma.TransactionClient,
   ): Promise<number> {
-    throw new Error("not implemented");
+    const db: PrismaLike = tx ?? prisma;
+    const literal = toVectorLiteral(embedding);
+    return db.$executeRaw`
+      UPDATE "SearchProfile"
+      SET "preferenceEmbedding" = ${literal}::vector,
+          "updatedAt" = NOW()
+      WHERE "id" = ${SEARCH_PROFILE_SINGLETON_ID}::uuid
+    `;
   }
 
   /**
@@ -90,14 +123,24 @@ export class SearchProfileRepository {
    * vector type across the repo boundary.
    */
   async readPreferenceEmbedding(
-    _tx?: Prisma.TransactionClient,
+    tx?: Prisma.TransactionClient,
   ): Promise<number[] | null> {
-    throw new Error("not implemented");
+    const db: PrismaLike = tx ?? prisma;
+    const rows = await db.$queryRaw<Array<{ embedding: string | null }>>`
+      SELECT "preferenceEmbedding"::text AS "embedding"
+      FROM "SearchProfile"
+      WHERE "id" = ${SEARCH_PROFILE_SINGLETON_ID}::uuid
+    `;
+    const raw = rows[0]?.embedding;
+    if (!raw) {
+      return null;
+    }
+    return raw
+      .slice(1, -1)
+      .split(",")
+      .map((value) => Number(value));
   }
 }
-
-void PROFILE_SELECT;
-void toVectorLiteral;
 
 const defaultSearchProfileRepository = new SearchProfileRepository();
 

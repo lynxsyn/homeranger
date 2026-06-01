@@ -59,47 +59,90 @@ function buildAgentCursorFilter(cursor: {
 }
 
 export class AgentRepository {
-  async getById(_id: string): Promise<AgentRecord | null> {
-    throw new Error("not implemented");
+  async getById(id: string): Promise<AgentRecord | null> {
+    return prisma.agent.findUnique({ where: { id }, select: AGENT_SELECT });
   }
 
-  async findByEmail(_email: string): Promise<AgentRecord | null> {
-    throw new Error("not implemented");
+  async findByEmail(email: string): Promise<AgentRecord | null> {
+    return prisma.agent.findUnique({
+      where: { email: email.trim().toLowerCase() },
+      select: AGENT_SELECT,
+    });
   }
 
   /** Idempotent upsert keyed on the unique `email`. */
   async upsertByEmail(
-    _input: UpsertAgentByEmailInput,
-    _tx?: Prisma.TransactionClient,
+    input: UpsertAgentByEmailInput,
+    tx?: Prisma.TransactionClient,
   ): Promise<AgentRecord> {
-    throw new Error("not implemented");
+    const db: PrismaLike = tx ?? prisma;
+    const email = input.email.trim().toLowerCase();
+    return db.agent.upsert({
+      where: { email },
+      create: {
+        email,
+        agencyName: input.agencyName,
+        ...(input.mailboxType ? { mailboxType: input.mailboxType } : {}),
+        coveredOutcodes: input.coveredOutcodes ?? [],
+      },
+      update: {
+        ...(input.agencyName !== undefined
+          ? { agencyName: input.agencyName }
+          : {}),
+        ...(input.mailboxType ? { mailboxType: input.mailboxType } : {}),
+        ...(input.coveredOutcodes
+          ? { coveredOutcodes: input.coveredOutcodes }
+          : {}),
+      },
+      select: AGENT_SELECT,
+    });
   }
 
-  async list(_input: ListAgentsInput = {}): Promise<CursorPage<AgentRecord>> {
-    throw new Error("not implemented");
+  async list(input: ListAgentsInput = {}): Promise<CursorPage<AgentRecord>> {
+    const limit = clampLimit(input.limit);
+    const where: Prisma.AgentWhereInput = {};
+    if (!input.includeOptedOut) {
+      where.optedOut = false;
+    }
+    if (input.outcodes && input.outcodes.length > 0) {
+      where.coveredOutcodes = { hasSome: input.outcodes };
+    }
+    const cursorFilter = input.cursor
+      ? buildAgentCursorFilter(decodeCursor(input.cursor))
+      : {};
+    const rows = await prisma.agent.findMany({
+      where: { ...where, ...cursorFilter },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      select: AGENT_SELECT,
+    });
+    return paginate(rows, limit);
   }
 
   async markOptedOut(
-    _email: string,
-    _tx?: Prisma.TransactionClient,
+    email: string,
+    tx?: Prisma.TransactionClient,
   ): Promise<void> {
-    throw new Error("not implemented");
+    const db: PrismaLike = tx ?? prisma;
+    await db.agent.updateMany({
+      where: { email: email.trim().toLowerCase() },
+      data: { optedOut: true },
+    });
   }
 
   async markContacted(
-    _id: string,
-    _contactedAt: Date,
-    _tx?: Prisma.TransactionClient,
+    id: string,
+    contactedAt: Date,
+    tx?: Prisma.TransactionClient,
   ): Promise<void> {
-    throw new Error("not implemented");
+    const db: PrismaLike = tx ?? prisma;
+    await db.agent.update({
+      where: { id },
+      data: { lastContactedAt: contactedAt },
+      select: { id: true },
+    });
   }
 }
-
-void AGENT_SELECT;
-void buildAgentCursorFilter;
-void clampLimit;
-void decodeCursor;
-void paginate;
 
 const defaultAgentRepository = new AgentRepository();
 

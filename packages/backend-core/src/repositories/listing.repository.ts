@@ -24,7 +24,7 @@ import { prisma } from "../lib/prisma.js";
 import {
   clampLimit,
   decodeCursor,
-  paginate,
+  encodeCursor,
   type CursorPage,
 } from "../lib/pagination/cursor.js";
 
@@ -205,12 +205,37 @@ export class ListingRepository {
    * `paginate()` can compute `nextCursor`. Returns `{ items, nextCursor }`,
    * default 20 / max 100.
    */
-  async list(_input: ListListingsInput = {}): Promise<CursorPage<ListingRecord>> {
-    throw new Error("not implemented");
+  async list(input: ListListingsInput = {}): Promise<CursorPage<ListingRecord>> {
+    const limit = clampLimit(input.limit);
+    const where = buildWhere(input.filter);
+    const cursorFilter = input.cursor
+      ? buildCursorFilter(decodeCursor(input.cursor))
+      : {};
+    // Over-fetch one row so we can detect whether more pages exist.
+    const rows = await prisma.listing.findMany({
+      where: { ...where, ...cursorFilter },
+      orderBy: [{ firstSeenAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      select: LISTING_SELECT,
+    });
+    if (rows.length <= limit) {
+      return { items: rows, nextCursor: null };
+    }
+    const items = rows.slice(0, limit);
+    const last = items[items.length - 1]!;
+    // The keyset axis is firstSeenAt (DESC, id DESC); encode the cursor against
+    // firstSeenAt by mapping it onto encodeCursor()'s createdAt slot.
+    return {
+      items,
+      nextCursor: encodeCursor({ id: last.id, createdAt: last.firstSeenAt }),
+    };
   }
 
-  async getById(_id: string): Promise<ListingRecord | null> {
-    throw new Error("not implemented");
+  async getById(id: string): Promise<ListingRecord | null> {
+    return prisma.listing.findUnique({
+      where: { id },
+      select: LISTING_SELECT,
+    });
   }
 
   /**
@@ -220,10 +245,45 @@ export class ListingRepository {
    * on create. The embedding is written separately via `writeEmbedding`.
    */
   async upsertByAddress(
-    _input: UpsertListingByAddressInput,
-    _tx?: Prisma.TransactionClient,
+    input: UpsertListingByAddressInput,
+    tx?: Prisma.TransactionClient,
   ): Promise<ListingRecord> {
-    throw new Error("not implemented");
+    const db: PrismaLike = tx ?? prisma;
+    const now = new Date();
+    return db.listing.upsert({
+      where: { addressNormalized: input.addressNormalized },
+      create: {
+        addressNormalized: input.addressNormalized,
+        postcode: input.postcode,
+        outcode: input.outcode,
+        pricePence: input.pricePence,
+        bedrooms: input.bedrooms,
+        tenure: input.tenure,
+        propertyType: input.propertyType,
+        epcRating: input.epcRating,
+        listingStatus: input.listingStatus,
+        isPreMarket: input.isPreMarket,
+        listingUrl: input.listingUrl,
+        primarySource: input.primarySource,
+        firstSeenAt: now,
+        lastSeenAt: now,
+      },
+      update: {
+        postcode: input.postcode,
+        outcode: input.outcode,
+        pricePence: input.pricePence,
+        bedrooms: input.bedrooms,
+        tenure: input.tenure,
+        propertyType: input.propertyType,
+        epcRating: input.epcRating,
+        listingStatus: input.listingStatus,
+        isPreMarket: input.isPreMarket,
+        listingUrl: input.listingUrl,
+        primarySource: input.primarySource,
+        lastSeenAt: now,
+      },
+      select: LISTING_SELECT,
+    });
   }
 
   /**
@@ -234,11 +294,18 @@ export class ListingRepository {
    * updated (0 if the id does not exist).
    */
   async writeEmbedding(
-    _listingId: string,
-    _embedding: number[],
-    _tx?: Prisma.TransactionClient,
+    listingId: string,
+    embedding: number[],
+    tx?: Prisma.TransactionClient,
   ): Promise<number> {
-    throw new Error("not implemented");
+    const db: PrismaLike = tx ?? prisma;
+    const literal = toVectorLiteral(embedding);
+    return db.$executeRaw`
+      UPDATE "Listing"
+      SET "embedding" = ${literal}::vector,
+          "updatedAt" = NOW()
+      WHERE "id" = ${listingId}::uuid
+    `;
   }
 
   /**
@@ -249,22 +316,50 @@ export class ListingRepository {
    * (created in the raw migration) backs the `<=>` operator.
    */
   async vectorTopK(
-    _embedding: number[],
-    _k: number,
-    _prefilter?: ListingFilter,
+    embedding: number[],
+    k: number,
+    prefilter?: ListingFilter,
   ): Promise<VectorTopKResult[]> {
-    throw new Error("not implemented");
+    const limit = clampLimit(k);
+    const queryLiteral = toVectorLiteral(embedding);
+    const whereSql = Prisma.join(buildRawFilterFragments(prefilter), " AND ");
+
+    const rows = await prisma.$queryRaw<
+      Array<
+        Omit<ListingRecord, "id"> & { id: string; distance: number | string }
+      >
+    >(Prisma.sql`
+      SELECT
+        "id"::text AS "id",
+        "addressNormalized",
+        "postcode",
+        "outcode",
+        "pricePence",
+        "bedrooms",
+        "tenure",
+        "propertyType",
+        "epcRating",
+        "listingStatus",
+        "isPreMarket",
+        "listingUrl",
+        "primarySource",
+        "firstSeenAt",
+        "lastSeenAt",
+        "createdAt",
+        "updatedAt",
+        ("embedding" <=> ${queryLiteral}::vector) AS "distance"
+      FROM "Listing"
+      WHERE ${whereSql}
+      ORDER BY "embedding" <=> ${queryLiteral}::vector ASC
+      LIMIT ${limit}
+    `);
+
+    return rows.map(({ distance, ...listing }) => ({
+      ...(listing as ListingRecord),
+      distance: Number(distance),
+    }));
   }
 }
-
-// Helpers retained for the GREEN implementation; referenced to satisfy lint
-// in the RED phase where the method bodies are stubbed.
-void buildWhere;
-void buildRawFilterFragments;
-void buildCursorFilter;
-void clampLimit;
-void decodeCursor;
-void paginate;
 
 const defaultListingRepository = new ListingRepository();
 

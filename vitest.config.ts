@@ -44,13 +44,16 @@ export default defineConfig({
         "packages/backend-core/src/repositories/search-profile.repository.ts",
       ],
       thresholds: {
-        // M2 starting floor — set to floor(measured) after the first
-        // `pnpm test:coverage` run (Code Coverage Enforcement: coverage only
-        // goes up). Ratcheted upward as the unit-testable surface grows.
-        lines: 70,
-        functions: 70,
-        statements: 70,
-        branches: 60,
+        // M2 floor = floor(measured) from the first `pnpm test:coverage` run
+        // (Code Coverage Enforcement: coverage only goes up). Measured M2:
+        // lines 96.92 / branches 90.9 / functions 88.88 / statements 96.96.
+        // The repository/raw-vector paths are integration-tested (excluded from
+        // the unit project above), so this floor tracks the unit-testable
+        // surface: cursor helper + shared enums/schemas/UK helpers.
+        lines: 96,
+        functions: 88,
+        statements: 96,
+        branches: 90,
       },
     },
     projects: [

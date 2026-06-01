@@ -46,27 +46,60 @@ export class ListingSourceRecordRepository {
    * composite unique makes re-ingest a no-op for row count.
    */
   async upsert(
-    _input: UpsertSourceRecordInput,
-    _tx?: Prisma.TransactionClient,
+    input: UpsertSourceRecordInput,
+    tx?: Prisma.TransactionClient,
   ): Promise<ListingSourceRecordRecord> {
-    throw new Error("not implemented");
+    const db: PrismaLike = tx ?? prisma;
+    const now = new Date();
+    return db.listingSourceRecord.upsert({
+      where: {
+        sourceType_externalId: {
+          sourceType: input.sourceType,
+          externalId: input.externalId,
+        },
+      },
+      create: {
+        listingId: input.listingId,
+        sourceType: input.sourceType,
+        externalId: input.externalId,
+        sourceUrl: input.sourceUrl ?? null,
+        ...(input.rawPayload !== undefined && input.rawPayload !== null
+          ? { rawPayload: input.rawPayload }
+          : {}),
+        observedAt: now,
+      },
+      update: {
+        listingId: input.listingId,
+        sourceUrl: input.sourceUrl ?? null,
+        ...(input.rawPayload !== undefined && input.rawPayload !== null
+          ? { rawPayload: input.rawPayload }
+          : {}),
+        observedAt: now,
+      },
+      select: SOURCE_RECORD_SELECT,
+    });
   }
 
   async findByExternalId(
-    _sourceType: ListingSource,
-    _externalId: string,
+    sourceType: ListingSource,
+    externalId: string,
   ): Promise<ListingSourceRecordRecord | null> {
-    throw new Error("not implemented");
+    return prisma.listingSourceRecord.findUnique({
+      where: { sourceType_externalId: { sourceType, externalId } },
+      select: SOURCE_RECORD_SELECT,
+    });
   }
 
   async listByListing(
-    _listingId: string,
+    listingId: string,
   ): Promise<ListingSourceRecordRecord[]> {
-    throw new Error("not implemented");
+    return prisma.listingSourceRecord.findMany({
+      where: { listingId },
+      orderBy: [{ observedAt: "desc" }, { id: "desc" }],
+      select: SOURCE_RECORD_SELECT,
+    });
   }
 }
-
-void SOURCE_RECORD_SELECT;
 
 const defaultListingSourceRecordRepository =
   new ListingSourceRecordRepository();
