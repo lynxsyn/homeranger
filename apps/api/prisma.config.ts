@@ -8,11 +8,18 @@
 // allowed to run DDL incl. CREATE EXTENSION/CREATE INDEX). `prisma migrate
 // deploy` / `prisma migrate dev` read this; runtime uses the pg adapter.
 import "dotenv/config";
-import { defineConfig, env } from "prisma/config";
+import { defineConfig } from "prisma/config";
 
-type Env = {
-  MIGRATION_DATABASE_URL: string;
-};
+// `prisma migrate` connects as MIGRATION_DATABASE_URL (the homescout_migrator
+// role — DDL incl. CREATE EXTENSION/INDEX). We read process.env directly with a
+// localhost fallback instead of prisma/config's throwing `env()` so that
+// `prisma generate` (which does NOT connect) succeeds with no env set — e.g. in
+// the CI `check` job and on a fresh clone. `migrate` is always invoked with the
+// real MIGRATION_DATABASE_URL; the fallback only fails fast (connection error)
+// if someone runs migrate without it.
+const migrationUrl =
+  process.env.MIGRATION_DATABASE_URL ??
+  "postgresql://homescout:homescout@localhost:5432/homescout";
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -20,6 +27,6 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: env<Env>("MIGRATION_DATABASE_URL"),
+    url: migrationUrl,
   },
 });

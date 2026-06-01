@@ -44,6 +44,11 @@ jobs:
           node-version: 24.16.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Generate the Prisma client first — backend-core typechecks against the
+      # generated @prisma/client (models + enums). prisma.config.ts tolerates a
+      # missing MIGRATION_DATABASE_URL, so generate needs no DB.
+      - name: Prisma generate
+        run: pnpm --filter @homescout/api prisma:generate
       - name: Typecheck
         run: pnpm typecheck
       - name: Lint
