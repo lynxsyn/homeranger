@@ -1,0 +1,108 @@
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+
+/**
+ * Canonical cursor-pagination contract for @homescout/backend-core.
+ *
+ * Every list endpoint that returns paged results MUST consume
+ * `cursorPageInput` (or `cursorPageInput.extend({ ...filters })`) for its
+ * input and return `CursorPage<T>` for its output. The response shape is
+ * `{ items: T[]; nextCursor: string | null }` — `nextCursor` is ALWAYS
+ * present, `null` means "no more pages". Default page size is 20; max is
+ * 100. Cursors are opaque base64-encoded JSON of `{ createdAt, id }` and
+ * MUST be round-tripped via `encodeCursor` / `decodeCursor`.
+ *
+ * Mirrors the Doxus contract (doxus-web .../lib/pagination/cursor.ts) verbatim
+ * so the repository layering is identical across both products.
+ */
+export const DEFAULT_PAGE_LIMIT = 20;
+export const MAX_PAGE_LIMIT = 100;
+
+export const cursorPageInput = z.object({
+  cursor: z.string().optional(),
+  limit: z.number().int().min(1).max(MAX_PAGE_LIMIT).default(DEFAULT_PAGE_LIMIT),
+});
+
+export type CursorPage<T> = {
+  items: T[];
+  nextCursor: string | null;
+};
+
+/**
+ * Clamp a caller-supplied limit into [1, MAX_PAGE_LIMIT], defaulting to 20.
+ * Repositories call this so an out-of-range or omitted limit can never widen
+ * a page beyond the contract (default 20 / max 100).
+ */
+export function clampLimit(limit?: number): number {
+  if (limit === undefined) {
+    return DEFAULT_PAGE_LIMIT;
+  }
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_PAGE_LIMIT);
+}
+
+/**
+ * Encode the (createdAt, id) of a single row as an opaque base64 cursor.
+ * The createdAt field is embedded so composite-cursor paginators can do a
+ * `(createdAt, id) < (cursor.createdAt, cursor.id)` keyset comparison.
+ */
+export function encodeCursor(row: { createdAt: Date; id: string }): string {
+  return Buffer.from(
+    JSON.stringify({ createdAt: row.createdAt.toISOString(), id: row.id }),
+  ).toString("base64");
+}
+
+/**
+ * Decode a cursor produced by `encodeCursor`. Throws
+ * `TRPCError({ code: "BAD_REQUEST", message: "Invalid cursor" })` on any
+ * malformed input — the static message is intentional so no internal ids or
+ * field names leak to the client.
+ */
+export function decodeCursor(cursor: string): { id: string; createdAt: Date } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(cursor, "base64").toString("utf8"));
+  } catch {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid cursor" });
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("id" in parsed) ||
+    typeof (parsed as { id: unknown }).id !== "string" ||
+    !("createdAt" in parsed) ||
+    typeof (parsed as { createdAt: unknown }).createdAt !== "string"
+  ) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid cursor" });
+  }
+  const createdAtMs = Date.parse((parsed as { createdAt: string }).createdAt);
+  if (Number.isNaN(createdAtMs)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid cursor" });
+  }
+  return {
+    id: (parsed as { id: string }).id,
+    createdAt: new Date(createdAtMs),
+  };
+}
+
+/**
+ * Slice an over-fetched buffer into a `CursorPage`.
+ *
+ * Repositories MUST call `findMany` with `take: limit + 1` so this helper can
+ * detect whether more pages exist. When `rows.length > limit`, the extra row
+ * is dropped from `items` and the last included row is encoded as
+ * `nextCursor`. Otherwise `nextCursor` is `null`.
+ */
+export function paginate<TRow extends { id: string; createdAt: Date }>(
+  rows: TRow[],
+  limit: number,
+): CursorPage<TRow> {
+  if (rows.length <= limit) {
+    return { items: rows, nextCursor: null };
+  }
+  const items = rows.slice(0, limit);
+  const lastIncluded = items[items.length - 1];
+  return {
+    items,
+    nextCursor: lastIncluded ? encodeCursor(lastIncluded) : null,
+  };
+}

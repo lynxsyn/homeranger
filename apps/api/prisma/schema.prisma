@@ -1,0 +1,340 @@
+// homescout data model — single-user, no tenant scoping, no RLS.
+// Conventions mirror Doxus control-plane-api/prisma/schema.prisma exactly:
+//   • id String @id @default(uuid(7)) @db.Uuid
+//   • timestamps @db.Timestamptz(6)
+//   • top-level PascalCase enums with snake_case values
+//   • prices as integer pence (never floating point)
+// Prisma 7 + @prisma/adapter-pg (driver adapter): the datasource block carries
+// no `url`; the connection string is supplied at runtime via PrismaPg
+// (packages/backend-core/src/lib/prisma.ts) and at migrate-time via
+// prisma.config.ts (`datasource: { url: env("MIGRATION_DATABASE_URL") }`).
+// The pgvector `embedding` columns are declared as Unsupported("vector(1024)")
+// — Prisma has no native vector type, so reads/writes go through raw SQL
+// ($queryRaw / $executeRaw). The column + HNSW index are created by a raw
+// migration, NOT by Prisma's diff engine.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────── Enums ───────────────────────────
+
+enum Tenure {
+  freehold
+  leasehold
+  share_of_freehold
+  commonhold
+  unknown
+}
+
+// Value order is kept byte-for-byte identical to PropertyTypeEnum in
+// packages/shared/src/listing-enums.ts; the backend-core drift test asserts it.
+enum PropertyType {
+  detached
+  semi_detached
+  terraced
+  flat
+  maisonette
+  bungalow
+  cottage
+  land
+  other
+  unknown
+}
+
+enum EpcRating {
+  a
+  b
+  c
+  d
+  e
+  f
+  g
+  unknown
+}
+
+// LOCKED by docs/plans/homescout-plan.md:86 — these five values are canonical.
+// Mirrors ListingStatusEnum in packages/shared/src/listing-enums.ts exactly.
+enum ListingStatus {
+  pre_market
+  live
+  under_offer
+  sold
+  withdrawn
+}
+
+// Listing.primarySource + ListingSourceRecord.sourceType.
+// No compliant-API channel — agent_email | manual only (no licenceClass).
+enum ListingSource {
+  agent_email
+  manual
+}
+
+// Email SPF/DKIM verdicts — reuses the Doxus EmailAuthVerdict enum shape.
+enum EmailAuthVerdict {
+  pass
+  fail
+  softfail
+  neutral
+  none
+  temperror
+  permerror
+  unknown
+}
+
+// Inbound/outbound direction for an outreach message.
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+// Whether the agent's mailbox is a paid corporate portal subscriber, an
+// individual mailbox, or not yet classified.
+enum MailboxType {
+  corporate_subscriber
+  individual
+  unknown
+}
+
+// Suppression reasons — never email an address carrying any of these.
+enum SuppressionReason {
+  unsubscribe
+  hard_bounce
+  spam_complaint
+  manual
+}
+
+// Provider delivery-event feed (Resend webhook event types, normalised).
+enum EmailEventType {
+  delivered
+  bounced
+  complained
+  opened
+  clicked
+  deferred
+  failed
+}
+
+// ─────────────────────────── Models ───────────────────────────
+
+// The canonical de-duplicated property. `addressNormalized` is the dedup key:
+// re-ingesting the same property from multiple agent emails updates the same
+// row. `embedding` is the Voyage voyage-3.5 vector(1024); it is declared
+// Unsupported because Prisma has no vector type — it is written/read via raw
+// SQL and ranked by the HNSW vector_cosine_ops index created in the raw
+// migration.
+model Listing {
+  id                String                       @id @default(uuid(7)) @db.Uuid
+  addressNormalized String                       @unique
+  addressRaw        String?
+  postcode          String?
+  outcode           String?
+  pricePence        Int?
+  bedrooms          Int?
+  bathrooms         Int?
+  tenure            Tenure?
+  propertyType      PropertyType?
+  epcRating         EpcRating?
+  listingStatus     ListingStatus                @default(pre_market)
+  isPreMarket       Boolean                      @default(false)
+  listingUrl        String?
+  primarySource     ListingSource                @default(agent_email)
+  embedding         Unsupported("vector(1024)")?
+  firstSeenAt       DateTime                     @default(now()) @db.Timestamptz(6)
+  lastSeenAt        DateTime                     @default(now()) @db.Timestamptz(6)
+  createdAt         DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime                     @updatedAt @db.Timestamptz(6)
+
+  sourceRecords ListingSourceRecord[]
+  photoAnalyses PhotoAnalysis[]
+  scores        ListingScore[]
+
+  @@index([outcode])
+  @@index([postcode])
+  @@index([listingStatus, lastSeenAt(sort: Desc)])
+  @@index([pricePence])
+}
+
+// Provenance for every place a Listing was observed. `@@unique([sourceType,
+// externalId])` makes re-ingest idempotent — the second upsert of the same
+// (sourceType, externalId) updates the existing row rather than creating a
+// duplicate. No `licenceClass` (the compliant-API channel was removed).
+model ListingSourceRecord {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  listingId  String        @db.Uuid
+  listing    Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  sourceType ListingSource
+  externalId String
+  sourceUrl  String?
+  rawPayload Json?
+  observedAt DateTime      @default(now()) @db.Timestamptz(6)
+  createdAt  DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime      @updatedAt @db.Timestamptz(6)
+
+  @@unique([sourceType, externalId])
+  @@index([listingId])
+}
+
+// Vision-model taste analysis of a listing photo. Deduped by `imageHash` so the
+// same image is never re-analysed (and re-billed). `costPence` tracks spend.
+model PhotoAnalysis {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  listingId    String   @db.Uuid
+  listing      Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  imageHash    String   @unique
+  imageUrl     String?
+  tasteScore   Int?
+  featuresJson Json     @default("{}")
+  model        String
+  costPence    Int      @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([listingId])
+}
+
+// Combined relevance score for a Listing against the SearchProfile.
+// `vectorScore` is cosine similarity; `llmScore` is the optional LLM re-rank;
+// `combinedScore` is the blended value used for ordering; `rationale` is the
+// human-readable explanation.
+model ListingScore {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  listingId     String   @db.Uuid
+  listing       Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  vectorScore   Float
+  llmScore      Float?
+  combinedScore Float
+  rationale     String?
+  scoredAt      DateTime @default(now()) @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([listingId])
+  @@index([combinedScore(sort: Desc)])
+}
+
+// Single-row search profile (single-user product). `preferenceEmbedding` is the
+// Voyage vector(1024) of `freeTextPreferences`, used as the query vector for
+// listingRepository.vectorTopK. Declared Unsupported (raw SQL read/write).
+model SearchProfile {
+  id                  String                       @id @default(uuid(7)) @db.Uuid
+  freeTextPreferences String                       @default("")
+  minBedrooms         Int?
+  maxPricePence       Int?
+  outcodes            String[]                     @default([])
+  requiredTenure      Tenure?
+  preferenceEmbedding Unsupported("vector(1024)")?
+  createdAt           DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime                     @updatedAt @db.Timestamptz(6)
+}
+
+// An estate agent (or branch) we may contact. `email` is unique. `optedOut`
+// short-circuits all outreach. `coveredOutcodes` records the geography the
+// agent operates in. A uuid surrogate `id` is the PK (`email` is unique) so the
+// repository keys threads/contacted-state on a stable id, not the mutable email.
+model Agent {
+  id              String      @id @default(uuid(7)) @db.Uuid
+  email           String      @unique
+  agencyName      String?
+  contactName     String?
+  mailboxType     MailboxType @default(unknown)
+  optedOut        Boolean     @default(false)
+  coveredOutcodes String[]    @default([])
+  lastContactedAt DateTime?   @db.Timestamptz(6)
+  createdAt       DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime    @updatedAt @db.Timestamptz(6)
+
+  threads OutreachThread[]
+
+  @@index([optedOut])
+}
+
+// A conversation with a single agent. The thread groups inbound + outbound
+// messages and tracks the last activity for follow-up scheduling.
+model OutreachThread {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  agentId       String    @db.Uuid
+  agent         Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  subject       String?
+  lastMessageAt DateTime? @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+
+  messages OutreachMessage[]
+
+  @@index([agentId])
+  @@index([lastMessageAt(sort: Desc)])
+}
+
+// A single email in a thread. Inbound messages carry parsed SPF/DKIM verdicts
+// and `parsedListingIds` (listings extracted from the reply). `providerMessageId`
+// is unique so a redelivered webhook is idempotent.
+model OutreachMessage {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  threadId          String           @db.Uuid
+  thread            OutreachThread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  direction         MessageDirection
+  providerMessageId String
+  fromEmail         String
+  toEmail           String
+  subject           String?
+  bodyText          String?
+  bodyHtml          String?
+  spfVerdict        EmailAuthVerdict @default(unknown)
+  dkimVerdict       EmailAuthVerdict @default(unknown)
+  parsedListingIds  String[]         @default([]) @db.Uuid
+  sentAt            DateTime?        @db.Timestamptz(6)
+  receivedAt        DateTime?        @db.Timestamptz(6)
+  createdAt         DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(6)
+
+  @@unique([providerMessageId])
+  @@index([threadId])
+}
+
+// Global do-not-contact list. Any email present here is suppressed regardless of
+// Agent.optedOut. Reasons mirror the standard email-suppression taxonomy.
+model SuppressionEntry {
+  id        String            @id @default(uuid(7)) @db.Uuid
+  email     String
+  reason    SuppressionReason
+  note      String?
+  createdAt DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime          @updatedAt @db.Timestamptz(6)
+
+  @@unique([email, reason])
+  @@index([email])
+}
+
+// Raw provider delivery/bounce/complaint feed (Resend webhooks, normalised).
+// `providerEventId` is unique so a redelivered webhook is idempotent. This is
+// the source feed that drives SuppressionEntry insertion.
+model EmailEvent {
+  id              String         @id @default(uuid(7)) @db.Uuid
+  providerEventId String         @unique
+  messageId       String?
+  email           String
+  eventType       EmailEventType
+  payload         Json           @default("{}")
+  occurredAt      DateTime       @default(now()) @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+
+  @@index([email])
+  @@index([eventType, occurredAt(sort: Desc)])
+}
+
+// Single-row email warm-up state — ramps the per-day send cap so a new sending
+// domain builds reputation gradually rather than blasting from day one.
+model WarmupState {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  dailyCap      Int      @default(20)
+  sentToday     Int      @default(0)
+  windowDate    DateTime @db.Date
+  rampStartedAt DateTime @default(now()) @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+}

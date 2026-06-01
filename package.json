@@ -17,6 +17,7 @@
     "test:coverage": "vitest run --project unit --coverage",
     "test:e2e": "playwright test",
     "test:e2e:local": "E2E_BASE_URL=http://localhost:5173 playwright test",
+    "dev:services": "docker compose -f docker-compose.dev.yaml up -d --wait",
     "dev:api": "pnpm --filter @homescout/api dev",
     "dev:worker": "pnpm --filter @homescout/processor dev",
     "dev:scheduler": "pnpm --filter @homescout/scheduler dev",
