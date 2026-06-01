@@ -2,6 +2,8 @@
 
 > Codename `homescout` (rename freely). Brainstorm → plan artifact. This is a **large greenfield feature**, so the actual build proceeds as a sequence of AIDE specs (one per milestone), each its own PR + release tag, per the workspace Change Delivery Protocol and `scope-discipline.md`.
 
+> **STATUS (2026-06-01) — M0 RESOLVED, plan completed.** The three decision gates are decided (see `docs/decisions/2026-06-01-*.md`) and the executable queue + per-milestone specs live in `docs/specs/` (`BUILD_ORDER.md` + `M1`…`M7`). Two changes from the original brainstorm below: **(1) Email-only, single channel** — the compliant-API enrichment channel (Channel 2) is dropped entirely; click through to the agent's page for detail. **(2) Decisions locked:** email = **Resend** (residency criterion #1 consciously waived for this personal tool), embeddings = **Voyage `voyage-3.5` at `vector(1024)`** (waiver extended to the data layer), data sources = **none** (no compliant live API exists). The sections below are the reasoning; where they describe the API channel, `licenceClass`, `ingest:poll`, the SSRF guard, or an "M0 pick", treat them as **superseded** by the decision docs. Anthropic note: runtime LLM calls need a metered `ANTHROPIC_API_KEY` (the Max subscription cannot back the deployed service); Anthropic has no embeddings endpoint, hence Voyage.
+
 ## Context
 
 You want one place to skim UK homes worth buying — ideally **before** they hit Rightmove/OnTheMarket/Zoopla — filtered by location, type, and the specific features you like, with photos scored against your taste. Two ingestion channels feed one Postgres table, browsed as a simple sortable/filterable table that **links out** to the source (we do not re-render listing pages).
@@ -22,27 +24,28 @@ Research established three facts that shape everything:
 ## Recommended architecture
 
 ```
-                 ┌─────────────────────── apps/api (Fastify + tRPC 11) ────────────────────────┐
-                 │  tRPC routers: listings · preferences · outreach   +  raw webhook routes      │
- React SPA  ───▶ │  (Postmark inbound-parse + delivery-events → enqueue BullMQ)                   │
- (apps/web)      └───────────────┬───────────────────────────────────────────────┬──────────────┘
-   table UI                      │ enqueue                                         │ enqueue
-   filters/sort                  ▼                                                 ▼
-   click-out links     ┌── apps/processor (BullMQ workers) ──┐         ┌── apps/scheduler (cron, leader-lock) ──┐
-                        │ ingest:poll  → API adapters         │         │ registers ingest:poll / outreach:*     │
-                        │ analyze:listing → Claude extract,   │         │ / warmup:recalc on cron               │
-                        │   vision photo-score, embed         │         └───────────────────────────────────────┘
-                        │ outreach:send → ComplianceGuard→send│
-                        │ outreach:inbound → classify+extract │
-                        │ outreach:followup                   │
-                        └──────────────┬──────────────────────┘
-                                       ▼
-                 Postgres (pgvector/pgvector:pg17, already on cluster) + Redis (BullMQ + warmup token-bucket)
+                 ┌──────────────── apps/api (Fastify 5 + tRPC 11) ─────────────────┐
+ React SPA  ───▶ │  routers: listings · preferences · outreach                       │
+ (apps/web)      │  raw routes (registered BEFORE tRPC): Resend inbound-parse +       │
+   table UI      │  delivery/bounce/complaint webhooks → enqueue BullMQ               │
+   filters/sort  └───────────────┬──────────────────────────────────┬───────────────┘
+   click-out                     │ enqueue                            │ enqueue
+                                 ▼                                    ▼
+                  ┌── apps/processor (BullMQ workers) ──┐   ┌── apps/scheduler (cron, leader-lock) ──┐
+                  │ outreach:inbound → extract+dedup+   │   │ registers outreach:followup /          │
+                  │   upsert (the live data path)       │   │ warmup:recalc on cron                  │
+                  │ analyze:listing → Claude extract,   │   └────────────────────────────────────────┘
+                  │   Haiku vision score, Voyage embed  │
+                  │ outreach:send → ComplianceGuard→send│
+                  │ outreach:followup                   │
+                  └──────────────┬──────────────────────┘
+                                 ▼
+              homescout-postgres (pgvector/pgvector:pg17) + homescout-redis (BullMQ + warmup token-bucket)
 ```
 
-**Channel 1 — Agent email (primary live source).** Autonomous outreach to UK estate agents asking to be notified of upcoming/off-market listings; ingest replies (free text + PDF/image attachments) → Claude structured extraction → dedup → upsert as `isPreMarket` listings. **"Autonomous" is gated, not unguarded** — every send passes a central `ComplianceGuard` (see below).
+**Single channel — Agent email (the only live source).** Autonomous-but-guarded outreach to UK estate agents asking to be notified of upcoming/off-market listings; ingest replies (free text + PDF/image attachments) → Claude structured extraction → dedup → upsert as `isPreMarket` listings, carrying the agent's click-out `listingUrl`. **"Autonomous" is gated, not unguarded** — every send passes a central `ComplianceGuard` (see below).
 
-**Channel 2 — Compliant API ingestion (enrichment).** Pluggable `ListingSourceAdapter` implementations for PropertyData, PaTMa, Land Registry, EPC. They decorate listings with sold-price comps, EPC, and area analytics. If the M0 spike finds a tier that *does* return live for-sale rows under a personal-use licence, the same adapter interface ingests them as listings — no rework.
+**~~Channel 2 — Compliant API ingestion~~ (REMOVED).** Dropped per `docs/decisions/2026-06-01-data-source-viability.md`: no compliant buyer-accessible live for-sale API with redistribution rights exists, and the user elected to click through to the agent's page for detail rather than ingest API enrichment. The `ListingSourceAdapter` framework, the PropertyData/PaTMa/Land-Registry/EPC adapters, `ingest:poll`, the `lib/ssrf/` guard, the `licenceClass` field, and `PROPERTYDATA_API_KEY`/`PATMA_API_KEY` are all out of v1. The `ListingSourceRecord` provenance seam remains, so a live API (or the personal-use Homedata feed) can be added later as a config-level adapter without reworking the data model.
 
 **AI layer.** Claude structured outputs extract fields from agent emails; Claude **Haiku** vision scores each photo (0–100) against your taste + detects features; an embedding model vectorises listing + your free-text preferences for pgvector top-K, then a hybrid LLM re-score of just the top-K ranks results (bounds cost).
 
@@ -131,13 +134,13 @@ These three resolve the project's real unknowns and are required by `validation-
 
 | # | Milestone | TDD shape |
 |---|---|---|
-| **M0** | Decision gates above | artifacts only, no code |
-| **M1** | Repo + standalone infra scaffold: own Flux source, `homescout` namespace + default-deny NetworkPolicy, dedicated `homescout-postgres` (+`vector`), `homescout-redis`, own age-encrypted secrets, own domain DNS | infra (no TDD per `infra.md`); **gate: dedicated DB+Redis reachable + `vector` created before any integration/E2E test** |
-| **M2** | Data model + repositories (incl. raw `vectorTopK`) | RED repo unit+integration (assert cosine ordering on real pgvector) → GREEN schema/migrations/repos |
-| **M3** | Listings table read path — **first demo** | RED `listingsRouter.list` + table component → GREEN router + `ListingsPage` → E2E loads table, clicks a source link |
-| **M4** | Compliant API ingestion | RED adapter (nock) + Ingestion/Dedup → GREEN adapters + `ingest:poll` → E2E scheduler→processor→row with `licenceClass` |
-| **M5** | AI analysis | RED analysis+match (mock Anthropic) → GREEN extract+vision+embed+`analyze:listing` → E2E row-expand shows features/score |
-| **M6** | Outreach + ComplianceGuard (highest risk, last) | RED a test per guard gate (PECR/suppression/circuit-breaker/warmup/kill-switch) + webhook route → GREEN service+routes+jobs → E2E: simulated inbound webhook upserts listing; guard blocks non-corporate/suppressed/over-cap send |
+| **M0** | Decision gates above | ✅ RESOLVED — `docs/decisions/2026-06-01-*.md` |
+| **M1** | Repo + standalone infra scaffold: own Flux source, `homescout` namespace + default-deny NetworkPolicy, dedicated `homescout-postgres` (+`vector`), `homescout-redis`, own age-encrypted secrets, own domain DNS (Resend records) | infra (no TDD per `infra.md`); **gate: dedicated DB+Redis reachable + `vector` created before any integration/E2E test** |
+| **M2** | Data model + repositories (incl. raw `vectorTopK`, `vector(1024)`) | RED repo unit+integration (assert cosine ordering on real pgvector) → GREEN schema/migrations/repos |
+| **M3** | Listings table read path — **first demo** (fixtures) | RED `listingsRouter.list` + table component → GREEN router + `ListingsPage` → E2E loads table, clicks a source link |
+| **M4** | Inbound email ingestion (**live data path**) | RED Resend inbound webhook + extract/dedup → GREEN raw route + `outreach:inbound` → E2E simulated inbound payload upserts `isPreMarket` listing visible in `listingsRouter.list` |
+| **M5** | AI analysis | RED analysis+match (mock Anthropic+Voyage) → GREEN extract+vision+Voyage-embed+`analyze:listing` → E2E row-expand shows features/score |
+| **M6** | Outbound outreach + ComplianceGuard (highest risk, last) | RED a test per guard gate (PECR/opt-out/suppression/circuit-breaker/kill-switch/warmup) + `outreach:send`/`followup` → GREEN service+jobs → E2E guard blocks non-corporate/suppressed/over-cap send |
 | **M7** | Outreach dashboard | RED `outreachRouter.metrics` + kill-switch → GREEN dashboard → E2E toggle halts sends |
 
 ## Pattern map (Doxus files to read + **copy** — reference only, never imported or shared)
