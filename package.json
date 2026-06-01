@@ -1,0 +1,47 @@
+{
+  "name": "homescout",
+  "private": true,
+  "version": "0.0.1",
+  "packageManager": "pnpm@10.34.1",
+  "engines": {
+    "node": ">=22.16.0",
+    "pnpm": ">=10.34.1"
+  },
+  "scripts": {
+    "lint": "eslint . --max-warnings=0",
+    "build": "pnpm --filter @homescout/shared build && pnpm --filter @homescout/backend-core build && pnpm --filter @homescout/api build && pnpm --filter @homescout/processor build && pnpm --filter @homescout/scheduler build && pnpm --filter @homescout/web build",
+    "typecheck": "pnpm -r --parallel run typecheck",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:all": "vitest run",
+    "test:coverage": "vitest run --project unit --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:local": "E2E_BASE_URL=http://localhost:5173 playwright test",
+    "dev:api": "pnpm --filter @homescout/api dev",
+    "dev:worker": "pnpm --filter @homescout/processor dev",
+    "dev:scheduler": "pnpm --filter @homescout/scheduler dev",
+    "dev:web": "pnpm --filter @homescout/web dev"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
+      "browser-tabs-lock",
+      "msgpackr-extract"
+    ]
+  },
+  "devDependencies": {
+    "@playwright/test": "1.60.0",
+    "@types/node": "25.6.2",
+    "@typescript-eslint/eslint-plugin": "8.60.0",
+    "@typescript-eslint/parser": "8.60.0",
+    "@vitest/coverage-v8": "4.1.7",
+    "eslint": "10.3.0",
+    "jiti": "2.7.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.60.0",
+    "vitest": "4.1.7"
+  }
+}

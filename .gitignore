@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+
+# Env / secrets (NEVER commit plaintext secrets — only *.enc.yaml / *.enc.tfvars)
+.env
+.env.*
+!.env.example
+*-age-key*.txt
+*.agekey
+infra/deploy/base/secret.yaml
+infra/deploy/**/secret.example.yaml.filled
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.auto.tfvars
+!*.enc.tfvars
+
+# Editor / OS
+.DS_Store
+*.log
+.idea/
+.vscode/

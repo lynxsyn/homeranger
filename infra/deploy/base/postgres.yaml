@@ -1,0 +1,160 @@
+# homescout dedicated Postgres. COPIED AS A PATTERN from
+# doxus-infra/deploy/base/postgres.yaml — shares ZERO runtime with Doxus:
+# own namespace (homescout), own PVC, own Service, own credentials.
+#
+# Image: pgvector/pgvector:pg17 (line ~51 of the Doxus reference). The image
+# bundles the pgvector extension; `CREATE EXTENSION vector` is run once by the
+# bootstrap superuser in postgres-init-roles.yaml (untrusted extension needs
+# SUPERUSER). The M2 Prisma migration keeps an idempotent CREATE EXTENSION IF
+# NOT EXISTS so the extension stays in migration history (migration.sql:
+#   CREATE EXTENSION IF NOT EXISTS vector;
+#   ALTER TABLE "Listing" ADD COLUMN "embedding" vector(1024);
+#   CREATE INDEX ... USING hnsw ("embedding" vector_cosine_ops);
+# ). This manifest only provisions the engine; the extension is owned by schema
+# migrations so it is captured in Prisma's migration history.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homescout-postgres
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: homescout-postgres
+    app.kubernetes.io/part-of: homescout-app
+spec:
+  revisionHistoryLimit: 3
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homescout-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homescout-postgres
+        app.kubernetes.io/part-of: homescout-app
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: platform-critical
+      # Cut k8s eviction wait from 300s default -> 30s so pods on a dead/unreachable
+      # node get rescheduled fast. Pairs with Longhorn `nodeDownPodDeletionPolicy`
+      # so the attached PVC releases the dead node and the new pod can attach the
+      # surviving replica. (Mirrors the Doxus pattern.)
+      tolerations:
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-postgres
+      securityContext:
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg17
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          args:
+            - postgres
+            - -c
+            - shared_buffers=32MB
+            - -c
+            - effective_cache_size=192MB
+            - -c
+            - work_mem=2MB
+            - -c
+            - max_wal_size=256MB
+            # Server-side TCP keepalives keep the CNI conntrack entry warm so the
+            # Prisma pool doesn't hand out connections whose underlying TCP socket
+            # was silently torn down by k3s/flannel while both ends believed the
+            # conn was alive. (Mirrors the Doxus DOXUS-WEB-V fix.)
+            - -c
+            - tcp_keepalives_idle=60
+            - -c
+            - tcp_keepalives_interval=10
+            - -c
+            - tcp_keepalives_count=6
+          env:
+            - name: POSTGRES_DB
+              value: homescout
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 750m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - homescout
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - homescout
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: homescout-postgres-data-lh
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homescout-postgres
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: homescout-postgres
+    app.kubernetes.io/part-of: homescout-app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: homescout-postgres

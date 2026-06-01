@@ -1,0 +1,64 @@
+# Doxus secret-scan rules - pinned to gitleaks v8.24.3.
+# Spec: docs/specs/secrets-hardening.md (FR-002).
+# Plan: docs/plans/secrets-hardening.md.
+# Bump GITLEAKS_VERSION in .github/workflows/ops-verify.yaml together with this file.
+
+[extend]
+useDefault = true
+
+# --- Doxus rule 1: age-secret-key ---
+[[rules]]
+id = "age-secret-key"
+description = "Doxus: age private key (sops-age recipient secret)"
+regex = '''AGE-SECRET-KEY-1[0-9A-Z]{58}'''
+keywords = ["AGE-SECRET-KEY-1"]
+
+# --- Doxus rule 2: sops-decrypted-payload ---
+# RE2 limitation: gitleaks (Go regex) does not support negative lookahead, so
+# this pattern cannot itself exclude files that contain a `sops:` metadata block.
+# It would fire on ANY YAML with `kind: Secret` + populated `data:`. doxus-ops
+# does not currently host SOPS-encrypted Secret manifests (those live in
+# doxus-infra), but the global [allowlist] below excludes `*.enc.yaml`/`*.enc.yml`
+# defensively so any future drop matches the doxus-infra convention. Plaintext
+# Kubernetes Secret YAMLs anywhere in this repo MUST trip this rule.
+[[rules]]
+id = "sops-decrypted-payload"
+description = "Doxus: Kubernetes Secret with populated data: outside an .enc.yaml envelope"
+regex = '''(?ms)^kind:\s*Secret\b.*?^data:\s*\n[\S\s]*?(?:\z|^---)'''
+path = '''.*\.ya?ml$'''
+
+# --- Doxus rule 3: dotenv-with-non-placeholder ---
+[[rules]]
+id = "dotenv-with-non-placeholder"
+description = "Doxus: .env file contains a value that does not look like a placeholder"
+regex = '''(?m)^[A-Z_][A-Z0-9_]*=\S{9,}'''
+path = '''(^|/)\.env(\.[^.]+)?$'''
+[rules.allowlist]
+description = "Allow declared placeholder/example envfiles"
+paths = [
+  '''(^|/)\.env\.(example|sample|template)$''',
+]
+regexes = [
+  '''(?m)^[A-Z_][A-Z0-9_]*=(?:CHANGEME|XXX+|placeholder|your-[a-z0-9-]+|<[^>]+>|\d+)\s*$''',
+]
+
+# --- Global allowlist ---
+# - Excludes SOPS-encrypted forms defensively (doxus-ops has none today, but the
+#   pattern matches the doxus-infra convention if any are added).
+# - Allows age PUBLIC keys (62 chars, all-lowercase `age1...`). These are
+#   designed to be shared (recipient-list publication, runbook references) and
+#   are distinct from age PRIVATE keys (`AGE-SECRET-KEY-1...` 58 chars uppercase)
+#   which Doxus rule 1 explicitly catches.
+# - Stopwords cover well-known example/placeholder fragments shipped in
+#   contributor-facing documentation under claude/agents/ and claude/skills/.
+[allowlist]
+description = "SOPS-encrypted Secret YAMLs + age public keys + documented placeholder examples"
+paths = [
+  '''.*\.enc\.ya?ml$''',
+]
+regexes = [
+  '''age1[ac-hj-np-z02-9]{58}''',
+]
+stopwords = [
+  "sk_live_abc123",
+]

@@ -1,0 +1,328 @@
+# homescout NetworkPolicies.
+#
+# Model: DEFAULT-DENY ingress AND egress for the whole namespace, then explicit
+# per-component allows. This mirrors the Doxus base network-policies.yaml pattern
+# verbatim but is scoped entirely to the `homescout` namespace and homescout's
+# own pods/services. homescout shares ZERO runtime with Doxus: its allows only
+# reference homescout-namespace pods, kube-dns, and external 443. Nothing here
+# permits reaching the Doxus `web` namespace (see networkpolicy notes).
+#
+# Component -> Doxus analogue:
+#   homescout-api        <- doxus-api
+#   homescout-scheduler  <- doxus-api-scheduler
+#   homescout-processor  <- doxus-worker (BullMQ job execution + provider egress)
+#   homescout-postgres   <- doxus-postgres
+#   homescout-redis      <- doxus-redis
+#   supertokens          <- supertokens
+#   cloudflared          <- cloudflared
+#
+# DNS egress is scoped to kube-system / k8s-app: kube-dns (the stricter pattern
+# from Doxus's postgres-init-netpol.yaml), not unscoped port 53. coredns in this
+# cluster is labelled k8s-app: kube-dns in kube-system.
+---
+# Default deny all ingress and egress in the homescout namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: homescout
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Shared DNS egress allow: every homescout pod may reach kube-dns. Applied via a
+# namespace-wide podSelector so each component policy below does not need to
+# repeat the DNS rule. (Egress rules across policies are additive in k8s.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: homescout
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# homescout-api: ingress from cloudflared (HTTP API on 3000); egress to postgres,
+# supertokens, redis, and external HTTPS (Resend / Voyage / Anthropic + Cloudflare
+# tunnel-adjacent calls). DNS handled by allow-dns-egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-homescout-api
+  namespace: homescout
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: homescout-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cloudflared
+      ports:
+        - port: 3000
+          protocol: TCP
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-postgres
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: supertokens
+      ports:
+        - port: 3567
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-redis
+      ports:
+        - port: 6379
+          protocol: TCP
+    # External HTTPS: Resend, Voyage, Anthropic. k8s NetworkPolicy CANNOT match
+    # hostnames, so this is broad egress to 443. See networkpolicy notes.
+    - ports:
+        - port: 443
+          protocol: TCP
+---
+# homescout-scheduler: no external ingress; egress to postgres + redis only.
+# Business job execution lives in homescout-processor.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-homescout-scheduler
+  namespace: homescout
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: homescout-scheduler
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-postgres
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-redis
+      ports:
+        - port: 6379
+          protocol: TCP
+---
+# homescout-processor (BullMQ worker): no external ingress; egress to postgres,
+# redis, and external HTTPS providers (Resend / Voyage / Anthropic).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-homescout-processor
+  namespace: homescout
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: homescout-processor
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-postgres
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-redis
+      ports:
+        - port: 6379
+          protocol: TCP
+    # External HTTPS: Resend email, Voyage embeddings, Anthropic API.
+    # Hostname matching is impossible in k8s NetworkPolicy; broad 443 egress.
+    - ports:
+        - port: 443
+          protocol: TCP
+---
+# supertokens: ingress from homescout-api; egress to postgres.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-supertokens
+  namespace: homescout
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: supertokens
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-api
+      ports:
+        - port: 3567
+          protocol: TCP
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-postgres
+      ports:
+        - port: 5432
+          protocol: TCP
+---
+# homescout-postgres: ingress from api, scheduler, processor, supertokens only.
+# No egress (default-deny egress applies; DNS not needed by postgres itself).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-homescout-postgres
+  namespace: homescout
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: homescout-postgres
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-api
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-scheduler
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-processor
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: supertokens
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgres-init
+      ports:
+        - port: 5432
+          protocol: TCP
+  egress: []
+---
+# homescout-redis: ingress from api, scheduler, processor only. No egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-homescout-redis
+  namespace: homescout
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: homescout-redis
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-api
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-scheduler
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-processor
+      ports:
+        - port: 6379
+          protocol: TCP
+  egress: []
+---
+# cloudflared: egress to Cloudflare edge (QUIC 7844 + HTTPS 443 fallback) and to
+# internal homescout-api on 3000. No external ingress (tunnel is outbound-only).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cloudflared
+  namespace: homescout
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: cloudflared
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    # Cloudflare edge - QUIC (preferred)
+    - ports:
+        - port: 7844
+          protocol: UDP
+        - port: 7844
+          protocol: TCP
+    # Cloudflare edge - HTTPS fallback
+    - ports:
+        - port: 443
+          protocol: TCP
+    # Internal: homescout-api
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-api
+      ports:
+        - port: 3000
+          protocol: TCP
+---
+# postgres-init Job: egress to homescout-postgres for role + extension
+# provisioning. DNS via the namespace-wide allow-dns-egress. Mirrors Doxus's
+# overlays/pve1/base-overlay/postgres-init-netpol.yaml. Without this, the
+# default-deny egress blocks the Job (its pod matches no app-name allow).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-init
+  namespace: homescout
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: postgres-init
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-postgres
+      ports:
+        - port: 5432
+          protocol: TCP

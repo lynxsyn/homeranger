@@ -1,0 +1,87 @@
+# homescout release — milestone-safe.
+# Triggered by a semver tag (pushed by .aide/release-tag-policy.sh at compound).
+# Image builds are GATED on Dockerfile presence: M1 ships data-layer only (no
+# Dockerfiles), so `build`/`verify` SKIP and `create-release` still publishes a
+# green GitHub Release. From M2+ (once apps/*/Dockerfile land) the 4-image matrix
+# builds + pushes to ghcr.io/lynxsyn/homescout-* automatically.
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  detect:
+    runs-on: ${{ vars.RUNNER_LABEL_DEFAULT || 'ubuntu-latest' }}
+    outputs:
+      has_dockerfiles: ${{ steps.d.outputs.has }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: d
+        run: |
+          if ls apps/*/Dockerfile >/dev/null 2>&1; then
+            echo "has=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has=false" >> "$GITHUB_OUTPUT"
+            echo "No apps/*/Dockerfile — infra-only release, skipping image build."
+          fi
+
+  build:
+    needs: [detect]
+    if: needs.detect.outputs.has_dockerfiles == 'true'
+    runs-on: ${{ vars.RUNNER_LABEL_ARC || 'ubuntu-latest' }}
+    strategy:
+      matrix:
+        app: [api, processor, scheduler, web]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      - uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        id: meta
+        with:
+          images: ghcr.io/lynxsyn/homescout-${{ matrix.app }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=sha,format=long
+      # NOTE: verify this build-push-action SHA against the pinned v6.x release
+      # before M2 (build does not run in M1, so it cannot affect the M1 release).
+      - uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  create-release:
+    needs: [detect, build]
+    # Runs whether build ran (success) or was skipped (no Dockerfiles, M1).
+    # Fails only if build actually failed.
+    if: always() && !cancelled() && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    runs-on: ${{ vars.RUNNER_LABEL_DEFAULT || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Create GitHub Release (gh is preinstalled on GitHub-hosted runners)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          NOTES="$(git for-each-ref "refs/tags/${TAG}" --format='%(contents)')"
+          [ -n "${NOTES}" ] || NOTES="Release ${TAG}"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            printf '%s\n' "${NOTES}" | gh release edit "${TAG}" --notes-file -
+          else
+            printf '%s\n' "${NOTES}" | gh release create "${TAG}" --title "${TAG}" --notes-file - --verify-tag
+          fi

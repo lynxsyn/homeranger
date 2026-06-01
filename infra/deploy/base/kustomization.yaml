@@ -1,0 +1,21 @@
+# homescout base kustomization — M1 standalone-tenant DATA LAYER.
+#
+# M1 ships only the data layer + namespace + isolation + secret. App
+# Deployments (api/processor/scheduler), image-automation, cloudflared, and
+# supertokens are added in M2/M3 once code + container images exist — listing
+# them now would make Flux reconcile to a non-Ready state (ImagePullBackOff on
+# images that aren't built yet).
+#
+# secret.enc.yaml is SOPS-encrypted; Flux decrypts it in-cluster via the
+# Kustomization's decryption.secretRef (sops-age-homescout). For the imperative
+# pre-merge bootstrap, decrypt locally: `sops -d secret.enc.yaml | kubectl apply -f -`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - secret.enc.yaml
+  - networkpolicy.yaml
+  - postgres-pvc-longhorn.yaml
+  - postgres.yaml
+  - postgres-init-roles.yaml
+  - redis.yaml

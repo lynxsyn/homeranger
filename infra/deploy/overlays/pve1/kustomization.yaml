@@ -1,0 +1,14 @@
+# infra/deploy/overlays/pve1 — homescout overlay for the shared PVE1 k3s cluster.
+#
+# Reconciled by Kustomization/homescout (infra/deploy/flux/homescout-source.yaml,
+# path: ./infra/deploy/overlays/pve1). homescout depends on cluster-wide CRDs
+# (Longhorn StorageClass, kube-prometheus-stack ServiceMonitor if/when added)
+# that Doxus's Flux graph already installs on this cluster — homescout does NOT
+# re-install them; it only consumes them.
+#
+# This overlay layers homescout-specific patches over base. Keep it thin until
+# M1 adds postgres/redis/secrets/deployments to base.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base

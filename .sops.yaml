@@ -1,0 +1,12 @@
+# homescout SOPS config — encrypts to homescout's OWN age recipient ONLY.
+# Doxus's age keys (age1qrxz… / age1k2eh…) deliberately NOT listed here, so
+# Doxus's key cannot decrypt homescout secrets and vice-versa.
+# Private key: ~/.config/sops/age/homescout.txt (never committed).
+creation_rules:
+  # k8s Secret manifests — encrypt only the data/stringData values.
+  - path_regex: \.enc\.yaml$
+    encrypted_regex: ^(data|stringData)$
+    age: age1sklvl49hxvrhn4wmjceuyf7f9qplnglks3naeeckgjkp3y04xduqzht27a
+  # Terraform tfvars (Cloudflare account metadata, etc.) — encrypt whole file.
+  - path_regex: \.enc\.tfvars$
+    age: age1sklvl49hxvrhn4wmjceuyf7f9qplnglks3naeeckgjkp3y04xduqzht27a

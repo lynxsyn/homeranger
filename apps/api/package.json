@@ -1,0 +1,33 @@
+{
+  "name": "@homescout/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "cd ../.. && vitest run --project unit",
+    "test:integration": "cd ../.. && vitest run --project integration",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@homescout/backend-core": "workspace:*",
+    "@fastify/cors": "11.2.0",
+    "@fastify/formbody": "8.0.2",
+    "@trpc/server": "11.16.0",
+    "fastify": "5.8.5",
+    "supertokens-node": "24.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.2",
+    "prisma": "7.8.0",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.7"
+  }
+}
