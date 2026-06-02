@@ -1,0 +1,168 @@
+# homescout-api Deployment + Service. Pattern from doxus-infra api-deployment,
+# scoped to homescout: single replica, wait-for-postgres + prisma-migrate init
+# containers, /api/health probes on 3000, secrets from homescout-secret.
+#
+# Auth is Cloudflare Access (CF_ACCESS_* + ALLOWED_USER_EMAIL from the secret).
+# For M3 those keys are EMPTY in the secret → the api takes the dev-bypass path
+# (ctx.user = { email: DEV_USER_EMAIL }); M4 sets them with the tunnel. There is
+# NO SuperTokens env or sidecar.
+#
+# CHICKEN-AND-EGG: the image must exist in GHCR before Flux deploys this pod, or
+# the pod ImagePullBackOffs. The orchestrator builds + pushes ghcr.io/lynxsyn/
+# homescout-api:<tag> FIRST, then lets Flux reconcile this manifest. The
+# $imagepolicy marker is rewritten by the ImageUpdateAutomation (image-automation.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homescout-api
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: homescout-api
+    app.kubernetes.io/part-of: homescout-app
+spec:
+  revisionHistoryLimit: 3
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homescout-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homescout-api
+        app.kubernetes.io/part-of: homescout-app
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: platform-critical
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Block until Postgres accepts TCP — Prisma migrate then init can't race
+        # the DB coming up on a cold namespace start.
+        - name: wait-for-postgres
+          image: ghcr.io/lynxsyn/homescout-api:0.0.1 # {"$imagepolicy": "flux-system:homescout-api"}
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z homescout-postgres.homescout.svc.cluster.local 5432; do
+                echo "waiting for postgres..."; sleep 2;
+              done
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+        # Apply migrations as the migrator role before the app boots.
+        - name: prisma-migrate
+          image: ghcr.io/lynxsyn/homescout-api:0.0.1 # {"$imagepolicy": "flux-system:homescout-api"}
+          workingDir: /app/apps/api
+          command: ["npx", "prisma", "migrate", "deploy"]
+          env:
+            - name: MIGRATION_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: MIGRATION_DATABASE_URL
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: api
+          image: ghcr.io/lynxsyn/homescout-api:0.0.1 # {"$imagepolicy": "flux-system:homescout-api"}
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: NODE_ENV
+              value: production
+            - name: WEB_ORIGIN
+              value: https://app.aid-engineering.com
+            - name: GIT_SHA
+              value: "unknown" # {"$imagepolicy": "flux-system:homescout-api:tag"}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: DATABASE_URL
+            - name: CF_ACCESS_TEAM_DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: CF_ACCESS_TEAM_DOMAIN
+            - name: CF_ACCESS_AUD
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: CF_ACCESS_AUD
+            - name: ALLOWED_USER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: ALLOWED_USER_EMAIL
+            - name: DEV_USER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: DEV_USER_EMAIL
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homescout-api
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: homescout-api
+    app.kubernetes.io/part-of: homescout-app
+spec:
+  selector:
+    app.kubernetes.io/name: homescout-api
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

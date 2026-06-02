@@ -91,6 +91,27 @@ describe("listingsRouter.list", () => {
     expect(arg.limit).toBe(25);
   });
 
+  it("maps each filter field independently (partial filters)", async () => {
+    const fake = new ListingRepository();
+    const listSpy = vi
+      .spyOn(fake, "list")
+      .mockResolvedValue({ items: [], nextCursor: null });
+    _setListingRepositoryForTesting(fake);
+
+    await authedCaller.listings.list({ filter: { outcodes: ["se1"] } });
+    await authedCaller.listings.list({ filter: { maxPricePence: 9_000 } });
+    await authedCaller.listings.list({ filter: { minBedrooms: 1 } });
+    await authedCaller.listings.list({ filter: { status: "pre_market" } });
+
+    const filters = listSpy.mock.calls.map(
+      (c) => (c[0] as ListListingsInput).filter,
+    );
+    expect(filters[0]).toEqual({ outcodes: ["SE1"] });
+    expect(filters[1]).toEqual({ maxPricePence: 9_000 });
+    expect(filters[2]).toEqual({ minBedrooms: 1 });
+    expect(filters[3]).toEqual({ listingStatus: "pre_market" });
+  });
+
   it("defaults sortBy=combinedScore, sortDir=desc, limit=20 and omits filter when absent", async () => {
     const fake = new ListingRepository();
     const listSpy = vi

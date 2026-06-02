@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1.7
+# homescout web (SPA) image. Mirrors doxus-web/apps/web/Dockerfile: build the
+# Vite bundle, serve it via nginx (non-root). homescout differences: serves on
+# 8080 (matches the k8s Service + tunnel.tf ingress), no Sentry/Google-picker
+# build ARGs, and builds shared + backend-core in-image first because the SPA
+# imports `inferRouterOutputs` types from @homescout/backend-core. Build context
+# is the monorepo root (release.yml passes `context: .`).
+FROM node:24.15.0-alpine AS base
+RUN corepack enable && corepack prepare pnpm@10.34.1 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY apps/web/package.json apps/web/
+COPY packages/backend-core/package.json packages/backend-core/
+COPY packages/shared/package.json packages/shared/
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
+    pnpm install --frozen-lockfile --ignore-scripts
+
+FROM base AS build
+COPY --from=deps /app/ ./
+COPY . .
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
+    pnpm rebuild @prisma/client @prisma/engines prisma esbuild
+# The web app's `import type { AppRouter }` from @homescout/backend-core resolves
+# against the package's TS sources at build time (Vite/tsc), but prisma client
+# types are needed for backend-core to typecheck cleanly during the bundle.
+RUN cd apps/api && npx prisma generate
+RUN cd packages/shared && pnpm build
+RUN cd packages/backend-core && pnpm build
+RUN cd apps/web && pnpm build && find dist/assets -type f -name '*.map' -delete
+
+FROM nginx:1.30-alpine AS runner
+RUN mkdir -p /var/cache/nginx /var/run/nginx /tmp && \
+    chown -R nginx:nginx /var/cache/nginx /var/run/nginx /tmp /usr/share/nginx/html
+COPY --chown=nginx:nginx --from=build /app/apps/web/dist /usr/share/nginx/html
+COPY --chown=nginx:nginx apps/web/nginx.conf /etc/nginx/nginx.conf
+USER nginx
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:8080/ || exit 1

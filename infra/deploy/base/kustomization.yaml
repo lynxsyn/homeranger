@@ -1,14 +1,22 @@
-# homescout base kustomization — M1 standalone-tenant DATA LAYER.
+# homescout base kustomization.
 #
-# M1 ships only the data layer + namespace + isolation + secret. App
-# Deployments (api/processor/scheduler), image-automation, cloudflared, and
-# supertokens are added in M2/M3 once code + container images exist — listing
-# them now would make Flux reconcile to a non-Ready state (ImagePullBackOff on
-# images that aren't built yet).
+# M1 shipped the data layer (namespace + isolation + secret + postgres + redis).
+# M3 adds the api + web Deployments, the GHCR pull secret, and Flux image
+# automation.
 #
-# secret.enc.yaml is SOPS-encrypted; Flux decrypts it in-cluster via the
-# Kustomization's decryption.secretRef (sops-age-homescout). For the imperative
-# pre-merge bootstrap, decrypt locally: `sops -d secret.enc.yaml | kubectl apply -f -`.
+# CHICKEN-AND-EGG (read before reconciling): the api/web Deployments reference
+# ghcr.io/lynxsyn/homescout-{api,web} images that MUST exist in GHCR before Flux
+# deploys the pods, or they ImagePullBackOff. The orchestrator's apply ordering
+# is: (1) build + push both images at the release tag, (2) create + SOPS-encrypt
+# ghcr-secret.enc.yaml, (3) THEN let Flux reconcile this kustomization. The
+# api/web/image-automation entries below are authored now; the orchestrator
+# controls when the first reconcile happens (it does not un-comment anything —
+# Flux simply waits on the images, and the pods go Ready once they exist).
+#
+# secret.enc.yaml + ghcr-secret.enc.yaml are SOPS-encrypted; Flux decrypts them
+# in-cluster via the Kustomization's decryption.secretRef (sops-age-homescout).
+# For the imperative pre-merge bootstrap, decrypt locally:
+#   `sops -d secret.enc.yaml | kubectl apply -f -`.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -19,3 +27,13 @@ resources:
   - postgres.yaml
   - postgres-init-roles.yaml
   - redis.yaml
+  # M3 app layer — requires the GHCR images to exist first (see note above).
+  # TODO(operator): un-comment ghcr-secret.enc.yaml AFTER creating it from
+  # ghcr-secret.example.yaml + SOPS-encrypting it (step 2 of the apply ordering).
+  # It is referenced here intentionally but left commented so `kustomize build`
+  # validates before the encrypted secret exists; the api/web pods need the
+  # ghcr-pull-secret it provides to pull images.
+  # - ghcr-secret.enc.yaml
+  - api-deployment.yaml
+  - web-deployment.yaml
+  - image-automation.yaml

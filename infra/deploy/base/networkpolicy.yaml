@@ -13,8 +13,11 @@
 #   homescout-processor  <- doxus-worker (BullMQ job execution + provider egress)
 #   homescout-postgres   <- doxus-postgres
 #   homescout-redis      <- doxus-redis
-#   supertokens          <- supertokens
 #   cloudflared          <- cloudflared
+#
+# Auth is Cloudflare Access (CF Access JWT verified in-process via jose), so
+# there is NO SuperTokens pod/egress — the M1-skeleton allow-supertokens policy
+# and the homescout-api→supertokens:3567 egress rule were removed at M3.
 #
 # DNS egress is scoped to kube-system / k8s-app: kube-dns (the stricter pattern
 # from Doxus's postgres-init-netpol.yaml), not unscoped port 53. coredns in this
@@ -59,8 +62,8 @@ spec:
           protocol: TCP
 ---
 # homescout-api: ingress from cloudflared (HTTP API on 3000); egress to postgres,
-# supertokens, redis, and external HTTPS (Resend / Voyage / Anthropic + Cloudflare
-# tunnel-adjacent calls). DNS handled by allow-dns-egress.
+# redis, and external HTTPS (Resend / Voyage / Anthropic + the CF Access JWKS
+# endpoint). DNS handled by allow-dns-egress.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -92,19 +95,14 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: supertokens
-      ports:
-        - port: 3567
-          protocol: TCP
-    - to:
-        - podSelector:
-            matchLabels:
               app.kubernetes.io/name: homescout-redis
       ports:
         - port: 6379
           protocol: TCP
-    # External HTTPS: Resend, Voyage, Anthropic. k8s NetworkPolicy CANNOT match
-    # hostnames, so this is broad egress to 443. See networkpolicy notes.
+    # External HTTPS: Resend, Voyage, Anthropic, AND the Cloudflare Access
+    # JWKS endpoint (https://<team>.cloudflareaccess.com/cdn-cgi/access/certs)
+    # the jose verifier fetches. k8s NetworkPolicy CANNOT match hostnames, so
+    # this is broad egress to 443. See networkpolicy notes.
     - ports:
         - port: 443
           protocol: TCP
@@ -174,37 +172,7 @@ spec:
         - port: 443
           protocol: TCP
 ---
-# supertokens: ingress from homescout-api; egress to postgres.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-supertokens
-  namespace: homescout
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: supertokens
-  policyTypes:
-    - Ingress
-    - Egress
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: homescout-api
-      ports:
-        - port: 3567
-          protocol: TCP
-  egress:
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: homescout-postgres
-      ports:
-        - port: 5432
-          protocol: TCP
----
-# homescout-postgres: ingress from api, scheduler, processor, supertokens only.
+# homescout-postgres: ingress from api, scheduler, processor only.
 # No egress (default-deny egress applies; DNS not needed by postgres itself).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -229,9 +197,6 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: homescout-processor
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: supertokens
         - podSelector:
             matchLabels:
               app.kubernetes.io/component: postgres-init

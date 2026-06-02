@@ -53,16 +53,18 @@ export default defineConfig({
         "packages/backend-core/src/repositories/search-profile.repository.ts",
       ],
       thresholds: {
-        // M2 floor = floor(measured) from the first `pnpm test:coverage` run
-        // (Code Coverage Enforcement: coverage only goes up). Measured M2:
-        // lines 96.92 / branches 90.9 / functions 88.88 / statements 96.96.
-        // The repository/raw-vector paths are integration-tested (excluded from
-        // the unit project above), so this floor tracks the unit-testable
-        // surface: cursor helper + shared enums/schemas/UK helpers.
-        lines: 96,
-        functions: 88,
-        statements: 96,
-        branches: 90,
+        // Floor = floor(measured) (Code Coverage Enforcement: coverage only
+        // goes up). Ratcheted at M3 from the M2 floor (96/90/88/96) once the
+        // tRPC router + CF Access verifier + composite-cursor helpers landed.
+        // Measured M3: lines 98.68 / branches 96.2 / functions 96 / statements
+        // 98.69. The repository/raw-vector paths + the api main.ts entrypoint +
+        // context.ts (CF env read at import) are integration/E2E-tested
+        // (excluded from the unit project above) so this floor tracks the
+        // unit-testable surface: router + cf-access + cursor + shared schemas.
+        lines: 98,
+        functions: 96,
+        statements: 98,
+        branches: 96,
       },
     },
     projects: [

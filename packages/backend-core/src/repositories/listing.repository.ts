@@ -204,18 +204,122 @@ function buildCursorFilter(cursor: { id: string }): Prisma.ListingWhereInput {
   return { id: { lt: cursor.id } };
 }
 
+/** The Prisma scalar column a non-default sort orders by. */
+type SortColumn = "pricePence" | "lastSeenAt";
+
+/**
+ * Resolve the sort to a Prisma scalar column, or `null` for the default
+ * `combinedScore` path (which keysets on `id` until M5 supplies scores).
+ */
+function sortColumnFor(sort?: ListListingsSort): SortColumn | null {
+  if (!sort || sort.sortBy === "combinedScore") {
+    return null;
+  }
+  return sort.sortBy === "price" ? "pricePence" : "lastSeenAt";
+}
+
+/** Extract the sortValue primitive from a row for the composite cursor. */
+function sortValueOf(row: ListingRecord, column: SortColumn): number | string {
+  if (column === "pricePence") {
+    // Null prices sort last (Postgres ASC default); encode -1 so the cursor's
+    // comparison stays well-defined for the fixture set (all non-null in M3).
+    return row.pricePence ?? -1;
+  }
+  return row.lastSeenAt.toISOString();
+}
+
+/**
+ * Build the composite keyset WHERE for a `(column, id)`-ordered page.
+ *
+ * For ASC: the next page is rows where `(column, id) > (sortValue, id)`, i.e.
+ * `column > sortValue OR (column = sortValue AND id > lastId)`. For DESC the
+ * comparisons flip to `<`. The `id` tiebreaker makes the keyset exact even when
+ * `column` has tied values — no skipped or duplicated rows at a page boundary.
+ */
+function buildCompositeCursorFilter(
+  column: SortColumn,
+  cursor: { sortValue: number | string; id: string },
+  dir: "asc" | "desc",
+): Prisma.ListingWhereInput {
+  const cmp = dir === "asc" ? "gt" : "lt";
+  const boundary =
+    column === "lastSeenAt"
+      ? new Date(cursor.sortValue as string)
+      : (cursor.sortValue as number);
+  return {
+    OR: [
+      { [column]: { [cmp]: boundary } } as Prisma.ListingWhereInput,
+      {
+        AND: [
+          { [column]: boundary } as Prisma.ListingWhereInput,
+          { id: { [cmp]: cursor.id } } as Prisma.ListingWhereInput,
+        ],
+      },
+    ],
+  };
+}
+
 export class ListingRepository {
   /**
-   * Cursor-paginated list with an optional structured filter. Stable keyset
-   * ordering on the uuid(7) id (DESC = newest first); over-fetches `limit + 1`
-   * to compute `nextCursor`. Returns `{ items, nextCursor }`, default 20 / max
-   * 100. (M3 adds user-selectable sorts by price/lastSeenAt/combinedScore.)
+   * Cursor-paginated list with an optional structured filter + sort.
+   * Over-fetches `limit + 1` to compute `nextCursor`. Returns `{ items,
+   * nextCursor }`, default 20 / max 100.
+   *
+   * Sort (M3 AC#2 — applied in the repository, never in memory):
+   *   - `combinedScore` (default): id-only keyset (DESC). combinedScore lives on
+   *     the ListingScore relation which arrives M5; until then this is a stable
+   *     fallback order, documented so M5 only changes this body, not the wire.
+   *   - `price` / `lastSeenAt`: ordered by `[{column: dir}, {id: dir}]` with a
+   *     COMPOSITE keyset cursor `{ sortValue, id }` so sorted pagination across
+   *     pages has no skip and no overlap even on tied values.
    */
-  async list(
-    _input: ListListingsInput = {},
-  ): Promise<CursorPage<ListingRecord>> {
-    // RED stub — implemented GREEN with the sort + composite-keyset code path.
-    throw new Error("not implemented");
+  async list(input: ListListingsInput = {}): Promise<CursorPage<ListingRecord>> {
+    const limit = clampLimit(input.limit);
+    const where = buildWhere(input.filter);
+    const column = sortColumnFor(input.sort);
+    const dir = input.sort?.sortDir ?? "desc";
+
+    if (column === null) {
+      // Default / combinedScore path: id-only keyset (DESC newest-first).
+      const cursorFilter = input.cursor
+        ? buildCursorFilter(decodeCursor(input.cursor))
+        : {};
+      const rows = await prisma.listing.findMany({
+        where: { ...where, ...cursorFilter },
+        orderBy: [{ id: "desc" }],
+        take: limit + 1,
+        select: LISTING_SELECT,
+      });
+      if (rows.length <= limit) {
+        return { items: rows, nextCursor: null };
+      }
+      const items = rows.slice(0, limit);
+      const last = items[items.length - 1]!;
+      return { items, nextCursor: encodeCursor({ id: last.id }) };
+    }
+
+    // Sorted path: composite (column, id) keyset.
+    const cursorFilter = input.cursor
+      ? buildCompositeCursorFilter(column, decodeCompositeCursor(input.cursor), dir)
+      : {};
+    const rows = await prisma.listing.findMany({
+      where: { ...where, ...cursorFilter },
+      orderBy: [{ [column]: dir }, { id: dir }],
+      take: limit + 1,
+      select: LISTING_SELECT,
+    });
+    if (rows.length <= limit) {
+      return { items: rows, nextCursor: null };
+    }
+    const items = rows.slice(0, limit);
+    const last = items[items.length - 1]!;
+    return {
+      items,
+      nextCursor: encodeCompositeCursor({
+        sortValue: sortValueOf(last, column),
+        id: last.id,
+      }),
+    };
   }
 
   async getById(id: string): Promise<ListingRecord | null> {

@@ -145,6 +145,24 @@ describe("verifyCfAccessJwt", () => {
       /not the allowed user/,
     );
   });
+
+  it("falls back to the remote JWKS when no keyGetter is injected (and caches it)", async () => {
+    // No keyGetter → defaultKeyGetter builds a createRemoteJWKSet against the
+    // (unreachable) team domain. Verification fails (wrapped), proving the
+    // remote path is exercised; a second call reuses the cached resolver.
+    const token = await signToken(key, { email: ALLOWED_EMAIL });
+    const cfg: CfAccessConfig = {
+      teamDomain: "nonexistent.cloudflareaccess.test",
+      audience: AUDIENCE,
+      allowedEmail: ALLOWED_EMAIL,
+    };
+    await expect(verifyCfAccessJwt(token, cfg)).rejects.toBeInstanceOf(
+      CfAccessVerificationError,
+    );
+    await expect(verifyCfAccessJwt(token, cfg)).rejects.toBeInstanceOf(
+      CfAccessVerificationError,
+    );
+  });
 });
 
 describe("readCfAccessConfigFromEnv", () => {

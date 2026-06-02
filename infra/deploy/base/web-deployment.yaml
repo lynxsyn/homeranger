@@ -1,0 +1,101 @@
+# homescout-web Deployment + Service. nginx static SPA on 8080 (matches the
+# Dockerfile EXPOSE, the Service port, and tunnel.tf's web ingress target).
+# Read-only rootfs with emptyDir mounts for nginx's writable cache/run/tmp dirs;
+# runs as the nginx-alpine uid (101).
+#
+# CHICKEN-AND-EGG: the image must exist in GHCR before Flux deploys this pod.
+# Build + push ghcr.io/lynxsyn/homescout-web:<tag> FIRST.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homescout-web
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: homescout-web
+    app.kubernetes.io/part-of: homescout-app
+spec:
+  revisionHistoryLimit: 3
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homescout-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homescout-web
+        app.kubernetes.io/part-of: homescout-app
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: platform-critical
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101 # nginx (alpine)
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: ghcr.io/lynxsyn/homescout-web:0.0.1 # {"$imagepolicy": "flux-system:homescout-web"}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run/nginx
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homescout-web
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: homescout-web
+    app.kubernetes.io/part-of: homescout-app
+spec:
+  selector:
+    app.kubernetes.io/name: homescout-web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
