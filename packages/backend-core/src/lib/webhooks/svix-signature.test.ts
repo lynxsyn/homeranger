@@ -103,6 +103,31 @@ describe("verifySvixSignature", () => {
     );
     expect(result).toEqual({ ok: false, reason: "invalid_timestamp" });
   });
+
+  it("rejects a bare `whsec_` (empty-base64) secret instead of HMAC-ing an empty key", () => {
+    // An empty key makes signatures forgeable; the verifier must FAIL CLOSED.
+    // Forge a signature with the empty-key HMAC and confirm it is rejected.
+    const forged = signSvixPayload(BODY.toString("utf8"), ID, TS, "whsec_");
+    const result = verifySvixSignature(
+      BODY,
+      { id: ID, timestamp: TS, signature: forged },
+      "whsec_",
+      NOW_MS,
+    );
+    expect(result).toEqual({ ok: false, reason: "invalid_secret" });
+  });
+
+  it("rejects a too-short decoded secret (< 16 bytes)", () => {
+    const shortSecret = `whsec_${Buffer.from("tiny").toString("base64")}`;
+    const sig = signSvixPayload(BODY.toString("utf8"), ID, TS, shortSecret);
+    const result = verifySvixSignature(
+      BODY,
+      { id: ID, timestamp: TS, signature: sig },
+      shortSecret,
+      NOW_MS,
+    );
+    expect(result).toEqual({ ok: false, reason: "invalid_secret" });
+  });
 });
 
 describe("extractSvixHeaders", () => {

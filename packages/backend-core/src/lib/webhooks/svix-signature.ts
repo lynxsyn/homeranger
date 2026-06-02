@@ -38,9 +38,18 @@ export function decodeSvixSecret(secret: string): Buffer {
 
 export type SvixVerifyReason =
   | "missing_headers"
+  | "invalid_secret"
   | "invalid_timestamp"
   | "stale_timestamp"
   | "signature_mismatch";
+
+/**
+ * Minimum decoded-secret length. A bare `whsec_` (or otherwise empty/near-empty
+ * base64 body) decodes to 0 bytes; an HMAC with an empty/short key is valid but
+ * trivially forgeable. Resend's real `whsec_` secrets decode to 24+ bytes, so a
+ * 16-byte floor rejects only misconfigured secrets and never a genuine one.
+ */
+export const MIN_SVIX_SECRET_BYTES = 16;
 
 export type SvixVerifyResult =
   | { ok: true }
@@ -110,6 +119,12 @@ export function verifySvixSignature(
   }
 
   const decodedSecret = decodeSvixSecret(secret);
+  // A 0-byte (bare `whsec_`/empty) or otherwise too-short secret decodes to a
+  // weak HMAC key that an attacker could forge against — fail CLOSED rather than
+  // computing an HMAC with an empty key.
+  if (decodedSecret.length < MIN_SVIX_SECRET_BYTES) {
+    return { ok: false, reason: "invalid_secret" };
+  }
   const signedContent = `${id}.${timestamp}.${rawBody.toString("utf8")}`;
   const expected = `v1,${crypto
     .createHmac("sha256", decodedSecret)

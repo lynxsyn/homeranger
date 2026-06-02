@@ -127,6 +127,21 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # The M4 inbound E2E adds a third Playwright webServer — the BullMQ worker
+      # (pnpm --filter @homescout/processor e2e:worker on :9090) — which
+      # fail-fast-pings Redis at boot (worker.ts) and exits if it is missing.
+      # Without this service the worker dies, port 9090 never opens, the worker
+      # webServer startup times out, the e2e job fails, and ci-gate deadlocks the
+      # merge. Mirrors the postgres service block above.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       # The Playwright webServer chains prisma:deploy + db:seed + the api/web dev
       # servers. DB env points at the service container; CF_ACCESS_* are UNSET so
@@ -134,6 +149,10 @@ jobs:
       # reuseExistingServer off + retries to 1.
       DATABASE_URL: postgresql://homescout:homescout@localhost:5432/homescout_test
       MIGRATION_DATABASE_URL: postgresql://homescout:homescout@localhost:5432/homescout_test
+      # The worker webServer reads REDIS_URL (default redis://localhost:6379) and
+      # pings Redis at boot; the api webServer enqueues onto it. Point both at the
+      # redis service container above so the inbound E2E can enqueue + consume.
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8

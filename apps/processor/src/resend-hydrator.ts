@@ -17,6 +17,7 @@ import {
   buildAttachmentKey,
   type R2Storage,
 } from "@homescout/backend-core/lib/storage/r2";
+import { MAX_ATTACHMENTS_PER_EMAIL } from "@homescout/backend-core/lib/ai/listing-extraction.adapter";
 import {
   normaliseAuthVerdict,
   firstRecipient,
@@ -30,6 +31,50 @@ import type { DecodedAttachment } from "@homescout/backend-core/services/inbound
  * Read SPF/DKIM verdicts from the Authentication-Results header (lower-cased
  * keys). Resend surfaces them in `headers` on the received-email payload.
  */
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/**
+ * Aggregate attachment-byte budget per email (env-overridable). The inbound
+ * address is publicly emailable and Svix authenticates Resend (the FORWARDER),
+ * not the sender — so an attacker can email arbitrarily many / large
+ * attachments. Without a cap the worker buffers them ALL resident (OOM, ×4
+ * concurrency) and base64-encodes them into ONE multi-GB Claude request (billed,
+ * retried 3×). We cap BOTH the count (MAX_ATTACHMENTS_PER_EMAIL, shared with the
+ * adapter) and the cumulative bytes here, BEFORE buffering, and DROP the excess
+ * with a log.warn rather than throwing — a spammy email should still ingest its
+ * text + the first N in-budget attachments, not fail.
+ */
+const MAX_ATTACHMENT_TOTAL_BYTES = envInt(
+  "MAX_ATTACHMENT_TOTAL_BYTES",
+  20 * 1024 * 1024,
+);
+/** Per-attachment byte cap — a single oversize attachment is skipped outright. */
+const MAX_ATTACHMENT_BYTES = envInt(
+  "MAX_ATTACHMENT_BYTES",
+  10 * 1024 * 1024,
+);
+
+function warnAttachmentDropped(
+  reason: string,
+  detail: Record<string, unknown>,
+): void {
+  console.warn(
+    JSON.stringify({
+      type: "warn",
+      scope: "inbound.attachment.dropped",
+      reason,
+      ...detail,
+    }),
+  );
+}
+
 function authVerdict(
   headers: Record<string, string> | null | undefined,
   kind: "spf" | "dkim",
@@ -71,7 +116,18 @@ export class RealResendHydrator implements ResendHydrator {
     }
 
     const attachments: DecodedAttachment[] = [];
+    let totalBytes = 0;
     for (const att of data.attachments ?? []) {
+      // Count cap — stop fetching/buffering once we hold the max; the remaining
+      // attachments are never downloaded into memory.
+      if (attachments.length >= MAX_ATTACHMENTS_PER_EMAIL) {
+        warnAttachmentDropped("count_cap", {
+          emailId: metadata.email_id,
+          maxAttachments: MAX_ATTACHMENTS_PER_EMAIL,
+        });
+        break;
+      }
+
       const { data: attData, error: attError } =
         await this.resend.emails.receiving.attachments.get({
           emailId: metadata.email_id,
@@ -90,7 +146,45 @@ export class RealResendHydrator implements ResendHydrator {
           `Attachment download failed (${response.status}) for ${att.id}`,
         );
       }
+
+      // Cheapest correct guard: skip an oversize download by Content-Length
+      // BEFORE pulling the body into memory. (Falls through to the post-download
+      // byteLength check when the header is absent/unreliable.)
+      const declaredLength = Number.parseInt(
+        response.headers.get("content-length") ?? "",
+        10,
+      );
+      if (
+        Number.isFinite(declaredLength) &&
+        (declaredLength > MAX_ATTACHMENT_BYTES ||
+          totalBytes + declaredLength > MAX_ATTACHMENT_TOTAL_BYTES)
+      ) {
+        warnAttachmentDropped("byte_budget", {
+          emailId: metadata.email_id,
+          attachmentId: att.id,
+          declaredLength,
+        });
+        continue;
+      }
+
       const buffer = Buffer.from(await response.arrayBuffer());
+      // Post-download backstop (Content-Length can be absent/wrong): drop if this
+      // attachment alone exceeds the per-attachment cap or would push the running
+      // total over the aggregate budget.
+      if (
+        buffer.byteLength > MAX_ATTACHMENT_BYTES ||
+        totalBytes + buffer.byteLength > MAX_ATTACHMENT_TOTAL_BYTES
+      ) {
+        warnAttachmentDropped("byte_budget", {
+          emailId: metadata.email_id,
+          attachmentId: att.id,
+          byteSize: buffer.byteLength,
+          totalBytes,
+        });
+        continue;
+      }
+      totalBytes += buffer.byteLength;
+
       const fileName = att.filename ?? `${att.id}.bin`;
       const stored = await this.storage.putAttachment({
         body: buffer,

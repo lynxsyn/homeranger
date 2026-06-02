@@ -127,6 +127,27 @@ export class DefaultEmailEventService implements EmailEventService {
       occurredAt: input.occurredAt ?? new Date(),
     });
 
+    // A reputation-damaging event (hard bounce / complaint) that SHOULD suppress
+    // but carries no recipient address cannot be suppressed — Resend payloads
+    // carry the recipient on `data.to`, but malformed/edge payloads (BCC-only,
+    // schema drift) can omit it. Persist the EmailEvent (above) but make the
+    // skipped suppression OBSERVABLE rather than silent. Do NOT invent a
+    // recipient.
+    const wouldSuppress =
+      created &&
+      ((eventType === "bounced" && input.data.bounce?.type === "Permanent") ||
+        eventType === "complained");
+    if (wouldSuppress && email.length === 0) {
+      console.warn(
+        JSON.stringify({
+          type: "warn",
+          scope: "email.event.suppression.skipped.no_recipient",
+          providerEventId: input.providerEventId,
+          eventType,
+        }),
+      );
+    }
+
     // Only mutate suppression on the FIRST delivery (created) of the two
     // reputation-damaging types. A hard bounce is `bounce.type === "Permanent"`;
     // a soft ("Transient") bounce must NOT suppress.

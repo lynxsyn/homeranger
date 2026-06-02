@@ -28,12 +28,40 @@ import type {
   ListingExtractionProvider,
 } from "../../services/inbound-ingestion.service.js";
 
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 /**
  * Claude inline-document cap: PDFs whose base64 size approaches the request
  * limit are flattened to text instead of sent as a document block. 28 MB raw
  * (~37 MB base64) is a conservative ceiling under the ~32 MB document cap.
  */
 export const MAX_INLINE_PDF_BYTES = 28 * 1024 * 1024;
+
+/**
+ * Defense-in-depth attachment caps (env-overridable). The PRIMARY OOM/cost guard
+ * is the hydrator (it drops over-budget attachments before buffering bytes); the
+ * adapter caps here are an independent backstop so a fake/alternate hydrator
+ * cannot blow the Claude request open. The inbound address is publicly
+ * emailable + Svix authenticates the FORWARDER (Resend), not the sender, so an
+ * attacker can supply arbitrary attachment volume — these bounds keep worker
+ * memory and Anthropic spend finite.
+ */
+/** Max number of attachment BLOCKS fed to Claude per email. */
+export const MAX_ATTACHMENTS_PER_EMAIL = envInt(
+  "MAX_ATTACHMENTS_PER_EMAIL",
+  10,
+);
+/** Max bytes for a single inline image (Claude's per-image limit is ~5 MB). */
+export const MAX_IMAGE_BYTES = envInt("MAX_IMAGE_BYTES", 5 * 1024 * 1024);
+/** Max characters of flattened-PDF text fed as a single text block. */
+export const MAX_PDF_TEXT_CHARS = envInt("MAX_PDF_TEXT_CHARS", 200_000);
 
 const IMAGE_MEDIA_TYPES = new Set([
   "image/jpeg",
@@ -45,13 +73,19 @@ const IMAGE_MEDIA_TYPES = new Set([
 async function flattenPdfToText(buffer: Buffer): Promise<string> {
   const pdf = await getDocumentProxy(new Uint8Array(buffer));
   const { text } = await extractText(pdf, { mergePages: true });
-  return Array.isArray(text) ? text.join("\n") : text;
+  const merged = Array.isArray(text) ? text.join("\n") : text;
+  // Bound the output so a malicious oversized PDF cannot expand into a giant
+  // text block (and blow up the Claude request / worker memory).
+  return merged.length > MAX_PDF_TEXT_CHARS
+    ? merged.slice(0, MAX_PDF_TEXT_CHARS)
+    : merged;
 }
 
 /**
  * Convert one DecodedAttachment to a Claude block. Oversized PDFs are flattened
- * to a text block via unpdf; unknown MIME types are dropped (we only feed the
- * model formats it can read).
+ * to a (length-bounded) text block via unpdf; oversized images are dropped (so
+ * a 50 MB PNG is never base64-encoded/sent); unknown MIME types are dropped
+ * (we only feed the model formats it can read).
  */
 async function toAttachmentInput(
   attachment: DecodedAttachment,
@@ -65,6 +99,18 @@ async function toAttachmentInput(
     return { kind: "pdf", data: attachment.buffer, fileName: attachment.fileName };
   }
   if (IMAGE_MEDIA_TYPES.has(mime)) {
+    if (attachment.byteSize > MAX_IMAGE_BYTES) {
+      console.warn(
+        JSON.stringify({
+          type: "warn",
+          scope: "extraction.attachment.dropped.image_oversize",
+          fileName: attachment.fileName,
+          byteSize: attachment.byteSize,
+          maxBytes: MAX_IMAGE_BYTES,
+        }),
+      );
+      return null;
+    }
     return {
       kind: "image",
       data: attachment.buffer,
@@ -97,6 +143,19 @@ export class ClaudeListingExtractionAdapter
   }): Promise<ExtractedListing> {
     const attachmentInputs: AttachmentInput[] = [];
     for (const attachment of input.attachments) {
+      // Defense-in-depth block cap: stop converting once we hold the max number
+      // of blocks, so an unbounded attachment array (past whatever the hydrator
+      // delivered) can never expand the single Claude request without limit.
+      if (attachmentInputs.length >= MAX_ATTACHMENTS_PER_EMAIL) {
+        console.warn(
+          JSON.stringify({
+            type: "warn",
+            scope: "extraction.attachment.dropped.count_cap",
+            maxAttachments: MAX_ATTACHMENTS_PER_EMAIL,
+          }),
+        );
+        break;
+      }
       const block = await toAttachmentInput(attachment);
       if (block) {
         attachmentInputs.push(block);

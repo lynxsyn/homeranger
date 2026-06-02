@@ -50,6 +50,7 @@ import type {
   ResendHydrator,
 } from "@homescout/backend-core/lib/inbound/resend-hydrator";
 import { RealResendHydrator } from "./resend-hydrator.js";
+import { makeInboundHandler } from "./inbound-handler.js";
 
 const metricsPort = Number(process.env.METRICS_PORT ?? 9090);
 const metricsHost = process.env.METRICS_HOST ?? "0.0.0.0";
@@ -99,10 +100,7 @@ const queueClient = new BullMQQueueClient();
 
 queueClient.registerProcessor(
   QUEUE_NAMES.inbound,
-  async (job) => {
-    const hydrated = await hydrator.hydrate(job.data);
-    await inboundIngestionService.ingestInboundEmail(hydrated);
-  },
+  makeInboundHandler({ hydrator, inboundIngestionService }),
   // Claude extraction can exceed the 30s default lock — extend it.
   { lockDuration: 180_000 },
 );

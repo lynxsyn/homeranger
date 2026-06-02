@@ -26,6 +26,7 @@ import {
   type QueueName,
 } from "./queue-config.js";
 import { getRedisConnection } from "./redis-connection.js";
+import { jobTerminalFailuresTotal } from "./queue-metrics.js";
 
 export type JobHandler<T = unknown> = (job: BullMQJob<T>) => Promise<void>;
 
@@ -126,6 +127,17 @@ export class BullMQQueueClient implements QueueClient {
       );
     });
     worker.on("failed", (job, error) => {
+      const attemptsMade = job?.attemptsMade ?? 0;
+      const maxAttempts = job?.opts?.attempts ?? 1;
+      // Terminal failure = retries exhausted (or UnrecoverableError, which BullMQ
+      // surfaces with attemptsMade === maxAttempts). Increment a per-queue
+      // counter so a poison email failing into the 500-deep ring buffer leaves a
+      // durable signal beyond the log line. M-future: a full DLQ + alerting
+      // belongs with the M6 circuit breaker.
+      const terminal = attemptsMade >= maxAttempts;
+      if (terminal) {
+        jobTerminalFailuresTotal.labels({ queue: name }).inc();
+      }
       console.error(
         JSON.stringify({
           type: "error",
@@ -133,6 +145,7 @@ export class BullMQQueueClient implements QueueClient {
           queue: name,
           jobId: job?.id ?? null,
           attemptsMade: job?.attemptsMade ?? null,
+          terminal,
           message: error instanceof Error ? error.message : String(error),
         }),
       );

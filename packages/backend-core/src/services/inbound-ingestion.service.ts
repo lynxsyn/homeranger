@@ -29,6 +29,7 @@ import { runTransaction } from "../lib/prisma.js";
 import {
   listingRepository,
   type ListingRepository,
+  type UpsertListingByAddressInput,
 } from "../repositories/listing.repository.js";
 import {
   listingSourceRecordRepository,
@@ -231,27 +232,43 @@ export class DefaultInboundIngestionService implements InboundIngestionService {
         ? normaliseOutcode(extracted.postcode)
         : null;
 
+    // The mutable Listing fields, shared by the create (upsertByAddress) and the
+    // merge (updateById) branches below.
+    const mutableFields: Omit<UpsertListingByAddressInput, "addressNormalized"> = {
+      postcode: canonicalPostcode,
+      outcode,
+      pricePence: extracted.pricePence,
+      bedrooms: extracted.bedrooms,
+      tenure: extracted.tenure,
+      propertyType: extracted.propertyType,
+      epcRating: extracted.epcRating,
+      // Email-only listings are pre-market by definition (not on a portal).
+      listingStatus: "pre_market",
+      isPreMarket: true,
+      listingUrl: extracted.listingUrl,
+      primarySource: "agent_email" satisfies ListingSource,
+    };
+
     // Listing upsert + provenance source-record share ONE transaction so a
     // partial write never leaves a Listing without its agent_email source.
     const { listing, sourceRecord } = await runTransaction(async (tx) => {
-      const upserted = await this.listingRepository.upsertByAddress(
-        {
-          addressNormalized,
-          postcode: canonicalPostcode,
-          outcode,
-          pricePence: extracted.pricePence,
-          bedrooms: extracted.bedrooms,
-          tenure: extracted.tenure,
-          propertyType: extracted.propertyType,
-          epcRating: extracted.epcRating,
-          // Email-only listings are pre-market by definition (not on a portal).
-          listingStatus: "pre_market",
-          isPreMarket: true,
-          listingUrl: extracted.listingUrl,
-          primarySource: "agent_email" satisfies ListingSource,
-        },
-        tx,
-      );
+      // Drive the write target from the dedup RESULT, not the candidate key.
+      // When dedup found an existing listing (exact OR embedding) we MERGE into
+      // that row by id — the embedding fallback returns the existing listing's
+      // id whose addressNormalized differs from the candidate's, so upserting on
+      // the candidate key would INSERT a duplicate. Only when no match was found
+      // (dedup.listingId === null) do we upsert by the (possibly synthetic) key.
+      const upserted =
+        dedup.listingId !== null
+          ? await this.listingRepository.updateById(
+              dedup.listingId,
+              mutableFields,
+              tx,
+            )
+          : await this.listingRepository.upsertByAddress(
+              { addressNormalized, ...mutableFields },
+              tx,
+            );
 
       // Provenance: idempotent on (sourceType, externalId=email_id) — a
       // redelivered inbound webhook re-keys to the SAME source record (no dup).

@@ -474,6 +474,42 @@ export class ListingRepository {
   }
 
   /**
+   * Update an EXISTING listing by id — the merge primitive the dedup path needs
+   * when a match was found by a key OTHER than the candidate's addressNormalized
+   * (the embedding fallback returns the existing listing's id, whose
+   * addressNormalized differs from the new candidate's). `upsertByAddress`
+   * cannot express this because addressNormalized is its only key, so an
+   * embedding match would otherwise INSERT a duplicate. Refreshes the mutable
+   * fields + `lastSeenAt`; `firstSeenAt` and `addressNormalized` are left
+   * untouched (we merge INTO the existing row, never re-key it).
+   */
+  async updateById(
+    listingId: string,
+    fields: Omit<UpsertListingByAddressInput, "addressNormalized">,
+    tx?: Prisma.TransactionClient,
+  ): Promise<ListingRecord> {
+    const db: PrismaLike = tx ?? prisma;
+    return db.listing.update({
+      where: { id: listingId },
+      data: {
+        postcode: fields.postcode,
+        outcode: fields.outcode,
+        pricePence: fields.pricePence,
+        bedrooms: fields.bedrooms,
+        tenure: fields.tenure,
+        propertyType: fields.propertyType,
+        epcRating: fields.epcRating,
+        listingStatus: fields.listingStatus,
+        isPreMarket: fields.isPreMarket,
+        listingUrl: fields.listingUrl,
+        primarySource: fields.primarySource,
+        lastSeenAt: new Date(),
+      },
+      select: LISTING_SELECT,
+    });
+  }
+
+  /**
    * Write (or clear) a listing's embedding. The `embedding` column is
    * `Unsupported("vector(1024)")`, so the typed client cannot set it — we use
    * raw `$executeRaw`. The vector is bound as a single text parameter and cast

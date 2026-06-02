@@ -3,7 +3,7 @@
  * EmailEvent + SuppressionEntry; type normalisation; idempotent). Fakes the
  * EmailEvent + SuppressionEntry repositories — no DB.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   DefaultEmailEventService,
   normaliseResendEventType,
@@ -164,6 +164,33 @@ describe("EmailEventService.ingestEvent", () => {
     expect(result.created).toBe(false);
     expect(result.suppressed).toBe(false);
     expect(suppress.suppressed).toHaveLength(0);
+  });
+
+  it("logs a warn (still persists the event) when a hard bounce has NO recipient", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const events = fakeEmailEventRepo({ created: true });
+    const suppress = fakeSuppressionRepo();
+    const svc = new DefaultEmailEventService({
+      emailEventRepository: events,
+      suppressionEntryRepository: suppress,
+    });
+
+    // A hard bounce with an empty/absent recipient: the EmailEvent persists but
+    // suppression cannot fire — the skip must be OBSERVABLE, not silent.
+    const result = await svc.ingestEvent({
+      providerEventId: "evt_no_recipient",
+      type: "email.bounced",
+      data: { email_id: "email_x", to: [], bounce: { type: "Permanent" } },
+    });
+
+    expect(events.recorded).toHaveLength(1); // EmailEvent still persisted
+    expect(result.suppressed).toBe(false); // suppression skipped
+    expect(suppress.suppressed).toHaveLength(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain(
+      "email.event.suppression.skipped.no_recipient",
+    );
+    warn.mockRestore();
   });
 
   it("no-ops email.sent (no EmailEvent persisted)", async () => {

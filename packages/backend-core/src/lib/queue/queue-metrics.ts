@@ -5,7 +5,7 @@
  * by queue. The `getSingleMetric ?? new` guard makes the module import-safe
  * under HMR / repeated test imports (Doxus pattern).
  */
-import { Gauge, Registry } from "prom-client";
+import { Counter, Gauge, Registry } from "prom-client";
 import { JOB_TYPES, type QueueName } from "./queue-config.js";
 import type { QueueClient } from "./queue-client.js";
 
@@ -18,6 +18,38 @@ const queueDepthGauge: Gauge<"queue"> =
   new Gauge({
     name: "homescout_queue_depth",
     help: "Number of waiting + active jobs per homescout queue",
+    labelNames: ["queue"],
+    registers: [queueMetricsRegistry],
+  });
+
+/**
+ * Count of inbound emails DROPPED as non-retryable (poison pill: malformed
+ * Claude JSON / 4xx / malformed email). These are completed-not-retried, so this
+ * counter is the only signal they happened — scraped via the processor /metrics.
+ */
+export const inboundDroppedTotal: Counter<string> =
+  (queueMetricsRegistry.getSingleMetric("homescout_inbound_dropped_total") as
+    | Counter<string>
+    | undefined) ??
+  new Counter({
+    name: "homescout_inbound_dropped_total",
+    help: "Inbound emails dropped as non-retryable (poison pill)",
+    registers: [queueMetricsRegistry],
+  });
+
+/**
+ * Count of jobs that exhausted their retries (terminal failure) per queue. A
+ * full DLQ is out of M4 scope (M-future: a dead-letter queue + alerting belongs
+ * with the M6 circuit breaker); a clear terminal-failure log+metric is the M4
+ * observability floor.
+ */
+export const jobTerminalFailuresTotal: Counter<"queue"> =
+  (queueMetricsRegistry.getSingleMetric(
+    "homescout_job_terminal_failures_total",
+  ) as Counter<"queue"> | undefined) ??
+  new Counter({
+    name: "homescout_job_terminal_failures_total",
+    help: "Jobs that exhausted their retries (terminal failure) per queue",
     labelNames: ["queue"],
     registers: [queueMetricsRegistry],
   });
