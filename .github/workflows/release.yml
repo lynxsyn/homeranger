@@ -35,8 +35,11 @@ jobs:
     if: needs.detect.outputs.has_dockerfiles == 'true'
     runs-on: ${{ vars.RUNNER_LABEL_ARC || 'ubuntu-latest' }}
     strategy:
+      fail-fast: false
       matrix:
-        app: [api, processor, scheduler, web]
+        # Only apps that currently have a Dockerfile. processor + scheduler join
+        # in M4 when they gain runtime code + Dockerfiles.
+        app: [api, web]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
