@@ -14,6 +14,27 @@ export * from "./repositories/index.js";
 // Cursor-pagination contract consumed by routers/services.
 export * from "./lib/pagination/cursor.js";
 
+// Transaction helper — M4 services compose multi-repository writes (Listing +
+// ListingSourceRecord) inside one transaction. The raw `prisma` client stays
+// unexported; only `runTransaction` is surfaced (per the index.ts contract).
+export { runTransaction } from "./lib/prisma.js";
+
+// M4 queue layer (BullMQ): config + client + enqueue helpers. apps/api (webhook
+// routes) and apps/processor (worker) import these. Deep imports
+// (`@homescout/backend-core/lib/queue/queue-client`) also resolve via the
+// package.json "./*" wildcard; the barrel re-export keeps the type surface
+// available to consumers that import from the package root.
+export * from "./lib/queue/queue-config.js";
+export * from "./lib/queue/queue-client.js";
+export * from "./lib/queue/enqueue.js";
+export * from "./lib/queue/redis-connection.js";
+
+// M4 services (DI singletons) — the worker references these; exporting them
+// keeps the service surface importable from the package root too.
+export * from "./services/dedup.service.js";
+export * from "./services/email-event.service.js";
+export * from "./services/inbound-ingestion.service.js";
+
 // tRPC surface — the appRouter tree + its type (the SPA infers over AppRouter),
 // and createContext (apps/api mounts the fastify tRPC plugin with these). The
 // raw prisma client stays unexported (repositories own all Prisma access).

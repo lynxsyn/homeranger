@@ -26,6 +26,12 @@ variable "app_hostname" {
   default     = "app.aid-engineering.com"
 }
 
+variable "webhook_hostname" {
+  description = "Public hostname for the Resend inbound/event webhooks (M4). Dedicated host that maps to the same homescout-api Service through the tunnel but is NOT behind the Cloudflare Access app — the webhook routes authenticate via Svix signature verification at the API layer. Mirrors Doxus's edge-public api.doxus.app pattern."
+  type        = string
+  default     = "hooks.aid-engineering.com"
+}
+
 variable "tunnel_secret" {
   description = "Secret for Cloudflare Tunnel (base64-encoded, 32+ bytes). Defaults to a generated random_id when empty."
   type        = string

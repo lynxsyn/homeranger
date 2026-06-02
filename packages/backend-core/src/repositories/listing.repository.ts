@@ -409,6 +409,23 @@ export class ListingRepository {
   }
 
   /**
+   * Exact lookup on the unique dedup key `addressNormalized`. Backs the
+   * DedupService exact-match stage: the canonical address the extractor +
+   * dedup produce is looked up here, and a hit is a certain duplicate. M2
+   * shipped getById / list / upsertByAddress / writeEmbedding / vectorTopK but
+   * no by-dedup-key read; M4 adds this one method (the column is `@unique`, so
+   * findUnique is valid).
+   */
+  async getByAddressNormalized(
+    addressNormalized: string,
+  ): Promise<ListingRecord | null> {
+    return prisma.listing.findUnique({
+      where: { addressNormalized },
+      select: LISTING_SELECT,
+    });
+  }
+
+  /**
    * Idempotent upsert keyed on the unique `addressNormalized` dedup column.
    * Re-ingesting the same address UPDATES (refreshes mutable fields +
    * `lastSeenAt`) rather than inserting a duplicate. `firstSeenAt` is only set

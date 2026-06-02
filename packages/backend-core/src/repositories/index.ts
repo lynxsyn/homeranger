@@ -5,3 +5,5 @@ export * from "./listing-source-record.repository.js";
 export * from "./agent.repository.js";
 export * from "./outreach.repository.js";
 export * from "./search-profile.repository.js";
+export * from "./email-event.repository.js";
+export * from "./suppression-entry.repository.js";

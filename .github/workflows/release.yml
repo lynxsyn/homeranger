@@ -37,9 +37,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Only apps that currently have a Dockerfile. processor + scheduler join
-        # in M4 when they gain runtime code + Dockerfiles.
-        app: [api, web]
+        # api + web (M3) and processor (M4 — BullMQ worker). scheduler joins
+        # when it gains runtime code + a Dockerfile.
+        app: [api, web, processor]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
@@ -64,11 +64,13 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Bake the git commit SHA into the api image so /api/version reports
-          # the merge SHA app-mode post-release verify greps for. Only the api
-          # Dockerfile declares ARG GIT_SHA; passing it to the other images is a
-          # harmless no-op, but we scope it to api to keep intent explicit.
-          build-args: ${{ matrix.app == 'api' && format('GIT_SHA={0}', github.sha) || '' }}
+          # Bake the git commit SHA into the api + processor images. The api's
+          # /api/version reports it for app-mode post-release verify; the
+          # processor surfaces it in logs/metrics. Both Dockerfiles declare
+          # ARG GIT_SHA. The web image does not, so scope the build-arg away
+          # from it (passing it would be a harmless no-op, but we keep intent
+          # explicit).
+          build-args: ${{ (matrix.app == 'api' || matrix.app == 'processor') && format('GIT_SHA={0}', github.sha) || '' }}
 
   create-release:
     needs: [detect, build]
