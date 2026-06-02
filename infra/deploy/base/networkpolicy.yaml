@@ -259,7 +259,7 @@ spec:
     - ports:
         - port: 443
           protocol: TCP
-    # Internal: homescout-api
+    # Internal: homescout-api (/api, /ws, and the Resend webhook hosts)
     - to:
         - podSelector:
             matchLabels:
@@ -267,6 +267,39 @@ spec:
       ports:
         - port: 3000
           protocol: TCP
+    # Internal: homescout-web (the SPA — tunnel ingress routes "/" here)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homescout-web
+      ports:
+        - port: 8080
+          protocol: TCP
+---
+# homescout-web: ingress from cloudflared only (the SPA is served exclusively
+# through the tunnel; no other in-cluster client reaches it). Egress is just DNS
+# (allow-dns-egress) — nginx serves static files and proxies nothing server-side.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-homescout-web
+  namespace: homescout
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: homescout-web
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cloudflared
+      ports:
+        - port: 8080
+          protocol: TCP
+  egress: []
 ---
 # postgres-init Job: egress to homescout-postgres for role + extension
 # provisioning. DNS via the namespace-wide allow-dns-egress. Mirrors Doxus's

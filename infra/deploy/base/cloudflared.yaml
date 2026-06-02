@@ -1,0 +1,156 @@
+# Cloudflare Tunnel runtime for the homescout edge (app.aid-engineering.com +
+# hooks.aid-engineering.com).
+#
+# Tunnel ingress rules (hostname -> origin Service) AND the per-hostname DNS
+# CNAMEs are Terraform-managed in infra/terraform/cloudflare/tunnel.tf via
+# `cloudflare_zero_trust_tunnel_cloudflared_config.homescout` and the sibling
+# `cloudflare_dns_record.tunnel_*` resources. This Deployment pulls its config
+# remotely via TUNNEL_TOKEN (config_src = "cloudflare"), so there is NO
+# in-cluster config.yaml ConfigMap.
+#
+# To add or change a tunnel route: edit infra/terraform/cloudflare/tunnel.tf
+# (ingress + matching DNS CNAME) and the host allowlist in
+# infra/terraform/cloudflare/waf.tf in the same PR. Manual Cloudflare-dashboard
+# edits are reverted on the next `tofu apply`.
+#
+# Mirrors doxus-infra/deploy/base/cloudflared.yaml, scoped to the homescout
+# namespace (single-user app, same 2-replica HA pattern). The connector dials
+# OUT to the Cloudflare edge (QUIC 7844 / HTTPS 443) — no inbound ingress — and
+# proxies to homescout-api:3000 (/api, /ws, webhooks) and homescout-web:8080
+# (SPA), both allowed by allow-cloudflared egress in networkpolicy.yaml.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloudflared
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: cloudflared
+    app.kubernetes.io/part-of: homescout-app
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: cloudflared
+    app.kubernetes.io/part-of: homescout-app
+spec:
+  revisionHistoryLimit: 3
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudflared
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cloudflared
+        app.kubernetes.io/part-of: homescout-app
+    spec:
+      serviceAccountName: cloudflared
+      automountServiceAccountToken: false
+      priorityClassName: platform-critical
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2026.3.0
+          args:
+            - tunnel
+            - --no-autoupdate
+            - --protocol
+            - http2
+            - --metrics
+            - 0.0.0.0:2000
+            - run
+            - --token
+            - $(TUNNEL_TOKEN)
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflared-tunnel-token
+                  key: TUNNEL_TOKEN
+          ports:
+            - containerPort: 2000
+              name: metrics
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            periodSeconds: 5
+            failureThreshold: 60
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: cloudflared
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cloudflared-pdb
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: cloudflared
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudflared
+---
+# Service exposing the connector /metrics port for Prometheus scraping.
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudflared-metrics
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: cloudflared
+spec:
+  selector:
+    app.kubernetes.io/name: cloudflared
+  ports:
+    - name: metrics
+      port: 2000
+      targetPort: 2000
+      protocol: TCP

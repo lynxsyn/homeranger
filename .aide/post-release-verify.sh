@@ -12,6 +12,8 @@
 #   app   (M2+): everything in infra PLUS:
 #           4. homescout-api Deployment rolled out.
 #           5. HTTP /api/health == 200 and /api/version contains MERGE_SHA.
+#           6. (external probe only) /trpc reaches the API as JSON, not the
+#              nginx SPA shell — guards the tunnel-ingress /trpc routing.
 #
 # Env: MERGE_SHA (required, used in app mode for the version-ancestry check).
 #      VERIFY_MODE=infra|app  NS=homescout  FLUX_NS=flux-system  KS=homescout
@@ -87,3 +89,26 @@ log "GET /api/version (expect MERGE_SHA $MERGE_SHA) …"
 VER="$(probe /api/version || true)"
 printf '%s' "$VER" | grep -q "$MERGE_SHA" || fail "/api/version did not contain merge SHA $MERGE_SHA (got: $VER)"
 log "app gate PASSED ✓ (/api/health + /api/version matches $MERGE_SHA)"
+
+# 6. External tRPC routing gate (ONLY when probing through the public edge).
+#    The SPA's entire data plane posts to /trpc, which the API mounts at prefix
+#    /trpc — NOT under /api (only /api/health + /api/version live there). A
+#    Cloudflare-Tunnel ingress that routes only /api + /ws to the API serves the
+#    nginx SPA shell (text/html) for /trpc instead of JSON, silently breaking the
+#    whole app — and /api/health (a raw route the tunnel DOES route) cannot catch
+#    it. So when VERIFY_API_BASE_URL points at the public host, assert /trpc
+#    reaches the API (JSON) rather than nginx (HTML). `health` is a tRPC
+#    publicProcedure, so it returns 200 JSON even past CF Access without matching
+#    ALLOWED_USER_EMAIL. The in-cluster probe path skips this (it bypasses the
+#    tunnel, so it can't observe the ingress routing).
+if [ -n "${VERIFY_API_BASE_URL:-}" ]; then
+  log "GET /trpc/health (expect API JSON through the tunnel, not the nginx SPA shell) …"
+  TRPC_BODY="$(probe /trpc/health || true)"
+  case "$TRPC_BODY" in
+    *'<!DOCTYPE'* | *'<!doctype'* | *'<html'*)
+      fail "/trpc returned the HTML SPA shell — the tunnel is not routing /trpc to the API (add a /trpc ingress rule in infra/terraform/cloudflare/tunnel.tf)" ;;
+  esac
+  printf '%s' "$TRPC_BODY" | grep -q '"result"' \
+    || fail "/trpc/health did not return a tRPC JSON result (got: $(printf '%s' "$TRPC_BODY" | head -c 200))"
+  log "tRPC routing gate PASSED ✓ (/trpc reaches the API as JSON through the edge)"
+fi
