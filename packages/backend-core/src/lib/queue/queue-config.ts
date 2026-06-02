@@ -30,6 +30,8 @@ export const QUEUE_NAMES = {
   // cadence + fans out one outreach:followup per due thread.
   followupScan: "outreach:followup-scan",
   warmup: "warmup:recalc",
+  // M7: discover estate agents in a region (web search/extract → upsert Agents).
+  discoverAgents: "discover:agents",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -44,6 +46,7 @@ export const JOB_TYPES = [
   QUEUE_NAMES.followup,
   QUEUE_NAMES.followupScan,
   QUEUE_NAMES.warmup,
+  QUEUE_NAMES.discoverAgents,
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
@@ -141,6 +144,11 @@ export interface WarmupRecalcJobPayload {
   reason?: string;
 }
 
+/** `discover:agents` payload — discover + upsert estate agents for one region. */
+export interface DiscoverAgentsJobPayload {
+  regionName: string;
+}
+
 export interface JobPayloadByType {
   "outreach:inbound": InboundEmailJobPayload;
   "resend:event": ResendEventJobPayload;
@@ -150,6 +158,7 @@ export interface JobPayloadByType {
   "outreach:followup": OutreachFollowupJobPayload;
   "outreach:followup-scan": OutreachFollowupScanJobPayload;
   "warmup:recalc": WarmupRecalcJobPayload;
+  "discover:agents": DiscoverAgentsJobPayload;
 }
 
 export interface RetryPolicy {
@@ -206,5 +215,11 @@ export const RETRY_POLICIES: Record<QueueName, RetryPolicy> = {
   [QUEUE_NAMES.warmup]: {
     attempts: 3,
     backoff: { type: "exponential", delay: 5000 },
+  },
+  // Discovery hits a web search/scrape vendor — transient 429/5xx are common;
+  // a few exponential retries cover them.
+  [QUEUE_NAMES.discoverAgents]: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 10_000 },
   },
 };

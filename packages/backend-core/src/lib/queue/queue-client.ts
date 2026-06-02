@@ -245,3 +245,9 @@ export async function enqueueOutreachFollowup(
 ): Promise<void> {
   await getQueueClient().enqueue(QUEUE_NAMES.followup, input);
 }
+
+export async function enqueueDiscoverAgents(
+  input: EnqueueInput<JobPayloadByType["discover:agents"]>,
+): Promise<void> {
+  await getQueueClient().enqueue(QUEUE_NAMES.discoverAgents, input);
+}

@@ -6,6 +6,9 @@
 
 ## To build (top-down priority)
 
+> **Product reframe (2026-06-02, operator):** the app is the discover→outreach→ingest→table LOOP. The operator sets a UK region (by name, e.g. Conwy County) + free-text requirements; the system DISCOVERS estate agents in that region, cold-emails them (ComplianceGuard-gated) with the requirements woven in, and their replies populate a filter-free listings table. This replaces the M7-dashboard spec.
+
 | Name | Why | Sizing |
 |---|---|---|
-| M7-outreach-dashboard | Operator visibility + the safety backstop surfaced in UI: `outreachRouter.metrics` (warmup/bounce/complaint) + `killSwitch.toggle`, `OutreachDashboard` page. E2E: toggle halts sends. See `docs/specs/M7-outreach-dashboard.md`. | M |
+| M7-region-agent-discovery | The new core capability the loop needs: a built-in UK region-name → postcode-outcode map, and an `AgentDiscoveryProvider` (web search/extract behind an interface + env-gated fake) that finds estate agents in a region, classifies mailbox type (business-domain ⇒ `corporate_subscriber`, free-mail ⇒ `individual`), and upserts them as `Agent`s with `coveredOutcodes`. A `discover:agents` job runs it. Compliance: sourcing public business contacts on a documented legitimate-interest basis; the ComplianceGuard still gates every SEND (corporate-only). See `docs/specs/M7-region-agent-discovery.md`. | L |
+| M8-campaign-loop | The visible loop: a `CampaignPage` (pick region + write requirements → launch) that triggers discovery + ComplianceGuard-gated outreach with the requirements woven into the draft; the listings table stripped of filters/sort (just the list of what agents sent); the kill-switch surfaced as the safety control. E2E: launch a campaign (fake discovery + fake send) → guarded sends → kill-switch halts them. | M |

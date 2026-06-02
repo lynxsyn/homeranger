@@ -13,5 +13,6 @@ export {
   enqueueRecompute,
   enqueueOutreachSend,
   enqueueOutreachFollowup,
+  enqueueDiscoverAgents,
   type EnqueueInput,
 } from "./queue-client.js";
