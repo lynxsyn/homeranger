@@ -16,7 +16,8 @@ import {
 } from "./provider-errors.js";
 
 describe("isRetryableStatus", () => {
-  it("treats 429 / 529 / 5xx as retryable", () => {
+  it("treats 408 / 429 / 529 / 5xx as retryable", () => {
+    expect(isRetryableStatus(408)).toBe(true); // request timeout — transient
     expect(isRetryableStatus(429)).toBe(true);
     expect(isRetryableStatus(529)).toBe(true);
     expect(isRetryableStatus(500)).toBe(true);
@@ -35,9 +36,16 @@ describe("isRetryableStatus", () => {
     expect(isRetryableStatus(410)).toBe(false);
   });
 
-  it("defaults an undefined or unlisted status to retryable (transient-safe)", () => {
+  it("treats every OTHER 4xx as terminal (PR #17 widening)", () => {
+    expect(isRetryableStatus(402)).toBe(false);
+    expect(isRetryableStatus(409)).toBe(false);
+    expect(isRetryableStatus(418)).toBe(false);
+    expect(isRetryableStatus(422)).toBe(false);
+  });
+
+  it("defaults an undefined or non-4xx/5xx status to retryable (transient-safe)", () => {
     expect(isRetryableStatus(undefined)).toBe(true);
-    expect(isRetryableStatus(418)).toBe(true);
+    expect(isRetryableStatus(308)).toBe(true);
   });
 });
 

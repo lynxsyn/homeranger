@@ -547,4 +547,8 @@ function resolveModel(responseModel: unknown, fallback: string): string {
 
 // Error classification (classifyProviderError / createNonRetryableError /
 // isRetryableStatus) now lives in lib/ai/provider-errors.ts, shared by every AI
-// provider so the BullMQ retry decision is identical across the pipeline.
+// provider so the BullMQ retry decision is identical across the pipeline. The
+// shared classifier carries forward PR #17's semantics (all 4xx except 408
+// terminal; 408/429/5xx + unknown retryable) and applies them to vision +
+// embedding + match too.
+

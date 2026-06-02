@@ -6,18 +6,16 @@
  * by the worker handlers via the `retryable` flag) is consistent across the
  * analyse pipeline.
  *
- * Classification by HTTP status:
- *   - 429 / 529 / 5xx                 → RETRYABLE (rate limit / overload / transient)
- *   - 400 / 401 / 403 / 404 / 405 / 410 → TERMINAL (bad request / auth / a
- *     missing-or-renamed endpoint — e.g. a misconfigured AI Gateway slug — which
- *     would otherwise burn every BullMQ attempt on a permanent error)
- *   - undefined / anything else       → RETRYABLE (transient-safe default)
+ * Classification by HTTP status (PR #17 semantics, generalised to every AI provider):
+ *   - 408 / 429 / 5xx (incl. 529 overloaded) → RETRYABLE (timeout / rate limit / transient)
+ *   - any OTHER 4xx (400/401/403/404/405/409/410/…) → TERMINAL: a client error that
+ *     never succeeds on retry. 404 in particular catches a misconfigured/renamed
+ *     AI Gateway slug whose URL 404s — failing fast turns that into one dropped
+ *     job instead of burning the whole BullMQ attempt budget + backoff.
+ *   - undefined / non-4xx-non-5xx → RETRYABLE (network/unknown — transient-safe).
  *
- * The 404/405/410 → terminal rule folds in the live-edge adversarial-review
- * follow-up (.aide/notes/extraction-404-non-retryable.md): if the AI Gateway env
- * is ever pointed at a missing/renamed gateway every call would 404 and, under
- * the old "unknown status → retryable" fall-through, exhaust attempts + re-bill
- * on a permanent error. Failing fast turns that into a single dropped job.
+ * This carries forward .aide/notes/extraction-404-non-retryable.md AND PR #17
+ * (which widened the rule from a fixed terminal set to "all 4xx except 408").
  */
 
 /** A provider error carrying the retry decision + the originating HTTP status. */
@@ -27,24 +25,21 @@ export interface ProviderError extends Error {
   code?: string;
 }
 
-/**
- * HTTP statuses that are TERMINAL (non-retryable): malformed request, auth, and
- * missing/renamed endpoints. Everything not listed here (and a missing status)
- * defaults to retryable — the transient-safe choice.
- */
-const TERMINAL_STATUSES = new Set([400, 401, 403, 404, 405, 410]);
-
 export function isRetryableStatus(status: number | undefined): boolean {
   if (status === undefined) {
+    return true; // network / unknown transport error — retry
+  }
+  // Transient: request timeout (408), rate limit (429), Anthropic "overloaded"
+  // (529) and any other 5xx — retry these.
+  if (status === 408 || status === 429 || status >= 500) {
     return true;
   }
-  if (status === 429 || status === 529 || status >= 500) {
-    return true;
-  }
-  if (TERMINAL_STATUSES.has(status)) {
+  // Every OTHER 4xx is a terminal client error (bad request / auth / 404 from a
+  // misconfigured gateway / 405 / 410 / …) — fail fast, do not retry.
+  if (status >= 400) {
     return false;
   }
-  return true;
+  return true; // non-error / unexpected — retry defensively
 }
 
 /** A typed error with `retryable: false` for parse failures / programming bugs. */
