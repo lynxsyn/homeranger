@@ -5,8 +5,13 @@ import {
   OutreachError,
   getOutreachConfig,
   getOutreachService,
+  makeDefaultScoutDraftLoader,
   _setOutreachServiceForTesting,
 } from "./outreach.service.js";
+import type {
+  ScoutRecord,
+  ScoutRepository,
+} from "../repositories/scout.repository.js";
 import { ComplianceError } from "../lib/compliance/compliance-guard.js";
 import type {
   EmailProvider,
@@ -196,6 +201,135 @@ describe("OutreachService.sendOutreach", () => {
     ).rejects.toBeInstanceOf(OutreachError);
     expect(h.send).not.toHaveBeenCalled();
   });
+
+  it("SCOUT BRANCH: a scoutId substitutes the scout-tailored subject + body (with the unsubscribe footer)", async () => {
+    const h = makeHarness();
+    const scoutDraft = vi.fn().mockResolvedValue({
+      subject: "A private buyer looking in Conwy County",
+      bodyText: "Hello,\n\nI'm a private buyer searching in Conwy County.",
+    });
+    const service = new DefaultOutreachService({
+      emailProvider: { send: h.send } as unknown as EmailProvider,
+      complianceGuard: {
+        assertCanSend: h.assertCanSend,
+      } as unknown as ComplianceGuard,
+      agentRepository: {
+        getById: h.getById,
+        markContacted: h.markContacted,
+      } as unknown as AgentRepository,
+      outreachRepository: {
+        findOrCreateOpenThreadByAgent: h.findOrCreateOpenThreadByAgent,
+        getThreadById: h.getThreadById,
+        createOutboundMessage: h.createOutboundMessage,
+        applyThreadEvent: h.applyThreadEvent,
+      } as unknown as OutreachRepository,
+      emailConfig: { from: "Homescout <hi@homescout.test>" },
+      config: {
+        unsubscribeBaseUrl: "https://app.test/api/outreach/unsubscribe",
+        followupCadenceHours: 72,
+      },
+      scoutDraft,
+      signToken: () => "unsub-token",
+      now: () => new Date("2026-06-02T12:00:00Z"),
+    });
+
+    await service.sendOutreach({ agentId: "agent-1", scoutId: "scout-7" });
+
+    // The loader was consulted with the scoutId.
+    expect(scoutDraft).toHaveBeenCalledWith("scout-7");
+    const sendArg = h.send.mock.calls[0]![0] as SendEmailInput;
+    expect(sendArg.subject).toBe("A private buyer looking in Conwy County");
+    // The scout brief body is present...
+    expect(sendArg.bodyText).toContain("I'm a private buyer searching in Conwy County");
+    // ...and the one-click unsubscribe footer is re-appended.
+    expect(sendArg.bodyText).toContain("unsubscribe here:");
+    expect(sendArg.bodyText).toContain("unsub-token");
+    expect(sendArg.headers?.["List-Unsubscribe-Post"]).toBe(
+      "List-Unsubscribe=One-Click",
+    );
+    // The persisted message carries the scout subject too.
+    expect(h.createOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: "A private buyer looking in Conwy County",
+      }),
+    );
+  });
+
+  it("SCOUT FALLBACK: a scoutId whose scout is gone falls back to the generic draft (still guarded + sent)", async () => {
+    const h = makeHarness();
+    const scoutDraft = vi.fn().mockResolvedValue(null);
+    const service = new DefaultOutreachService({
+      emailProvider: { send: h.send } as unknown as EmailProvider,
+      complianceGuard: {
+        assertCanSend: h.assertCanSend,
+      } as unknown as ComplianceGuard,
+      agentRepository: {
+        getById: h.getById,
+        markContacted: h.markContacted,
+      } as unknown as AgentRepository,
+      outreachRepository: {
+        findOrCreateOpenThreadByAgent: h.findOrCreateOpenThreadByAgent,
+        getThreadById: h.getThreadById,
+        createOutboundMessage: h.createOutboundMessage,
+        applyThreadEvent: h.applyThreadEvent,
+      } as unknown as OutreachRepository,
+      emailConfig: { from: "Homescout <hi@homescout.test>" },
+      config: {
+        unsubscribeBaseUrl: "https://app.test/api/outreach/unsubscribe",
+        followupCadenceHours: 72,
+      },
+      scoutDraft,
+      signToken: () => "unsub-token",
+      now: () => new Date("2026-06-02T12:00:00Z"),
+    });
+
+    await service.sendOutreach({ agentId: "agent-1", scoutId: "ghost" });
+    expect(scoutDraft).toHaveBeenCalledWith("ghost");
+    const sendArg = h.send.mock.calls[0]![0] as SendEmailInput;
+    // Generic subject (the draftOutreach default), not the scout line.
+    expect(sendArg.subject).toBe(
+      "Buyer enquiry — pre-market & upcoming listings",
+    );
+  });
+
+  it("scout draft is loaded AFTER the guard (a blocked send never touches the scout)", async () => {
+    const h = makeHarness();
+    h.assertCanSend.mockRejectedValue(
+      new ComplianceError("KILL_SWITCH", {
+        retryable: false,
+        trpcCode: "FORBIDDEN",
+      }),
+    );
+    const scoutDraft = vi.fn().mockResolvedValue({
+      subject: "x",
+      bodyText: "y",
+    });
+    const service = new DefaultOutreachService({
+      emailProvider: { send: h.send } as unknown as EmailProvider,
+      complianceGuard: {
+        assertCanSend: h.assertCanSend,
+      } as unknown as ComplianceGuard,
+      agentRepository: {
+        getById: h.getById,
+        markContacted: h.markContacted,
+      } as unknown as AgentRepository,
+      outreachRepository: {} as unknown as OutreachRepository,
+      emailConfig: { from: "Homescout <hi@homescout.test>" },
+      config: {
+        unsubscribeBaseUrl: "https://app.test/api/outreach/unsubscribe",
+        followupCadenceHours: 72,
+      },
+      scoutDraft,
+      signToken: () => "unsub-token",
+      now: () => new Date("2026-06-02T12:00:00Z"),
+    });
+
+    await expect(
+      service.sendOutreach({ agentId: "agent-1", scoutId: "scout-7" }),
+    ).rejects.toBeInstanceOf(ComplianceError);
+    expect(scoutDraft).not.toHaveBeenCalled();
+    expect(h.send).not.toHaveBeenCalled();
+  });
 });
 
 describe("OutreachService.sendFollowup", () => {
@@ -234,6 +368,56 @@ describe("OutreachService.sendFollowup", () => {
       h.service.sendFollowup({ threadId: "thread-1" }),
     ).rejects.toBeInstanceOf(ComplianceError);
     expect(h.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("makeDefaultScoutDraftLoader", () => {
+  function scoutRecord(overrides: Partial<ScoutRecord> = {}): ScoutRecord {
+    return {
+      id: "scout-7",
+      name: "Conwy coast",
+      location: "Conwy County",
+      outcodes: ["LL30"],
+      types: ["Cottage"],
+      condition: [],
+      land: [],
+      saleMethods: ["Private treaty"],
+      minBedrooms: 3,
+      maxPricePence: null,
+      keywords: "",
+      status: "active",
+      createdAt: new Date("2026-06-01"),
+      updatedAt: new Date("2026-06-01"),
+      ...overrides,
+    } as ScoutRecord;
+  }
+
+  it("builds a location-named subject + a draftScoutEmail body", async () => {
+    const getById = vi.fn().mockResolvedValue(scoutRecord());
+    const load = makeDefaultScoutDraftLoader({
+      getById,
+    } as unknown as ScoutRepository);
+    const draft = await load("scout-7");
+    expect(getById).toHaveBeenCalledWith("scout-7");
+    expect(draft?.subject).toBe("A private buyer looking in Conwy County");
+    expect(draft?.bodyText).toContain(
+      "I'm a private buyer searching in Conwy County",
+    );
+  });
+
+  it("falls back to a generic subject for a blank location", async () => {
+    const load = makeDefaultScoutDraftLoader({
+      getById: vi.fn().mockResolvedValue(scoutRecord({ location: "" })),
+    } as unknown as ScoutRepository);
+    const draft = await load("scout-7");
+    expect(draft?.subject).toBe("A private buyer looking in your area");
+  });
+
+  it("returns null when the scout is gone", async () => {
+    const load = makeDefaultScoutDraftLoader({
+      getById: vi.fn().mockResolvedValue(null),
+    } as unknown as ScoutRepository);
+    expect(await load("ghost")).toBeNull();
   });
 });
 

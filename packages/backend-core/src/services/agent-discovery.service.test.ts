@@ -144,6 +144,69 @@ describe("AgentDiscoveryService.discoverRegion", () => {
   });
 });
 
+describe("AgentDiscoveryService.discoverByOutcodes", () => {
+  it("discovers + upserts over an EXPLICIT outcode set (no region resolution)", async () => {
+    const h = makeHarness({
+      agents: [
+        { email: "info@conwy-estates.co.uk", agencyName: "Conwy Estates" },
+        { email: "joe@gmail.com", agencyName: "Joe (sole trader)" },
+      ],
+    });
+    const result = await h.service.discoverByOutcodes(["LL30", "LL31"]);
+
+    // The provider gets the explicit outcodes verbatim (no regionToOutcodes).
+    expect(h.discover).toHaveBeenCalledWith(
+      expect.objectContaining({ outcodes: ["LL30", "LL31"] }),
+    );
+    // Upserts stamp the SAME explicit outcodes on the agent.
+    expect(h.upsertByEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "info@conwy-estates.co.uk",
+        mailboxType: "corporate_subscriber",
+        coveredOutcodes: ["LL30", "LL31"],
+      }),
+    );
+    expect(result).toEqual({ discovered: 2, upserted: 2, skipped: 0 });
+  });
+
+  it("normalises + dedups the outcode set (case + blanks + dupes)", async () => {
+    const h = makeHarness({
+      agents: [{ email: "info@a.co.uk", agencyName: "A" }],
+    });
+    await h.service.discoverByOutcodes(["ll30", " LL30 ", "", "LL31"]);
+    expect(h.discover).toHaveBeenCalledWith(
+      expect.objectContaining({ outcodes: ["LL30", "LL31"] }),
+    );
+  });
+
+  it("skips already-suppressed emails (never re-sourced)", async () => {
+    const h = makeHarness({
+      agents: [
+        { email: "info@a.co.uk", agencyName: "A" },
+        { email: "info@b.co.uk", agencyName: "B" },
+      ],
+      suppressed: ["info@b.co.uk"],
+    });
+    const result = await h.service.discoverByOutcodes(["LL30"]);
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1 });
+  });
+
+  it("is a no-op for an empty outcode set (provider not called)", async () => {
+    const h = makeHarness({ agents: [] });
+    const result = await h.service.discoverByOutcodes([]);
+    expect(h.discover).not.toHaveBeenCalled();
+    expect(result).toEqual({ discovered: 0, upserted: 0, skipped: 0 });
+  });
+
+  it("is a no-op when every outcode is blank (provider not called)", async () => {
+    const h = makeHarness({ agents: [] });
+    const result = await h.service.discoverByOutcodes(["", "   "]);
+    expect(h.discover).not.toHaveBeenCalled();
+    expect(result).toEqual({ discovered: 0, upserted: 0, skipped: 0 });
+  });
+});
+
 describe("getAgentDiscoveryService", () => {
   afterEach(() => _setAgentDiscoveryServiceForTesting(null));
   it("throws before initialisation", () => {

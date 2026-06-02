@@ -8,8 +8,13 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { killSwitchToggleInputSchema } from "@homescout/shared";
 import { protectedProcedure, router } from "../trpc.js";
 import { agentRepository } from "../repositories/agent.repository.js";
+import {
+  warmupStateRepository as defaultWarmupStateRepository,
+  type WarmupStateRepository,
+} from "../repositories/warmup-state.repository.js";
 import {
   complianceGuard,
   ComplianceError,
@@ -40,6 +45,20 @@ export function _setOutreachSendEnqueuerForTesting(
   outreachSendEnqueuer = enqueuer ?? enqueueOutreachSend;
 }
 
+// Swappable warmup-state seam so the killSwitch sub-router is unit-testable
+// without a live DB (mirrors the enqueue seam above).
+let warmupStateRepository: WarmupStateRepository = defaultWarmupStateRepository;
+export function _setWarmupStateRepositoryForTesting(
+  repo: WarmupStateRepository | null,
+): void {
+  warmupStateRepository = repo ?? defaultWarmupStateRepository;
+}
+
+/** The global kill-switch state the operator reads + toggles. */
+export interface KillSwitchState {
+  enabled: boolean;
+}
+
 export const outreachRouter = router({
   send: protectedProcedure
     .input(sendInput)
@@ -68,4 +87,24 @@ export const outreachRouter = router({
       });
       return { enqueued: true, agentId: agent.id };
     }),
+
+  /**
+   * Global send kill-switch (ComplianceGuard gate 5). `get` reads the current
+   * WarmupState.killSwitch; `toggle` sets it. Flipping it ON halts ALL outbound
+   * sends at once (the guard blocks every send with KILL_SWITCH) — the operator's
+   * emergency brake. Idempotent on the value.
+   */
+  killSwitch: router({
+    get: protectedProcedure.query(async (): Promise<KillSwitchState> => {
+      const state = await warmupStateRepository.getOrCreate();
+      return { enabled: state.killSwitch };
+    }),
+
+    toggle: protectedProcedure
+      .input(killSwitchToggleInputSchema)
+      .mutation(async ({ input }): Promise<KillSwitchState> => {
+        const state = await warmupStateRepository.setKillSwitch(input.enabled);
+        return { enabled: state.killSwitch };
+      }),
+  }),
 });

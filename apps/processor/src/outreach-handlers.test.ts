@@ -22,6 +22,26 @@ describe("makeOutreachSendHandler", () => {
     expect(service.sendOutreach).toHaveBeenCalledWith({ agentId: "agent-1" });
   });
 
+  it("passes scoutId through when the job carries one", async () => {
+    const service = sendService(async () => ({}));
+    const handler = makeOutreachSendHandler({ outreachService: service });
+    await handler({ data: { agentId: "agent-1", scoutId: "scout-7" } });
+    expect(service.sendOutreach).toHaveBeenCalledWith({
+      agentId: "agent-1",
+      scoutId: "scout-7",
+    });
+  });
+
+  it("omits scoutId when the job has none (generic draft path)", async () => {
+    const service = sendService(async () => ({}));
+    const handler = makeOutreachSendHandler({ outreachService: service });
+    await handler({ data: { agentId: "agent-1" } });
+    expect(service.sendOutreach).toHaveBeenCalledWith({ agentId: "agent-1" });
+    const arg = (service.sendOutreach as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0];
+    expect(arg).not.toHaveProperty("scoutId");
+  });
+
   it("DROPS the job (UnrecoverableError) on a non-retryable ComplianceError", async () => {
     const service = sendService(async () => {
       throw new ComplianceError("SUPPRESSED", {

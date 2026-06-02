@@ -74,6 +74,7 @@ import {
   ResendEmailSendProvider,
 } from "@homescout/backend-core/lib/email/mailbox-adapter";
 import { getOutreachService } from "@homescout/backend-core/services/outreach.service";
+import { scoutRepository } from "@homescout/backend-core/repositories/scout.repository";
 import { outreachReplyService } from "@homescout/backend-core/services/outreach-reply.service";
 import { warmupService } from "@homescout/backend-core/services/warmup.service";
 import {
@@ -184,7 +185,9 @@ const emailProvider: EmailProvider = useFakeOutreach
     ? new NodemailerEmailProvider()
     : new ResendEmailSendProvider();
 
-const outreachService = getOutreachService({ emailProvider });
+// PR3: pass the scoutRepository so a scout-launched send (job.scoutId) drafts
+// the body from that scout's brief (draftScoutEmail) instead of the generic draft.
+const outreachService = getOutreachService({ emailProvider, scoutRepository });
 
 // ── Wire M7 agent discovery (real Firecrawl vs DISCOVERY_FAKE seam) ──────────
 // DISCOVERY_FAKE=1 swaps the web search/extract vendor for the deterministic,

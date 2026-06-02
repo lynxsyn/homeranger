@@ -18,11 +18,16 @@ export function makeOutreachSendHandler(deps: OutreachSendHandlerDeps) {
     data: OutreachSendJobPayload;
   }): Promise<void> {
     try {
-      await deps.outreachService.sendOutreach({ agentId: job.data.agentId });
+      await deps.outreachService.sendOutreach({
+        agentId: job.data.agentId,
+        // Tie the send to a launched scout so the body is drafted from its brief.
+        ...(job.data.scoutId ? { scoutId: job.data.scoutId } : {}),
+      });
     } catch (error) {
       throw toWorkerError(error, {
         scope: "outreach.send.failed",
         agentId: job.data.agentId,
+        ...(job.data.scoutId ? { scoutId: job.data.scoutId } : {}),
       });
     }
   };

@@ -112,6 +112,30 @@ export class AgentRepository {
     return paginate(rows, limit);
   }
 
+  /**
+   * Count agents covering at least one of the given outcodes — the "agents in
+   * the scout's patch" stat (PR3 scoutsRouter.stats). When `contactedOnly` is
+   * set, restricts to agents already contacted (`lastContactedAt != null`).
+   * Opted-out agents are EXCLUDED (mirrors `list`'s default), so the patch count
+   * reflects who is actually reachable. An empty outcode set returns 0.
+   */
+  async countByOutcodes(
+    outcodes: string[],
+    options: { contactedOnly?: boolean } = {},
+  ): Promise<number> {
+    if (outcodes.length === 0) {
+      return 0;
+    }
+    const where: Prisma.AgentWhereInput = {
+      optedOut: false,
+      coveredOutcodes: { hasSome: outcodes },
+    };
+    if (options.contactedOnly) {
+      where.lastContactedAt = { not: null };
+    }
+    return prisma.agent.count({ where });
+  }
+
   async markOptedOut(
     email: string,
     tx?: Prisma.TransactionClient,

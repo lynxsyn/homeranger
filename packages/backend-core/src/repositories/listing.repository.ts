@@ -454,6 +454,19 @@ export class ListingRepository {
   }
 
   /**
+   * Count listings whose `outcode` is one of the given set — the "homes found in
+   * a scout's patch" stat (PR3 scoutsRouter.stats). An empty set returns 0 (a
+   * scout with no target outcodes covers nothing). `outcode` is nullable, so a
+   * NULL-outcode listing is never counted (the `in` filter excludes NULLs).
+   */
+  async countByOutcodes(outcodes: string[]): Promise<number> {
+    if (outcodes.length === 0) {
+      return 0;
+    }
+    return prisma.listing.count({ where: { outcode: { in: outcodes } } });
+  }
+
+  /**
    * Exact lookup on the unique dedup key `addressNormalized`. Backs the
    * DedupService exact-match stage: the canonical address the extractor +
    * dedup produce is looked up here, and a hit is a certain duplicate. M2
