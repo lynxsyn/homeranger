@@ -42,7 +42,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: web
-          image: ghcr.io/lynxsyn/homescout-web:0.11.0 # {"$imagepolicy": "flux-system:homescout-web"}
+          image: ghcr.io/lynxsyn/homescout-web:0.12.0 # {"$imagepolicy": "flux-system:homescout-web"}
           imagePullPolicy: Always
           ports:
             - name: http
