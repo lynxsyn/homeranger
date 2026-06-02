@@ -203,18 +203,11 @@ export class OutreachRepository {
     return count;
   }
 
-  /** Whether an inbound reply landed on this thread since a cutoff (follow-up gate). */
-  async hasInboundSince(threadId: string, since: Date): Promise<boolean> {
-    const hit = await prisma.outreachMessage.findFirst({
-      where: { threadId, direction: "inbound", receivedAt: { gte: since } },
-      select: { id: true },
-    });
-    return hit !== null;
-  }
-
   /**
-   * Threads due a follow-up: still `awaiting_reply` with no activity since the
-   * cutoff, oldest first. Drives the outreach:followup cadence.
+   * Threads due a follow-up: still `awaiting_reply` (the status machine moves a
+   * replied thread to `replied`, so this inherently means "no reply since the
+   * last send") with no activity since the cutoff, oldest first. Drives the
+   * outreach:followup cadence.
    */
   async listFollowupDue(input: {
     cutoff: Date;

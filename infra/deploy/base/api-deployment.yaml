@@ -164,6 +164,17 @@ spec:
                   name: homescout-secret
                   key: DEV_USER_EMAIL
                   optional: true
+            # M6 one-click unsubscribe (RFC 8058): the HMAC key the api VERIFIES
+            # tokens with — MUST be the SAME value the processor SIGNS with, or
+            # processor-signed tokens fail verification here. optional:true so the
+            # api still boots without it (the unsubscribe route returns 500 +
+            # logs until the operator adds it; the rest of the api is unaffected).
+            - name: UNSUBSCRIBE_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: UNSUBSCRIBE_TOKEN_SECRET
+                  optional: true
           readinessProbe:
             httpGet:
               path: /api/health

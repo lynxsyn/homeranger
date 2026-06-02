@@ -102,7 +102,7 @@ export class DefaultOutreachService implements OutreachService {
   private readonly complianceGuard: ComplianceGuard;
   private readonly agentRepository: AgentRepository;
   private readonly outreachRepository: OutreachRepository;
-  private readonly emailConfig: OutreachEmailConfig;
+  private readonly emailConfigOverride?: OutreachEmailConfig;
   private readonly config: OutreachConfig;
   private readonly draft: (
     input: Parameters<typeof draftOutreach>[0],
@@ -116,11 +116,20 @@ export class DefaultOutreachService implements OutreachService {
     this.agentRepository = deps.agentRepository ?? defaultAgentRepository;
     this.outreachRepository =
       deps.outreachRepository ?? defaultOutreachRepository;
-    this.emailConfig = deps.emailConfig ?? getOutreachEmailConfig();
+    // Resolved LAZILY per-send (resolveEmailConfig), NOT at construction — so a
+    // missing RESEND_FROM fails an individual send (retryable job error), it does
+    // NOT crash the worker boot and take down the inbound/analyze/recompute queues.
+    this.emailConfigOverride = deps.emailConfig;
     this.config = deps.config ?? getOutreachConfig();
     this.draft = deps.draft ?? draftOutreach;
     this.signToken = deps.signToken ?? ((email) => signUnsubscribeToken(email));
     this.now = deps.now ?? (() => new Date());
+  }
+
+  /** Resolve the sending config lazily so a missing RESEND_FROM only fails a
+   *  send (not worker boot). Injected config (tests) bypasses the env read. */
+  private resolveEmailConfig(): OutreachEmailConfig {
+    return this.emailConfigOverride ?? getOutreachEmailConfig();
   }
 
   private guardAgent(agent: AgentRecord): AgentForGuard {
@@ -167,7 +176,14 @@ export class DefaultOutreachService implements OutreachService {
     await this.complianceGuard.assertCanSend(this.guardAgent(agent), {
       reserve: true,
     });
-    return this.dispatch(agent, `outreach:followup:${thread.id}`, thread);
+    // Per (thread, UTC-day) — a retry within the day reuses the key (Resend
+    // dedupes, no double email); a later cadence window sends a fresh follow-up.
+    const dayKey = this.now().toISOString().slice(0, 10);
+    return this.dispatch(
+      agent,
+      `outreach:followup:${thread.id}:${dayKey}`,
+      thread,
+    );
   }
 
   private async dispatch(
@@ -176,6 +192,7 @@ export class DefaultOutreachService implements OutreachService {
     thread?: { id: string },
   ): Promise<SendOutreachResult> {
     const now = this.now();
+    const emailConfig = this.resolveEmailConfig();
     const resolvedThread =
       thread ??
       (await this.outreachRepository.findOrCreateOpenThreadByAgent({
@@ -198,7 +215,7 @@ export class DefaultOutreachService implements OutreachService {
     // OutreachMessage @@unique(providerMessageId) makes the persist idempotent.
     const sent = await this.emailProvider.send({
       to: agent.email,
-      from: this.emailConfig.from,
+      from: emailConfig.from,
       subject: draft.subject,
       bodyText: draft.bodyText,
       bodyHtml: draft.bodyHtml,
@@ -212,7 +229,7 @@ export class DefaultOutreachService implements OutreachService {
     const message = await this.outreachRepository.createOutboundMessage({
       threadId: resolvedThread.id,
       providerMessageId: sent.providerMessageId,
-      fromEmail: this.emailConfig.from,
+      fromEmail: emailConfig.from,
       toEmail: agent.email,
       subject: draft.subject,
       bodyText: draft.bodyText,

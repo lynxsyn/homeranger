@@ -205,7 +205,8 @@ describe("OutreachService.sendFollowup", () => {
 
     expect(h.findOrCreateOpenThreadByAgent).not.toHaveBeenCalled();
     const sendArg = h.send.mock.calls[0]![0] as SendEmailInput;
-    expect(sendArg.idempotencyKey).toBe("outreach:followup:thread-1");
+    // Per (thread, UTC-day) so repeat follow-ups on different days each send.
+    expect(sendArg.idempotencyKey).toBe("outreach:followup:thread-1:2026-06-02");
     expect(h.createOutboundMessage).toHaveBeenCalledWith(
       expect.objectContaining({ threadId: "thread-1" }),
     );

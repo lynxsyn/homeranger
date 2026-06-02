@@ -30,9 +30,13 @@ const LOCK_KEY = "homescout:scheduler:leader";
 // TTL must exceed the renew interval so a brief tick delay never drops the lease.
 const LOCK_TTL_MS = 90_000;
 const RENEW_MS = 30_000;
-const SCHEDULER_ID = "warmup:recalc:cadence";
+const WARMUP_SCHEDULER_ID = "warmup:recalc:cadence";
 const WARMUP_EVERY_MS = Number(
   process.env.WARMUP_RECALC_EVERY_MS ?? 6 * 60 * 60 * 1000,
+);
+const FOLLOWUP_SCAN_SCHEDULER_ID = "outreach:followup-scan:cadence";
+const FOLLOWUP_SCAN_EVERY_MS = Number(
+  process.env.FOLLOWUP_SCAN_EVERY_MS ?? 60 * 60 * 1000, // hourly
 );
 const instanceId = `${os.hostname()}:${process.pid}`;
 
@@ -59,11 +63,17 @@ async function tick(): Promise<void> {
       LOCK_TTL_MS,
     );
     if (isLeader) {
-      // Idempotent on SCHEDULER_ID — safe to call every tick.
+      // Idempotent on the scheduler ids — safe to call every tick.
       await queueClient.upsertScheduledJob(
         QUEUE_NAMES.warmup,
-        SCHEDULER_ID,
+        WARMUP_SCHEDULER_ID,
         { every: WARMUP_EVERY_MS },
+        { reason: "scheduled" },
+      );
+      await queueClient.upsertScheduledJob(
+        QUEUE_NAMES.followupScan,
+        FOLLOWUP_SCAN_SCHEDULER_ID,
+        { every: FOLLOWUP_SCAN_EVERY_MS },
         { reason: "scheduled" },
       );
     }

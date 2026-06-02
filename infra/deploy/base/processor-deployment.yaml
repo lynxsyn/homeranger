@@ -208,6 +208,25 @@ spec:
                 secretKeyRef:
                   name: homescout-secret
                   key: RESEND_API_KEY
+            # M6 outbound outreach. RESEND_FROM = the verified sending address;
+            # UNSUBSCRIBE_TOKEN_SECRET = the HMAC key for one-click unsubscribe
+            # (MUST be the SAME value the api uses so processor-signed tokens
+            # verify there). Both optional:true so a secret WITHOUT them still
+            # boots the worker — OutreachService resolves RESEND_FROM lazily, so
+            # only outreach SENDS fail (logged) until the operator adds them; the
+            # inbound/analyze/recompute queues are unaffected.
+            - name: RESEND_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: RESEND_FROM
+                  optional: true
+            - name: UNSUBSCRIBE_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: UNSUBSCRIBE_TOKEN_SECRET
+                  optional: true
           resources:
             requests:
               cpu: 50m

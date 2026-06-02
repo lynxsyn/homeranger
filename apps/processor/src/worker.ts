@@ -82,6 +82,7 @@ import { makeAnalyzeHandler } from "./analyze-handler.js";
 import { makeRecomputeHandler } from "./recompute-handler.js";
 import { makeOutreachSendHandler } from "./outreach-send-handler.js";
 import { makeOutreachFollowupHandler } from "./outreach-followup-handler.js";
+import { makeFollowupScanHandler } from "./followup-scan-handler.js";
 import { makeWarmupRecalcHandler } from "./warmup-recalc-handler.js";
 
 const metricsPort = Number(process.env.METRICS_PORT ?? 9090);
@@ -230,6 +231,13 @@ queueClient.registerProcessor(
   QUEUE_NAMES.followup,
   makeOutreachFollowupHandler({ outreachService }),
   { lockDuration: 60_000 },
+);
+
+// Cadence scan (scheduler-driven): list awaiting_reply threads past the
+// follow-up cadence + fan out one outreach:followup per due thread.
+queueClient.registerProcessor(
+  QUEUE_NAMES.followupScan,
+  makeFollowupScanHandler(),
 );
 
 // warmup:recalc is enqueued on a cadence by the scheduler (leader-lock); the

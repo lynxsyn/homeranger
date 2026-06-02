@@ -157,6 +157,12 @@ describe("ComplianceGuard.assertCanSend — gates", () => {
     await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();
   });
 
+  it("gate 4: recovers — complaint rate below 0.1% does NOT trip", async () => {
+    // 60 sends, 0 complaints (and 0 bounces) → both rates 0 → breaker closed.
+    const h = makeHarness({ sends: 60, eventCounts: { complained: 0 } });
+    await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();
+  });
+
   it("gate 4: does NOT trip on a tiny sample (below min-sample), even at 50% bounce", async () => {
     const h = makeHarness({ sends: 2, eventCounts: { bounced: 1 } }); // 50% but n=2
     await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();

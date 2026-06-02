@@ -28,24 +28,35 @@ async function handleUnsubscribe(
   if (!email || !token) {
     return reply.code(400).send({ error: "Missing email or token" });
   }
-  if (!verifyUnsubscribeToken(email, token)) {
-    // Don't log the token (a bearer credential) or the email (PII).
-    request.log.warn("outreach unsubscribe: invalid token");
-    return reply.code(400).send({ error: "Invalid token" });
-  }
 
-  await suppressionEntryRepository.suppress({
-    email,
-    reason: "unsubscribe",
-    note: "one-click unsubscribe (RFC 8058)",
-  });
-  await agentRepository.markOptedOut(email);
-  const agent = await agentRepository.findByEmail(email);
-  if (agent) {
-    await outreachRepository.closeThreadsByAgent(agent.id);
-  }
+  try {
+    if (!verifyUnsubscribeToken(email, token)) {
+      // Don't log the token (a bearer credential) or the email (PII).
+      request.log.warn("outreach unsubscribe: invalid token");
+      return reply.code(400).send({ error: "Invalid token" });
+    }
 
-  return reply.code(200).send({ ok: true, unsubscribed: true });
+    await suppressionEntryRepository.suppress({
+      email,
+      reason: "unsubscribe",
+      note: "one-click unsubscribe (RFC 8058)",
+    });
+    await agentRepository.markOptedOut(email);
+    const agent = await agentRepository.findByEmail(email);
+    if (agent) {
+      await outreachRepository.closeThreadsByAgent(agent.id);
+    }
+
+    return reply.code(200).send({ ok: true, unsubscribed: true });
+  } catch (error) {
+    // A misconfiguration (e.g. UNSUBSCRIBE_TOKEN_SECRET unset) or a transient DB
+    // error must not crash the request — log (no PII/token) + 500.
+    request.log.error(
+      { message: error instanceof Error ? error.message : String(error) },
+      "outreach unsubscribe failed",
+    );
+    return reply.code(500).send({ error: "Unsubscribe failed" });
+  }
 }
 
 export async function registerOutreachUnsubscribeRoute(

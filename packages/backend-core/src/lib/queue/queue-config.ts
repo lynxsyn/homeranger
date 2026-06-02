@@ -26,6 +26,9 @@ export const QUEUE_NAMES = {
   // M6 outbound outreach.
   send: "outreach:send",
   followup: "outreach:followup",
+  // Cadence job (scheduler-driven): scans awaiting_reply threads past the
+  // cadence + fans out one outreach:followup per due thread.
+  followupScan: "outreach:followup-scan",
   warmup: "warmup:recalc",
 } as const;
 
@@ -39,6 +42,7 @@ export const JOB_TYPES = [
   QUEUE_NAMES.recompute,
   QUEUE_NAMES.send,
   QUEUE_NAMES.followup,
+  QUEUE_NAMES.followupScan,
   QUEUE_NAMES.warmup,
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
@@ -119,6 +123,16 @@ export interface OutreachFollowupJobPayload {
 }
 
 /**
+ * `outreach:followup-scan` payload — the scheduler-driven cadence scan. Fieldless
+ * (it scans ALL awaiting_reply threads past the cadence); `reason` is optional
+ * log/trace context. The processor consumes it, lists due threads, and enqueues
+ * one `outreach:followup` per thread.
+ */
+export interface OutreachFollowupScanJobPayload {
+  reason?: string;
+}
+
+/**
  * `warmup:recalc` payload — the scheduler-driven daily ramp + breaker-rate
  * reconcile. Fieldless (the single WarmupState row is the implicit subject);
  * `reason` is optional log/trace context.
@@ -134,6 +148,7 @@ export interface JobPayloadByType {
   "analyze:recompute": AnalyzeRecomputeJobPayload;
   "outreach:send": OutreachSendJobPayload;
   "outreach:followup": OutreachFollowupJobPayload;
+  "outreach:followup-scan": OutreachFollowupScanJobPayload;
   "warmup:recalc": WarmupRecalcJobPayload;
 }
 
@@ -169,15 +184,25 @@ export const RETRY_POLICIES: Record<QueueName, RetryPolicy> = {
   },
   // Sends are idempotent at the provider (Idempotency-Key); exponential backoff
   // covers transient Resend/SMTP errors + a deferred warm-up cap (retryable).
+  // attempts:3 (not 5) BOUNDS the warm-up-cap drift: each retry re-runs
+  // assertCanSend(reserve:true) which re-consumes a token, so a flapping send
+  // can burn at most 3 of the day's cap (fails safe — under-sends — and the
+  // UTC-day bucket key rolls daily). The provider Idempotency-Key still prevents
+  // a double physical send across those retries.
   [QUEUE_NAMES.send]: {
-    attempts: 5,
+    attempts: 3,
     backoff: { type: "exponential", delay: 10_000 },
   },
   [QUEUE_NAMES.followup]: {
-    attempts: 5,
+    attempts: 3,
     backoff: { type: "exponential", delay: 10_000 },
   },
-  // Recalc is idempotent + scheduler-driven; a couple of retries cover a blip.
+  // Cadence scan + recalc are idempotent + scheduler-driven; a couple of retries
+  // cover a transient DB/Redis blip.
+  [QUEUE_NAMES.followupScan]: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 5000 },
+  },
   [QUEUE_NAMES.warmup]: {
     attempts: 3,
     backoff: { type: "exponential", delay: 5000 },
