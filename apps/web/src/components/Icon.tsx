@@ -21,6 +21,15 @@ import {
   Images,
   MapPin,
   Search,
+  Pause,
+  Play,
+  SlidersHorizontal,
+  Home,
+  ArrowRight,
+  Check,
+  X,
+  Sparkles,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -40,6 +49,15 @@ const ICONS: Record<string, LucideIcon> = {
   images: Images,
   "map-pin": MapPin,
   search: Search,
+  pause: Pause,
+  play: Play,
+  "sliders-horizontal": SlidersHorizontal,
+  home: Home,
+  "arrow-right": ArrowRight,
+  check: Check,
+  x: X,
+  sparkles: Sparkles,
+  "trash-2": Trash2,
 };
 
 export interface IconProps {

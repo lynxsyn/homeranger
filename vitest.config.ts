@@ -112,6 +112,11 @@ export default defineConfig({
         // fake + the classification/upsert service are unit-covered; the real
         // adapter is operator-proven (same rationale as the Resend/r2 adapters).
         "packages/backend-core/src/lib/discovery/firecrawl-agent-discovery.provider.ts",
+        // M8 scout repo — Prisma I/O (CRUD), exercised by the scout integration
+        // test, not unit. Same rationale as the M2–M7 repository excludes above.
+        // Its pure helpers (resolveScoutOutcodes / draftScoutEmail in
+        // lib/scouts/scout-brief.ts) are unit-covered and NOT excluded.
+        "packages/backend-core/src/repositories/scout.repository.ts",
       ],
       thresholds: {
         // Floor with deliberate HEADROOM, not floor(measured). Measured M3 is

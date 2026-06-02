@@ -5,6 +5,7 @@
 @import "./styles/tokens.css";
 @import "./styles/components.css";
 @import "./styles/layout.css";
+@import "./styles/scouts.css";
 
 /*
  * Screen-reader-only utility — used for table <caption>s and visually-hidden
@@ -24,8 +25,8 @@
 
 /* ---- Topbar navigation -----------------------------------------------------
    The handoff design is a single Listings screen; homescout is multi-page
-   (Listings · Preferences · Campaign), so the topbar carries a small nav styled
-   with the design tokens. Grouped left with the logo; theme toggle stays right. */
+   (Listings · Scouts), so the topbar carries a small nav styled with the design
+   tokens. Grouped left with the logo; theme toggle stays right. */
 .topbar__left {
   display: inline-flex;
   align-items: center;

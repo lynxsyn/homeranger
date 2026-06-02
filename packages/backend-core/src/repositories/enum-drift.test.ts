@@ -17,6 +17,7 @@ import {
   MailboxType,
   MessageDirection,
   PropertyType,
+  ScoutStatus,
   SuppressionReason,
   Tenure,
 } from "@prisma/client";
@@ -29,6 +30,7 @@ import {
   MailboxTypeEnum,
   MessageDirectionEnum,
   PropertyTypeEnum,
+  ScoutStatusEnum,
   SuppressionReasonEnum,
   TenureEnum,
 } from "@homescout/shared";
@@ -45,6 +47,7 @@ describe("Prisma <-> shared enum drift", () => {
     ["MessageDirection", MessageDirection, MessageDirectionEnum.options],
     ["SuppressionReason", SuppressionReason, SuppressionReasonEnum.options],
     ["EmailEventType", EmailEventType, EmailEventTypeEnum.options],
+    ["ScoutStatus", ScoutStatus, ScoutStatusEnum.options],
   ])("%s values match exactly", (_name, prismaEnum, sharedOptions) => {
     expect(Object.values(prismaEnum as Record<string, string>)).toEqual(
       sharedOptions,

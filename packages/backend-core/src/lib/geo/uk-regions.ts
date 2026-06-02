@@ -72,7 +72,7 @@ export function isSupportedRegion(name: string): boolean {
   return REGION_INDEX.has(normalise(name));
 }
 
-/** The canonical region names, sorted — for the campaign region picker (M8). */
+/** The canonical region names, sorted — for the scout region picker (M8). */
 export function supportedRegionNames(): string[] {
   return UK_REGIONS.map((r) => r.name).sort();
 }
