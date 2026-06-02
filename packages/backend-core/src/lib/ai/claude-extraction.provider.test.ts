@@ -7,10 +7,11 @@
  * attachment-block mapping.
  */
 import type Anthropic from "@anthropic-ai/sdk";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DefaultClaudeExtractionProvider,
   buildUserContent,
+  createAnthropicClient,
   stripCodeFence,
   type ClaudeExtractionConfig,
   type ExtractionError,
@@ -353,5 +354,25 @@ describe("ClaudeListingExtractionAdapter", () => {
     const call = create.mock.calls[0]![0] as { messages: Array<{ content: unknown[] }> };
     const content = call.messages[0]!.content;
     expect(content.some((b) => (b as { type: string }).type === "image")).toBe(true);
+  });
+});
+
+describe("createAnthropicClient (AI Gateway wiring)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("talks directly to Anthropic when the gateway env is unset", () => {
+    const client = createAnthropicClient(CONFIG);
+    expect(client.baseURL).toContain("api.anthropic.com");
+  });
+
+  it("routes through the AI Gateway base URL when CF_AI_GATEWAY_* is set", () => {
+    vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    const client = createAnthropicClient(CONFIG);
+    expect(client.baseURL).toContain(
+      "gateway.ai.cloudflare.com/v1/acc123/homescout/anthropic",
+    );
   });
 });
