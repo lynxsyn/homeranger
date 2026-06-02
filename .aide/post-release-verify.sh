@@ -70,13 +70,16 @@ log "VERIFY_MODE=app — waiting for homescout-api rollout …"
 K -n "$NS" rollout status deploy/homescout-api --timeout="${TIMEOUT}s" || fail "homescout-api not rolled out"
 
 # 5. HTTP /api/health + /api/version SHA-ancestry.
-probe() { # $1=path -> echoes body, returns curl exit
+probe() { # $1=path -> echoes body
   if [ -n "${VERIFY_API_BASE_URL:-}" ]; then
     curl -fsS ${CF_ACCESS_CLIENT_ID:+-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"} \
          ${CF_ACCESS_CLIENT_SECRET:+-H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"} \
          "${VERIFY_API_BASE_URL%/}$1"
   else
-    K -n "$NS" exec deploy/homescout-api -- sh -c "curl -fsS http://localhost:3000$1"
+    # In-cluster: the api runtime is node:alpine (busybox wget, no curl); use
+    # 127.0.0.1 (not localhost — alpine resolves localhost to ::1 (IPv6) while
+    # Fastify listens on IPv4 0.0.0.0).
+    K -n "$NS" exec deploy/homescout-api -c api -- wget -qO- "http://127.0.0.1:3000$1"
   fi
 }
 log "GET /api/health …"; probe /api/health >/dev/null || fail "/api/health not healthy"
