@@ -51,6 +51,36 @@ export default defineConfig({
         "packages/backend-core/src/repositories/agent.repository.ts",
         "packages/backend-core/src/repositories/outreach.repository.ts",
         "packages/backend-core/src/repositories/search-profile.repository.ts",
+        // M4 repositories — same Prisma-I/O rationale as the M2/M3 repos above
+        // (exercised by the integration project, not unit).
+        "packages/backend-core/src/repositories/email-event.repository.ts",
+        "packages/backend-core/src/repositories/suppression-entry.repository.ts",
+        // M4 queue layer — Redis I/O. The BullMQ client + connection + metrics
+        // are proven by the integration/E2E paths (the live worker consuming a
+        // real queue), not by unit tests, which would only mock Redis.
+        "packages/backend-core/src/lib/queue/queue-client.ts",
+        "packages/backend-core/src/lib/queue/queue-metrics.ts",
+        "packages/backend-core/src/lib/queue/redis-connection.ts",
+        "packages/backend-core/src/lib/queue/enqueue.ts",
+        // M4 R2 storage — S3/R2 network I/O (integration/E2E-proven).
+        "packages/backend-core/src/lib/storage/r2.ts",
+        // M4 inbound seams — the hydrator interface + env-gated fakes are
+        // exercised end-to-end by the E2E inbound spec (RESEND_FAKE path); the
+        // adapter does unpdf file-I/O. All proven by E2E, not unit.
+        "packages/backend-core/src/lib/inbound/resend-hydrator.ts",
+        "packages/backend-core/src/lib/ai/listing-extraction.adapter.ts",
+        "packages/backend-core/src/lib/ai/fake-extraction.provider.ts",
+        // M4 inbound-ingestion service — orchestration around a runTransaction;
+        // proven by the inbound-ingestion integration test (real pgvector) +
+        // the E2E inbound spec, like the repository layer above. Its dedup /
+        // extraction branching is unit-covered via dedup.service + the Claude
+        // extraction provider tests.
+        "packages/backend-core/src/services/inbound-ingestion.service.ts",
+        // M4 processor — side-effecting BullMQ worker bootstrap (DB + Redis +
+        // metrics server). Proven by the E2E inbound spec (the live worker
+        // consuming a real queue), not unit. Same rationale as apps/api/main.ts.
+        "apps/processor/src/worker.ts",
+        "apps/processor/src/resend-hydrator.ts",
       ],
       thresholds: {
         // Floor with deliberate HEADROOM, not floor(measured). Measured M3 is

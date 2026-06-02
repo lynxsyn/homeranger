@@ -25,12 +25,27 @@ const DATABASE_URL = process.env.DATABASE_URL ?? DEFAULT_DB_URL;
 const MIGRATION_DATABASE_URL =
   process.env.MIGRATION_DATABASE_URL ?? DATABASE_URL;
 
+// Local docker redis (docker-compose.dev.yaml — no password); CI sets REDIS_URL
+// to its service container. The M4 inbound webhook E2E needs the BullMQ worker
+// running to consume outreach:inbound and upsert the Listing.
+const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
+// A deterministic Svix signing secret the inbound webhook route verifies
+// against; the spec signs its POST with the SAME value. Test-only (exported so
+// the spec can import it).
+export const E2E_RESEND_INBOUND_SECRET =
+  process.env.RESEND_INBOUND_WEBHOOK_SECRET ??
+  "whsec_aG9tZXNjb3V0LWUyZS1pbmJvdW5kLXNlY3JldA==";
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
   expect: { timeout: 10_000 },
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Single worker — the specs share one pgvector DB; parallel workers would race
+  // (a concurrent M4 inbound write would change the M3 row count mid-assertion).
+  // The M4 inbound spec also cleans up its own row in afterAll so the seeded set
+  // is restored. (CI already ran single-worker.)
+  workers: 1,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
   use: {
     baseURL: E2E_BASE_URL,
@@ -53,8 +68,32 @@ export default defineConfig({
       env: {
         DATABASE_URL,
         MIGRATION_DATABASE_URL,
+        REDIS_URL,
         DEV_USER_EMAIL: "dev@homescout.local",
+        // The inbound webhook route verifies Svix signatures against this; the
+        // M4 spec signs its POST with the same value.
+        RESEND_INBOUND_WEBHOOK_SECRET: E2E_RESEND_INBOUND_SECRET,
+        RESEND_WEBHOOK_SECRET: E2E_RESEND_INBOUND_SECRET,
         // CF_ACCESS_TEAM_DOMAIN / CF_ACCESS_AUD intentionally UNSET → dev bypass.
+        NODE_ENV: "development",
+      },
+    },
+    {
+      // M4 BullMQ worker — consumes outreach:inbound and upserts the Listing.
+      // RESEND_FAKE + EXTRACTION_FAKE keep it network-free (no real Resend /
+      // Anthropic calls): the fake hydrator derives a body from the webhook
+      // metadata and the fake extractor parses the address/price from the
+      // subject. /health on :9090 gates readiness.
+      command: "pnpm --filter @homescout/processor e2e:worker",
+      port: 9090,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      env: {
+        DATABASE_URL,
+        REDIS_URL,
+        METRICS_PORT: "9090",
+        RESEND_FAKE: "1",
+        EXTRACTION_FAKE: "1",
         NODE_ENV: "development",
       },
     },
