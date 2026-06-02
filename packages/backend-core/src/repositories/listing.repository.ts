@@ -24,9 +24,7 @@ import { prisma } from "../lib/prisma.js";
 import type { ListingSortField, SortDirection } from "@homescout/shared";
 import {
   clampLimit,
-  decodeCursor,
   decodeCompositeCursor,
-  encodeCursor,
   encodeCompositeCursor,
   type CompositeCursorPayload,
   type CursorPage,
@@ -199,14 +197,68 @@ export function toVectorLiteral(embedding: number[]): string {
   return `[${embedding.join(",")}]`;
 }
 
-function buildCursorFilter(
-  cursor: { id: string },
-  dir: "asc" | "desc" = "desc",
-): Prisma.ListingWhereInput {
-  // Keyset on the uuid(7) primary key — time-sortable, unique, exact, so it
-  // equals firstSeen/creation order with no timestamp-precision risk. Honours
-  // the requested direction: DESC → id < cursor (newest-first), ASC → id >.
-  return { id: { [dir === "asc" ? "gt" : "lt"]: cursor.id } };
+/**
+ * Raw filter fragments for the combinedScore list path, qualified with the
+ * `l.` (Listing) alias so they are unambiguous across the LEFT JOIN to
+ * ListingScore (`id`/`createdAt`/`updatedAt` exist on both tables). No embedding
+ * constraint (unlike `buildRawFilterFragments`, which is vectorTopK-only).
+ */
+function buildScoreFilterFragments(filter?: ListingFilter): Prisma.Sql[] {
+  const fragments: Prisma.Sql[] = [];
+  if (!filter) {
+    return fragments;
+  }
+  if (filter.outcodes && filter.outcodes.length > 0) {
+    fragments.push(
+      Prisma.sql`l."outcode" = ANY(ARRAY[${Prisma.join(filter.outcodes)}]::text[])`,
+    );
+  }
+  if (filter.minPricePence !== undefined) {
+    fragments.push(Prisma.sql`l."pricePence" >= ${filter.minPricePence}`);
+  }
+  if (filter.maxPricePence !== undefined) {
+    fragments.push(Prisma.sql`l."pricePence" <= ${filter.maxPricePence}`);
+  }
+  if (filter.minBedrooms !== undefined) {
+    fragments.push(Prisma.sql`l."bedrooms" >= ${filter.minBedrooms}`);
+  }
+  if (filter.listingStatus !== undefined) {
+    fragments.push(
+      Prisma.sql`l."listingStatus" = ${filter.listingStatus}::"ListingStatus"`,
+    );
+  }
+  if (filter.isPreMarket !== undefined) {
+    fragments.push(Prisma.sql`l."isPreMarket" = ${filter.isPreMarket}`);
+  }
+  return fragments;
+}
+
+/**
+ * Composite keyset predicate for `combinedScore <dir> NULLS LAST, id <dir>`.
+ * Mirrors the price nullable keyset but for a LEFT-JOINed, NULLS-LAST score:
+ *
+ *   non-null boundary v (DESC): combinedScore < v
+ *                               OR (combinedScore = v AND id < lastId)
+ *                               OR combinedScore IS NULL   (NULLs trail → still ahead)
+ *   non-null boundary v (ASC):  combinedScore > v
+ *                               OR (combinedScore = v AND id > lastId)
+ *                               OR combinedScore IS NULL
+ *   NULL boundary (DESC): combinedScore IS NULL AND id < lastId  (every non-null already emitted)
+ *   NULL boundary (ASC):  combinedScore IS NULL AND id > lastId
+ */
+function buildScoreCursorFragment(
+  cursor: CompositeCursorPayload,
+  dir: "asc" | "desc",
+): Prisma.Sql {
+  if (cursor.scoreIsNull) {
+    return dir === "asc"
+      ? Prisma.sql`ls."combinedScore" IS NULL AND l."id" > ${cursor.id}::uuid`
+      : Prisma.sql`ls."combinedScore" IS NULL AND l."id" < ${cursor.id}::uuid`;
+  }
+  const v = cursor.sortValue as number;
+  return dir === "asc"
+    ? Prisma.sql`(ls."combinedScore" > ${v} OR (ls."combinedScore" = ${v} AND l."id" > ${cursor.id}::uuid) OR ls."combinedScore" IS NULL)`
+    : Prisma.sql`(ls."combinedScore" < ${v} OR (ls."combinedScore" = ${v} AND l."id" < ${cursor.id}::uuid) OR ls."combinedScore" IS NULL)`;
 }
 
 /** The Prisma scalar column a non-default sort orders by. */
@@ -341,9 +393,9 @@ export class ListingRepository {
    * nextCursor }`, default 20 / max 100.
    *
    * Sort (M3 AC#2 — applied in the repository, never in memory):
-   *   - `combinedScore` (default): id-only keyset (DESC). combinedScore lives on
-   *     the ListingScore relation which arrives M5; until then this is a stable
-   *     fallback order, documented so M5 only changes this body, not the wire.
+   *   - `combinedScore` (default, M5): LEFT JOIN ListingScore, order by
+   *     `combinedScore <dir> NULLS LAST, id <dir>` via raw SQL (`listByCombinedScore`)
+   *     — unscored listings trail. Keyset over (combinedScore, id).
    *   - `price` / `lastSeenAt`: ordered by `[{column: dir}, {id: dir}]` with a
    *     COMPOSITE keyset cursor `{ sortValue, id }` so sorted pagination across
    *     pages has no skip and no overlap even on tied values.
@@ -355,26 +407,11 @@ export class ListingRepository {
     const dir = input.sort?.sortDir ?? "desc";
 
     if (column === null) {
-      // Default / combinedScore path: id-only keyset. combinedScore lives on
-      // the ListingScore relation (M5); until then the id keyset is a stable
-      // fallback order. It honours sortDir (asc/desc) so a client requesting
-      // combinedScore+asc is not silently served desc — the id-keyset shape is
-      // unchanged; M5 swaps in the real combinedScore ordering here.
-      const cursorFilter = input.cursor
-        ? buildCursorFilter(decodeCursor(input.cursor), dir)
-        : {};
-      const rows = await prisma.listing.findMany({
-        where: { ...where, ...cursorFilter },
-        orderBy: [{ id: dir }],
-        take: limit + 1,
-        select: LISTING_SELECT,
-      });
-      if (rows.length <= limit) {
-        return { items: rows, nextCursor: null };
-      }
-      const items = rows.slice(0, limit);
-      const last = items[items.length - 1]!;
-      return { items, nextCursor: encodeCursor({ id: last.id }) };
+      // combinedScore path (M5): LEFT JOIN ListingScore and order by
+      // `combinedScore <dir> NULLS LAST, id <dir>` so unscored listings always
+      // trail. Prisma can't orderBy a to-many relation field, so this is raw SQL
+      // (the same pattern as vectorTopK), keyset-paginated over (combinedScore, id).
+      return this.listByCombinedScore(input.filter, input.cursor, dir, limit);
     }
 
     // Sorted path: composite (column, id) keyset.
@@ -581,6 +618,100 @@ export class ListingRepository {
       ...(listing as ListingRecord),
       distance: Number(distance),
     }));
+  }
+
+  /**
+   * combinedScore-ordered page (M5 AC#7 — the listings table's default sort).
+   * LEFT JOINs ListingScore so unscored listings appear (with NULL score,
+   * ordered LAST), and keysets over (combinedScore, id). Raw SQL because Prisma
+   * cannot orderBy a to-many relation field. Columns are `l.`-qualified
+   * (id/createdAt/updatedAt collide across the join) and projected to match
+   * `LISTING_SELECT` exactly, so the returned rows ARE `ListingRecord`s.
+   */
+  private async listByCombinedScore(
+    filter: ListingFilter | undefined,
+    cursor: string | undefined,
+    dir: "asc" | "desc",
+    limit: number,
+  ): Promise<CursorPage<ListingRecord>> {
+    const fragments = buildScoreFilterFragments(filter);
+    if (cursor) {
+      fragments.push(
+        buildScoreCursorFragment(decodeCompositeCursor(cursor), dir),
+      );
+    }
+    const whereSql =
+      fragments.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(fragments, " AND ")}`
+        : Prisma.empty;
+    const orderBySql =
+      dir === "asc"
+        ? Prisma.sql`ORDER BY ls."combinedScore" ASC NULLS LAST, l."id" ASC`
+        : Prisma.sql`ORDER BY ls."combinedScore" DESC NULLS LAST, l."id" DESC`;
+
+    const rows = await prisma.$queryRaw<
+      Array<
+        Omit<ListingRecord, "id"> & {
+          id: string;
+          combinedScore: number | string | null;
+        }
+      >
+    >(Prisma.sql`
+      SELECT
+        l."id"::text AS "id",
+        l."addressNormalized",
+        l."postcode",
+        l."outcode",
+        l."pricePence",
+        l."bedrooms",
+        l."tenure",
+        l."propertyType",
+        l."epcRating",
+        l."listingStatus",
+        l."isPreMarket",
+        l."listingUrl",
+        l."primarySource",
+        l."firstSeenAt",
+        l."lastSeenAt",
+        l."createdAt",
+        l."updatedAt",
+        ls."combinedScore" AS "combinedScore"
+      FROM "Listing" l
+      LEFT JOIN "ListingScore" ls ON ls."listingId" = l."id"
+      ${whereSql}
+      ${orderBySql}
+      LIMIT ${limit + 1}
+    `);
+
+    if (rows.length <= limit) {
+      return {
+        items: rows.map(({ combinedScore: _combinedScore, ...listing }) => listing as ListingRecord),
+        nextCursor: null,
+      };
+    }
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1]!;
+    const items = page.map(
+      ({ combinedScore: _combinedScore, ...listing }) => listing as ListingRecord,
+    );
+    const payload: CompositeCursorPayload =
+      last.combinedScore === null
+        ? { sortValue: 0, id: last.id, scoreIsNull: true }
+        : { sortValue: Number(last.combinedScore), id: last.id };
+    return { items, nextCursor: encodeCompositeCursor(payload) };
+  }
+
+  /**
+   * Every listing id (newest-first). Backs the M5 preferences "backfill" trigger
+   * — when the SearchProfile changes, the router re-enqueues analyze:listing for
+   * each id so scores are recomputed against the new preferences.
+   */
+  async listAllIds(): Promise<string[]> {
+    const rows = await prisma.listing.findMany({
+      select: { id: true },
+      orderBy: [{ id: "desc" }],
+    });
+    return rows.map((r) => r.id);
   }
 }
 
