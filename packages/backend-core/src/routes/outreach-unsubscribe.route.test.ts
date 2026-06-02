@@ -94,4 +94,17 @@ describe("POST /api/outreach/unsubscribe", () => {
     expect(repos.closeThreadsByAgent).toHaveBeenCalledWith("agent-1");
     await app.close();
   });
+
+  it("500s (no unhandled throw) when a write fails — graceful degradation", async () => {
+    const repos = stubRepos("agent-1");
+    repos.suppress.mockRejectedValue(new Error("db down"));
+    const token = signUnsubscribeToken(EMAIL);
+    const app = await makeApp();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/outreach/unsubscribe?email=${encodeURIComponent(EMAIL)}&token=${encodeURIComponent(token)}`,
+    });
+    expect(res.statusCode).toBe(500);
+    await app.close();
+  });
 });

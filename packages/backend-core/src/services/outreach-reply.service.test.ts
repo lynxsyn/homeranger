@@ -94,19 +94,32 @@ describe("OutreachReplyService.linkReply", () => {
     expect(h.createInboundMessageOrIgnore).not.toHaveBeenCalled();
   });
 
-  it("a normal reply does NOT suppress the agent", async () => {
+  it("linkReply does NOT suppress (suppression is handleOptOut's job)", async () => {
     const h = makeHarness(true);
     await h.service.linkReply(PAYLOAD, RESULT);
     expect(h.suppress).not.toHaveBeenCalled();
     expect(h.markOptedOut).not.toHaveBeenCalled();
   });
 
-  it("an inbound STOP reply suppresses + opts out + closes threads (AC#5 backup)", async () => {
+  it("linkReply closes the thread (cosmetic) when the reply is a STOP", async () => {
     const h = makeHarness(true);
     await h.service.linkReply(
       { ...PAYLOAD, bodyText: "Please unsubscribe me, thanks" },
       RESULT,
     );
+    expect(h.closeThreadsByAgent).toHaveBeenCalledWith("agent-1");
+    // The durable suppression is NOT linkReply's responsibility.
+    expect(h.suppress).not.toHaveBeenCalled();
+  });
+});
+
+describe("OutreachReplyService.handleOptOut (durable, non-swallowed)", () => {
+  it("a STOP reply suppresses + opts out the sender (email-keyed, no thread dep)", async () => {
+    const h = makeHarness(true);
+    await h.service.handleOptOut({
+      ...PAYLOAD,
+      bodyText: "STOP",
+    });
     expect(h.suppress).toHaveBeenCalledWith(
       expect.objectContaining({
         email: PAYLOAD.senderEmail,
@@ -114,7 +127,13 @@ describe("OutreachReplyService.linkReply", () => {
       }),
     );
     expect(h.markOptedOut).toHaveBeenCalledWith(PAYLOAD.senderEmail);
-    expect(h.closeThreadsByAgent).toHaveBeenCalledWith("agent-1");
+  });
+
+  it("a normal reply is a no-op", async () => {
+    const h = makeHarness(true);
+    await h.service.handleOptOut(PAYLOAD);
+    expect(h.suppress).not.toHaveBeenCalled();
+    expect(h.markOptedOut).not.toHaveBeenCalled();
   });
 });
 

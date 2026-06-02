@@ -129,25 +129,53 @@ describe("makeInboundHandler — retry classification", () => {
   });
 });
 
-describe("makeInboundHandler — M6 reply linking", () => {
-  it("links the reply after a successful ingest (passes hydrated + result)", async () => {
+describe("makeInboundHandler — M6 opt-out + reply linking", () => {
+  it("runs handleOptOut, then links the reply after a successful ingest", async () => {
+    const handleOptOut = vi.fn().mockResolvedValue(undefined);
     const linkReply = vi.fn().mockResolvedValue(undefined);
     const handler = makeInboundHandler({
       hydrator: okHydrator,
       inboundIngestionService: ingestionOk(),
-      outreachReplyService: { linkReply } as unknown as OutreachReplyService,
+      outreachReplyService: {
+        handleOptOut,
+        linkReply,
+      } as unknown as OutreachReplyService,
     });
     await handler(job());
-    expect(linkReply).toHaveBeenCalledTimes(1);
+    expect(handleOptOut).toHaveBeenCalledTimes(1);
     expect(linkReply.mock.calls[0]![1]).toEqual(INGEST_RESULT);
   });
 
-  it("swallows a reply-link failure (best-effort — does not fail the job)", async () => {
+  it("does NOT swallow a handleOptOut failure — the compliance opt-out must retry (and ingest is skipped, no Claude re-bill)", async () => {
+    const boom = new Error("db blip");
+    const handleOptOut = vi.fn().mockRejectedValue(boom);
+    const ingest = vi.fn();
+    const linkReply = vi.fn();
+    const handler = makeInboundHandler({
+      hydrator: okHydrator,
+      inboundIngestionService: {
+        ingestInboundEmail: ingest,
+      } as unknown as InboundIngestionService,
+      outreachReplyService: {
+        handleOptOut,
+        linkReply,
+      } as unknown as OutreachReplyService,
+    });
+    await expect(handler(job())).rejects.toBe(boom);
+    expect(ingest).not.toHaveBeenCalled();
+    expect(linkReply).not.toHaveBeenCalled();
+  });
+
+  it("swallows a reply-LINK failure (best-effort — does not fail the job)", async () => {
+    const handleOptOut = vi.fn().mockResolvedValue(undefined);
     const linkReply = vi.fn().mockRejectedValue(new Error("link blip"));
     const handler = makeInboundHandler({
       hydrator: okHydrator,
       inboundIngestionService: ingestionOk(),
-      outreachReplyService: { linkReply } as unknown as OutreachReplyService,
+      outreachReplyService: {
+        handleOptOut,
+        linkReply,
+      } as unknown as OutreachReplyService,
     });
     await expect(handler(job())).resolves.toBeUndefined();
     expect(linkReply).toHaveBeenCalledTimes(1);

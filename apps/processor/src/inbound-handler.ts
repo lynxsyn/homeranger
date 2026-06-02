@@ -44,6 +44,13 @@ export function makeInboundHandler(deps: InboundHandlerDeps) {
   }): Promise<void> {
     try {
       const hydrated = await deps.hydrator.hydrate(job.data);
+      // M6 AC#5 — compliance opt-out FIRST, BEFORE billing Claude. A STOP/
+      // unsubscribe reply MUST suppress; this is NOT swallowed, so a transient
+      // failure retries the job (handleOptOut is idempotent + runs pre-ingestion,
+      // so a retry does not re-bill the extractor). No-op for a normal reply.
+      if (deps.outreachReplyService) {
+        await deps.outreachReplyService.handleOptOut(hydrated);
+      }
       const result =
         await deps.inboundIngestionService.ingestInboundEmail(hydrated);
       // M6 AC#4 — link the reply to its OutreachThread (best-effort: the

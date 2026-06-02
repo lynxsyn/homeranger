@@ -48,6 +48,15 @@ export function isUnsubscribeIntent(bodyText: string | null): boolean {
 }
 
 export interface OutreachReplyService {
+  /**
+   * Compliance-critical opt-out (AC#5 backup). If the inbound reply is a
+   * STOP/unsubscribe, write SuppressionEntry(unsubscribe) + Agent.optedOut.
+   * MUST be called on the NON-swallowed path (a dropped opt-out would let a
+   * later follow-up send to someone who replied STOP). Idempotent + email-keyed
+   * (no thread/agent dependency), so a transient failure retries cleanly.
+   */
+  handleOptOut(payload: InboundEmailPayload): Promise<void>;
+  /** Best-effort thread linking (persist inbound message + advance status). */
   linkReply(
     payload: InboundEmailPayload,
     result: IngestInboundEmailResult,
@@ -71,6 +80,24 @@ export class DefaultOutreachReplyService implements OutreachReplyService {
       deps.outreachRepository ?? defaultOutreachRepository;
     this.suppressionEntryRepository =
       deps.suppressionEntryRepository ?? defaultSuppressionEntryRepository;
+  }
+
+  async handleOptOut(payload: InboundEmailPayload): Promise<void> {
+    if (!isUnsubscribeIntent(payload.bodyText)) {
+      return;
+    }
+    // Email-keyed + idempotent — works even if the sender is not (yet) a tracked
+    // agent. The guard gates on the PERSISTED suppression/opt-out at every send.
+    await this.suppressionEntryRepository.suppress({
+      email: payload.senderEmail,
+      reason: "unsubscribe",
+      note: "inbound STOP/unsubscribe reply",
+    });
+    await this.agentRepository.markOptedOut(payload.senderEmail);
+    // No PII in the log — the opt-out is keyed by email but never logged.
+    console.info(
+      JSON.stringify({ type: "info", scope: "outreach.reply.unsubscribed" }),
+    );
   }
 
   async linkReply(
@@ -104,21 +131,16 @@ export class DefaultOutreachReplyService implements OutreachReplyService {
       at: payload.receivedAt,
     });
 
-    // Backup opt-out path (AC#5): an inbound "STOP"/unsubscribe reply suppresses
-    // the sender + opts the agent out + closes their threads — same permanent
-    // effect as the one-click link. Idempotent.
+    // If this reply was a STOP/unsubscribe, close the thread (COSMETIC — the
+    // durable suppression + opt-out already happened in handleOptOut on the
+    // non-swallowed path; the guard blocks future sends regardless of thread
+    // status, so a swallowed close here is harmless).
     if (isUnsubscribeIntent(payload.bodyText)) {
-      await this.suppressionEntryRepository.suppress({
-        email: payload.senderEmail,
-        reason: "unsubscribe",
-        note: "inbound STOP/unsubscribe reply",
-      });
-      await this.agentRepository.markOptedOut(payload.senderEmail);
       await this.outreachRepository.closeThreadsByAgent(agent.id);
       console.info(
         JSON.stringify({
           type: "info",
-          scope: "outreach.reply.unsubscribed",
+          scope: "outreach.reply.closed",
           agentId: agent.id,
           threadId: thread.id,
         }),
