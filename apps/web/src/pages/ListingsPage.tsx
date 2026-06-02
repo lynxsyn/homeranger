@@ -273,11 +273,77 @@ function ListingRowGroup({
       {isExpanded ? (
         <tr id={detailsId} data-testid="listing-details">
           <td colSpan={COLUMN_COUNT}>
-            {/* Placeholder — photo features + score rationale wired in M5. */}
-            Photo features and match score arrive in M5.
+            <ListingDetails id={row.id} />
           </td>
         </tr>
       ) : null}
     </>
   );
+}
+
+/**
+ * Row-expand detail (M5 AC#7): the AI match score + rationale and each analysed
+ * photo's taste score + detected features. Mounted only while the row is open,
+ * so the `expand` query fires on demand.
+ */
+function ListingDetails({ id }: { id: string }) {
+  const { data, isLoading, isError } = trpc.listings.expand.useQuery({ id });
+
+  if (isLoading) {
+    return <span>Loading analysis…</span>;
+  }
+  if (isError || !data) {
+    return <span role="alert">Couldn&apos;t load analysis.</span>;
+  }
+
+  const hasScore = data.combinedScore !== null;
+
+  return (
+    <div className="listing-details">
+      {hasScore ? (
+        <p data-testid="match-score">
+          Match score: {Math.round((data.combinedScore ?? 0) * 100)} / 100
+        </p>
+      ) : (
+        <p data-testid="match-score-pending">Not analysed yet.</p>
+      )}
+
+      {data.scoreRationale ? (
+        <p data-testid="score-rationale">{data.scoreRationale}</p>
+      ) : null}
+
+      {data.photos.length > 0 ? (
+        <ul data-testid="photo-features">
+          {data.photos.map((photo, index) => (
+            <li key={photo.imageUrl ?? index} data-testid="photo-feature">
+              <span data-col="taste-score">
+                Taste: {photo.tasteScore ?? "—"}/100
+              </span>
+              {formatFeatures(photo.features) ? (
+                <span data-col="features"> · {formatFeatures(photo.features)}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** Render a photo's feature object as a compact, human-readable string. */
+function formatFeatures(features: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(features)) {
+    if (value === null || value === undefined || value === "") {
+      continue;
+    }
+    if (Array.isArray(value)) {
+      if (value.length > 0) {
+        parts.push(`${key}: ${value.join(", ")}`);
+      }
+    } else {
+      parts.push(`${key}: ${String(value)}`);
+    }
+  }
+  return parts.join(" · ");
 }

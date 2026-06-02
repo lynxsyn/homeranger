@@ -37,6 +37,7 @@ import {
   queueMetricsRegistry,
 } from "@homescout/backend-core/lib/queue/queue-metrics";
 import { extractionMetricsRegistry } from "@homescout/backend-core/lib/ai/claude-extraction.provider";
+import { analysisMetricsRegistry } from "@homescout/backend-core/lib/ai/analysis-metrics";
 import { ClaudeListingExtractionAdapter } from "@homescout/backend-core/lib/ai/listing-extraction.adapter";
 import { FakeListingExtractionProvider } from "@homescout/backend-core/lib/ai/fake-extraction.provider";
 import { FakeResendHydrator } from "@homescout/backend-core/lib/inbound/resend-hydrator";
@@ -49,8 +50,25 @@ import { enqueueAnalyzeListing } from "@homescout/backend-core/lib/queue/queue-c
 import type {
   ResendHydrator,
 } from "@homescout/backend-core/lib/inbound/resend-hydrator";
+// M5 analysis pipeline wiring (real providers vs ANALYSIS_FAKE seam).
+import { DefaultClaudeVisionScorer } from "@homescout/backend-core/lib/ai/vision-scorer.provider";
+import { FakeVisionScorer } from "@homescout/backend-core/lib/ai/fake-vision-scorer.provider";
+import { VoyageEmbeddingProvider } from "@homescout/backend-core/lib/ai/embedding-provider";
+import { FakeEmbeddingProvider } from "@homescout/backend-core/lib/ai/fake-embedding.provider";
+import { DefaultClaudeMatchScorer } from "@homescout/backend-core/lib/ai/match-scorer.provider";
+import { FakeMatchScorer } from "@homescout/backend-core/lib/ai/fake-match-scorer.provider";
+import { R2PhotoSource } from "@homescout/backend-core/lib/ai/r2-photo-source.provider";
+import { FakePhotoSource } from "@homescout/backend-core/lib/ai/fake-photo-source.provider";
+import type { VisionScorer } from "@homescout/backend-core/lib/ai/vision-scorer.provider";
+import type { EmbeddingProvider } from "@homescout/backend-core/lib/ai/embedding-provider";
+import type { MatchScorer } from "@homescout/backend-core/lib/ai/match-scorer.provider";
+import type { PhotoSource } from "@homescout/backend-core/lib/ai/photo-source";
+import { getPreferenceMatchService } from "@homescout/backend-core/services/preference-match.service";
+import { getListingAnalysisService } from "@homescout/backend-core/services/listing-analysis.service";
 import { RealResendHydrator } from "./resend-hydrator.js";
 import { makeInboundHandler } from "./inbound-handler.js";
+import { makeAnalyzeHandler } from "./analyze-handler.js";
+import { makeRecomputeHandler } from "./recompute-handler.js";
 
 const metricsPort = Number(process.env.METRICS_PORT ?? 9090);
 const metricsHost = process.env.METRICS_HOST ?? "0.0.0.0";
@@ -95,6 +113,43 @@ const inboundIngestionService = new DefaultInboundIngestionService({
   },
 });
 
+// ── Wire the M5 analysis pipeline (real providers vs ANALYSIS_FAKE seam) ─────
+// ANALYSIS_FAKE=1 swaps every LLM/embedding/photo dependency for the
+// deterministic, network-free fakes (E2E/CI never call Anthropic/Voyage/R2);
+// VISION_FAKE / EMBEDDING_FAKE / MATCH_FAKE allow per-provider overrides.
+const useFakeAnalysis = process.env.ANALYSIS_FAKE === "1";
+
+const visionScorer: VisionScorer =
+  useFakeAnalysis || process.env.VISION_FAKE === "1"
+    ? new FakeVisionScorer()
+    : new DefaultClaudeVisionScorer();
+
+const embeddingProvider: EmbeddingProvider =
+  useFakeAnalysis || process.env.EMBEDDING_FAKE === "1"
+    ? new FakeEmbeddingProvider()
+    : new VoyageEmbeddingProvider();
+
+const matchScorer: MatchScorer =
+  useFakeAnalysis || process.env.MATCH_FAKE === "1"
+    ? new FakeMatchScorer()
+    : new DefaultClaudeMatchScorer();
+
+const photoSource: PhotoSource = useFakeAnalysis
+  ? new FakePhotoSource()
+  : new R2PhotoSource();
+
+const preferenceMatchService = getPreferenceMatchService({
+  embeddingProvider,
+  matchScorer,
+});
+
+const listingAnalysisService = getListingAnalysisService({
+  visionScorer,
+  embeddingProvider,
+  photoSource,
+  preferenceMatchService,
+});
+
 // ── BullMQ consumer: one processor per queue ────────────────────────────────
 const queueClient = new BullMQQueueClient();
 
@@ -116,18 +171,19 @@ queueClient.registerProcessor(QUEUE_NAMES.event, async (job) => {
   });
 });
 
-queueClient.registerProcessor(QUEUE_NAMES.analyze, async (job) => {
-  // NO-OP until M5. Log + ack so the queue drains; M5 replaces this with the
-  // scoring pipeline.
-  console.info(
-    JSON.stringify({
-      type: "info",
-      scope: "analyze.listing.noop",
-      jobId: job.id ?? null,
-      listingId: job.data.listingId ?? null,
-    }),
-  );
-});
+queueClient.registerProcessor(
+  QUEUE_NAMES.analyze,
+  makeAnalyzeHandler({ listingAnalysisService }),
+  // Vision + embed + per-listing re-score can exceed the 30s default lock.
+  { lockDuration: 180_000 },
+);
+
+queueClient.registerProcessor(
+  QUEUE_NAMES.recompute,
+  makeRecomputeHandler({ preferenceMatchService }),
+  // Top-K LLM re-score can exceed the 30s default lock — extend it.
+  { lockDuration: 180_000 },
+);
 
 // ── Probe + metrics HTTP server (started LAST, after DB + Redis are healthy) ─
 const metricsServer = http.createServer((request, response) => {
@@ -199,7 +255,11 @@ async function handleHttpRequest(
   if (request.method === "GET" && request.url === "/metrics") {
     try {
       await collectQueueMetrics(queueClient);
-      const merged = `${await queueMetricsRegistry.metrics()}\n${await extractionMetricsRegistry.metrics()}`;
+      const merged = [
+        await queueMetricsRegistry.metrics(),
+        await extractionMetricsRegistry.metrics(),
+        await analysisMetricsRegistry.metrics(),
+      ].join("\n");
       response.writeHead(200, { "content-type": queueMetricsRegistry.contentType });
       response.end(merged);
     } catch (error) {

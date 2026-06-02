@@ -94,6 +94,10 @@ export default defineConfig({
         METRICS_PORT: "9090",
         RESEND_FAKE: "1",
         EXTRACTION_FAKE: "1",
+        // M5: deterministic, network-free analysis (no Anthropic/Voyage/R2). The
+        // fake vision/embedding/match/photo providers drive PhotoAnalysis +
+        // Listing.embedding + ListingScore so the row-expand renders real data.
+        ANALYSIS_FAKE: "1",
         NODE_ENV: "development",
       },
     },

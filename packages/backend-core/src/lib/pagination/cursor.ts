@@ -108,6 +108,14 @@ export interface CompositeCursorPayload {
   id: string;
   /** True when the boundary row's pricePence is NULL (price sort only). */
   priceIsNull?: boolean;
+  /**
+   * True when the boundary row has NO ListingScore, i.e. its combinedScore is
+   * NULL (combinedScore sort only, M5). The combinedScore path orders
+   * `combinedScore DESC NULLS LAST, id DESC` via raw SQL, so this flag drives
+   * the same null-boundary keyset branching that `priceIsNull` does for price.
+   * `sortValue` is a harmless `0` when this is true.
+   */
+  scoreIsNull?: boolean;
 }
 
 /** Encode a composite `{ sortValue, id }` keyset cursor as opaque base64. */
@@ -144,10 +152,15 @@ export function decodeCompositeCursor(cursor: string): CompositeCursorPayload {
   if (rawPriceIsNull !== undefined && typeof rawPriceIsNull !== "boolean") {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid cursor" });
   }
+  const rawScoreIsNull = (parsed as { scoreIsNull?: unknown }).scoreIsNull;
+  if (rawScoreIsNull !== undefined && typeof rawScoreIsNull !== "boolean") {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid cursor" });
+  }
   return {
     sortValue,
     id: (parsed as { id: string }).id,
     ...(rawPriceIsNull === true ? { priceIsNull: true } : {}),
+    ...(rawScoreIsNull === true ? { scoreIsNull: true } : {}),
   };
 }
 

@@ -81,6 +81,21 @@ export default defineConfig({
         // consuming a real queue), not unit. Same rationale as apps/api/main.ts.
         "apps/processor/src/worker.ts",
         "apps/processor/src/resend-hydrator.ts",
+        // M5 analysis — env-gated deterministic fakes (E2E/CI seam) + the
+        // R2-backed photo source (R2 network + crypto I/O). Proven by the
+        // ai-analysis E2E + the analyze integration test, not unit (same
+        // rationale as the M4 hydrator + fake-extraction provider above).
+        "packages/backend-core/src/lib/ai/fake-vision-scorer.provider.ts",
+        "packages/backend-core/src/lib/ai/fake-embedding.provider.ts",
+        "packages/backend-core/src/lib/ai/fake-match-scorer.provider.ts",
+        "packages/backend-core/src/lib/ai/fake-photo-source.provider.ts",
+        "packages/backend-core/src/lib/ai/r2-photo-source.provider.ts",
+        // M5 analysis repositories — Prisma I/O, exercised by the analyze +
+        // combinedScore integration tests (same rationale as the M2/M3/M4 repos).
+        "packages/backend-core/src/repositories/photo-analysis.repository.ts",
+        "packages/backend-core/src/repositories/listing-score.repository.ts",
+        // M5 backfill — Redis enqueue I/O (same rationale as the queue layer).
+        "packages/backend-core/src/lib/queue/analyze-backfill.ts",
       ],
       thresholds: {
         // Floor with deliberate HEADROOM, not floor(measured). Measured M3 is

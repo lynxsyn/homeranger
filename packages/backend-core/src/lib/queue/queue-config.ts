@@ -22,6 +22,7 @@ export const QUEUE_NAMES = {
   inbound: "outreach:inbound",
   event: "resend:event",
   analyze: "analyze:listing",
+  recompute: "analyze:recompute",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -31,6 +32,7 @@ export const JOB_TYPES = [
   QUEUE_NAMES.inbound,
   QUEUE_NAMES.event,
   QUEUE_NAMES.analyze,
+  QUEUE_NAMES.recompute,
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
@@ -83,15 +85,27 @@ export interface ResendEventJobPayload {
   };
 }
 
-/** `analyze:listing` payload — handler is M5; until then a no-op consumer. */
+/** `analyze:listing` payload — score one listing's photos + embed + match. */
 export interface AnalyzeListingJobPayload {
   listingId: string;
+}
+
+/**
+ * `analyze:recompute` payload — the profile-driven top-K re-rank (AC#3).
+ * Enqueued ONCE by the preferences backfill trigger when the SearchProfile
+ * changes (not per listing), so the cost is bounded to the top-K re-score.
+ * Carries no fields (the single SearchProfile is the implicit subject);
+ * `reason` is optional log/trace context.
+ */
+export interface AnalyzeRecomputeJobPayload {
+  reason?: string;
 }
 
 export interface JobPayloadByType {
   "outreach:inbound": InboundEmailJobPayload;
   "resend:event": ResendEventJobPayload;
   "analyze:listing": AnalyzeListingJobPayload;
+  "analyze:recompute": AnalyzeRecomputeJobPayload;
 }
 
 export interface RetryPolicy {
@@ -115,6 +129,12 @@ export const RETRY_POLICIES: Record<QueueName, RetryPolicy> = {
   },
   [QUEUE_NAMES.event]: { attempts: 5, backoff: { type: "fixed", delay: 2000 } },
   [QUEUE_NAMES.analyze]: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 5000 },
+  },
+  // Recompute is idempotent (BullMQ dedupes the single jobId) + bounded; a
+  // couple of retries cover a transient LLM/embedding blip.
+  [QUEUE_NAMES.recompute]: {
     attempts: 3,
     backoff: { type: "exponential", delay: 5000 },
   },

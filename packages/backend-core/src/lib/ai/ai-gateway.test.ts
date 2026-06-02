@@ -11,6 +11,7 @@ import {
   anthropicGatewayClientOptions,
   gatewayBaseUrl,
   getAiGatewayConfig,
+  voyageEmbeddingsEndpoint,
 } from "./ai-gateway.js";
 
 afterEach(() => {
@@ -104,5 +105,38 @@ describe("anthropicGatewayClientOptions", () => {
     ).toEqual({
       baseURL: "https://gateway.ai.cloudflare.com/v1/x/y/anthropic",
     });
+  });
+});
+
+describe("voyageEmbeddingsEndpoint", () => {
+  it("posts directly to Voyage (no headers) when the gateway is unconfigured", () => {
+    expect(voyageEmbeddingsEndpoint()).toEqual({
+      url: "https://api.voyageai.com/v1/embeddings",
+      headers: {},
+    });
+  });
+
+  it("routes through the gateway voyage path when CF_AI_GATEWAY_* is set", () => {
+    vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    expect(voyageEmbeddingsEndpoint()).toEqual({
+      url: "https://gateway.ai.cloudflare.com/v1/acc123/homescout/voyage/v1/embeddings",
+      headers: {},
+    });
+  });
+
+  it("adds the cf-aig-authorization header for an authenticated gateway", () => {
+    vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_TOKEN", "tok_secret");
+    expect(voyageEmbeddingsEndpoint().headers).toEqual({
+      "cf-aig-authorization": "Bearer tok_secret",
+    });
+  });
+
+  it("honours a custom direct base URL when the gateway is off", () => {
+    expect(voyageEmbeddingsEndpoint("https://proxy.test/v9").url).toBe(
+      "https://proxy.test/v9/embeddings",
+    );
   });
 });

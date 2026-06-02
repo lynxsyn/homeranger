@@ -34,6 +34,9 @@ export * from "./lib/queue/redis-connection.js";
 export * from "./services/dedup.service.js";
 export * from "./services/email-event.service.js";
 export * from "./services/inbound-ingestion.service.js";
+// M5 analysis services (DI singletons initialised at worker boot).
+export * from "./services/listing-analysis.service.js";
+export * from "./services/preference-match.service.js";
 
 // tRPC surface — the appRouter tree + its type (the SPA infers over AppRouter),
 // and createContext (apps/api mounts the fastify tRPC plugin with these). The

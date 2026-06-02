@@ -203,3 +203,9 @@ export async function enqueueAnalyzeListing(
 ): Promise<void> {
   await getQueueClient().enqueue(QUEUE_NAMES.analyze, input);
 }
+
+export async function enqueueRecompute(
+  input: EnqueueInput<JobPayloadByType["analyze:recompute"]>,
+): Promise<void> {
+  await getQueueClient().enqueue(QUEUE_NAMES.recompute, input);
+}

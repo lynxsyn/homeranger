@@ -10,7 +10,10 @@
  * The fixture module is the single source of truth shared with the spec; the
  * relative import carries `.js` because apps/api is module=Node16.
  */
-import { listingRepository } from "@homescout/backend-core";
+import {
+  listingRepository,
+  searchProfileRepository,
+} from "@homescout/backend-core";
 import { prisma } from "@homescout/backend-core/lib/prisma";
 import { LISTING_FIXTURES } from "../../../e2e/fixtures/listings.fixture.js";
 
@@ -31,7 +34,19 @@ async function main(): Promise<void> {
       primarySource: fixture.primarySource,
     });
   }
-  console.log(`Seeded ${LISTING_FIXTURES.length} listing fixtures.`);
+
+  // M5: seed the single SearchProfile so the AI-analysis E2E has preferences to
+  // match against. Empty outcodes → the preference recompute recalls every
+  // embedded (analysed) listing, not just one area. Idempotent (singleton row).
+  await searchProfileRepository.update({
+    freeTextPreferences:
+      "A bright, modern flat with good natural light and some outdoor space.",
+    outcodes: [],
+  });
+
+  console.log(
+    `Seeded ${LISTING_FIXTURES.length} listing fixtures + the search profile.`,
+  );
 }
 
 main()

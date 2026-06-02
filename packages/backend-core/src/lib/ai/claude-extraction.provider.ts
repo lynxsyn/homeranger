@@ -7,6 +7,11 @@ import {
 } from "@homescout/shared";
 import { Counter, Histogram, Registry } from "prom-client";
 import { anthropicGatewayClientOptions } from "./ai-gateway.js";
+import {
+  classifyProviderError,
+  createNonRetryableError,
+  type ProviderError,
+} from "./provider-errors.js";
 
 /**
  * Claude structured extraction for the M4 inbound-ingestion pipeline.
@@ -100,11 +105,12 @@ export interface ListingExtractionResult {
   metrics: ExtractionMetrics;
 }
 
-export interface ExtractionError extends Error {
-  retryable: boolean;
-  status?: number;
-  code?: string;
-}
+/**
+ * The extraction provider's error type. Now an alias of the shared
+ * `ProviderError` (lib/ai/provider-errors.ts) so all AI providers classify
+ * identically; kept as a named export for the provider's existing tests.
+ */
+export type ExtractionError = ProviderError;
 
 export interface ClaudeExtractionProvider {
   extractListing(input: ListingExtractionInput): Promise<ListingExtractionResult>;
@@ -539,90 +545,10 @@ function resolveModel(responseModel: unknown, fallback: string): string {
     : fallback;
 }
 
-// ── Error classification (mirrors Doxus) ──────────────────────────────────────
+// Error classification (classifyProviderError / createNonRetryableError /
+// isRetryableStatus) now lives in lib/ai/provider-errors.ts, shared by every AI
+// provider so the BullMQ retry decision is identical across the pipeline. The
+// shared classifier carries forward PR #17's semantics (all 4xx except 408
+// terminal; 408/429/5xx + unknown retryable) and applies them to vision +
+// embedding + match too.
 
-function classifyProviderError(
-  error: unknown,
-  fallbackMessage: string,
-): ExtractionError {
-  if (isExtractionError(error)) {
-    return error;
-  }
-
-  const status = getStatus(error);
-  const code = getCode(error);
-  const retryable = isRetryableStatus(status);
-
-  const providerError = (
-    error instanceof Error ? error : new Error(fallbackMessage)
-  ) as ExtractionError;
-  providerError.retryable = retryable;
-  if (status !== undefined) {
-    providerError.status = status;
-  }
-  if (code !== undefined) {
-    providerError.code = code;
-  }
-  return providerError;
-}
-
-function createNonRetryableError(message: string): ExtractionError {
-  const error = new Error(message) as ExtractionError;
-  error.retryable = false;
-  return error;
-}
-
-function isExtractionError(error: unknown): error is ExtractionError {
-  return (
-    error instanceof Error &&
-    "retryable" in error &&
-    typeof (error as ExtractionError).retryable === "boolean"
-  );
-}
-
-function getStatus(error: unknown): number | undefined {
-  if (typeof error !== "object" || error === null) {
-    return undefined;
-  }
-  if ("status" in error && typeof (error as { status: unknown }).status === "number") {
-    return (error as { status: number }).status;
-  }
-  if (
-    "statusCode" in error &&
-    typeof (error as { statusCode: unknown }).statusCode === "number"
-  ) {
-    return (error as { statusCode: number }).statusCode;
-  }
-  return undefined;
-}
-
-function getCode(error: unknown): string | undefined {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof (error as { code: unknown }).code === "string"
-  ) {
-    return (error as { code: string }).code;
-  }
-  return undefined;
-}
-
-function isRetryableStatus(status: number | undefined): boolean {
-  if (status === undefined) {
-    return true; // network / unknown transport error — retry
-  }
-  // Transient: rate limit (429), request timeout (408), Anthropic "overloaded"
-  // (529) and any other 5xx — retry these.
-  if (status === 429 || status === 408 || status >= 500) {
-    return true;
-  }
-  // Every OTHER 4xx is a terminal client error that never succeeds on retry:
-  // 400 bad request, 401/403 auth, 404 (e.g. a misconfigured AI Gateway id →
-  // the gateway URL 404s), 405/410, etc. Retrying just burns the BullMQ attempt
-  // budget + backoff on a permanent failure, so fail fast.
-  if (status >= 400) {
-    return false;
-  }
-  return true; // non-error / unexpected — retry defensively
-}

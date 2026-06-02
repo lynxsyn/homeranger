@@ -98,3 +98,32 @@ export function anthropicGatewayClientOptions(
   }
   return options;
 }
+
+/** The Voyage embeddings endpoint to POST to, direct or via the AI Gateway. */
+export interface VoyageEndpoint {
+  url: string;
+  /** Extra headers to merge (the gateway bearer, when an authenticated gateway). */
+  headers: Record<string, string>;
+}
+
+/**
+ * Resolve the Voyage `/embeddings` endpoint. With the gateway configured the
+ * request rides `.../voyage/v1/embeddings` (the path the AI Gateway Voyage
+ * provider expects) and an authenticated gateway adds `cf-aig-authorization`;
+ * otherwise it posts straight to Voyage's `directBaseUrl` (default
+ * https://api.voyageai.com/v1). Mirrors `anthropicGatewayClientOptions` but for
+ * a fetch-based provider (Voyage has no first-party SDK we depend on), so it
+ * returns the full URL + headers rather than SDK client options.
+ */
+export function voyageEmbeddingsEndpoint(
+  directBaseUrl = "https://api.voyageai.com/v1",
+  config: AiGatewayConfig | null = getAiGatewayConfig(),
+): VoyageEndpoint {
+  if (!config) {
+    return { url: `${directBaseUrl}/embeddings`, headers: {} };
+  }
+  const headers: Record<string, string> = config.token
+    ? { "cf-aig-authorization": `Bearer ${config.token}` }
+    : {};
+  return { url: `${gatewayBaseUrl("voyage", config)}/v1/embeddings`, headers };
+}

@@ -10,5 +10,6 @@ export {
   enqueueInboundEmail,
   enqueueResendEvent,
   enqueueAnalyzeListing,
+  enqueueRecompute,
   type EnqueueInput,
 } from "./queue-client.js";

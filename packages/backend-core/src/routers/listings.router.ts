@@ -41,6 +41,8 @@ import {
   type ListingRecord,
   type ListListingsSort,
 } from "../repositories/listing.repository.js";
+import { photoAnalysisRepository } from "../repositories/photo-analysis.repository.js";
+import { listingScoreRepository } from "../repositories/listing-score.repository.js";
 import type { CursorPage } from "../lib/pagination/cursor.js";
 
 /** The exact row shape the SPA table consumes (via `inferRouterOutputs`). */
@@ -49,15 +51,24 @@ export type ListingRow = ListingRecord;
 /** `list` output: a cursor page of listing rows. */
 export type ListListingsOutput = CursorPage<ListingRow>;
 
+/** One analysed photo as the row-expand renders it. */
+export interface ListingExpandPhoto {
+  imageUrl: string | null;
+  tasteScore: number | null;
+  features: Record<string, unknown>;
+}
+
 /**
- * `expand` payload — photo features + score rationale. Every field is `null`
- * until M5 wires PhotoAnalysis + ListingScore; the SHAPE is the stable
- * contract M5 fills.
+ * `expand` payload — the M5 row-expand content (AC#7): per-photo taste scores +
+ * features and the hybrid match score + rationale. `photos` is empty and the
+ * score fields are `null` for a listing that has not been analysed yet.
  */
 export interface ListingExpandPayload {
   id: string;
-  photoFeatures: Record<string, unknown> | null;
+  photos: ListingExpandPhoto[];
   combinedScore: number | null;
+  vectorScore: number | null;
+  llmScore: number | null;
   scoreRationale: string | null;
 }
 
@@ -122,12 +133,24 @@ export const listingsRouter = router({
       if (!row) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Listing not found" });
       }
-      // Placeholder until M5 (PhotoAnalysis.featuresJson + ListingScore).
+      const [photos, score] = await Promise.all([
+        photoAnalysisRepository.listByListingId(input.id),
+        listingScoreRepository.getByListingId(input.id),
+      ]);
       return {
         id: row.id,
-        photoFeatures: null,
-        combinedScore: null,
-        scoreRationale: null,
+        photos: photos.map((photo) => ({
+          imageUrl: photo.imageUrl,
+          tasteScore: photo.tasteScore,
+          features:
+            typeof photo.featuresJson === "object" && photo.featuresJson !== null
+              ? (photo.featuresJson as Record<string, unknown>)
+              : {},
+        })),
+        combinedScore: score?.combinedScore ?? null,
+        vectorScore: score?.vectorScore ?? null,
+        llmScore: score?.llmScore ?? null,
+        scoreRationale: score?.rationale ?? null,
       };
     }),
 });

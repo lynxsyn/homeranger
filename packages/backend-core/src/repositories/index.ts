@@ -7,3 +7,6 @@ export * from "./outreach.repository.js";
 export * from "./search-profile.repository.js";
 export * from "./email-event.repository.js";
 export * from "./suppression-entry.repository.js";
+// M5 analysis aggregate.
+export * from "./photo-analysis.repository.js";
+export * from "./listing-score.repository.js";
