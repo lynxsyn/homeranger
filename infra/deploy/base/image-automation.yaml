@@ -1,0 +1,93 @@
+# Flux image automation for homescout-api + homescout-web.
+#
+# Each ImageRepository scans GHCR for tags; each ImagePolicy selects the highest
+# semver >= 0.0.1; the single ImageUpdateAutomation rewrites the $imagepolicy
+# markers in ./infra/deploy/base and commits the bump.
+#
+# push.branch = main (single-user repo → direct push; no PR-gate side-branch).
+# Doxus uses a side-branch + auto-PR for its multi-author flow; homescout pushes
+# straight to main because there is one operator and no validate-infra gate yet.
+#
+# The image-reflector + image-automation controllers live in flux-system, so
+# these resources are namespaced there. The GHCR pull secret for the scanner is
+# ghcr-pull-secret-flux (see ghcr-secret.example.yaml).
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: homescout-api
+  namespace: flux-system
+spec:
+  image: ghcr.io/lynxsyn/homescout-api
+  interval: 5m
+  secretRef:
+    name: ghcr-pull-secret-flux
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: homescout-web
+  namespace: flux-system
+spec:
+  image: ghcr.io/lynxsyn/homescout-web
+  interval: 5m
+  secretRef:
+    name: ghcr-pull-secret-flux
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: homescout-api
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: homescout-api
+  filterTags:
+    pattern: '^v?(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$'
+    extract: '$version'
+  policy:
+    semver:
+      range: '>=0.0.1'
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: homescout-web
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: homescout-web
+  filterTags:
+    pattern: '^v?(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$'
+    extract: '$version'
+  policy:
+    semver:
+      range: '>=0.0.1'
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta1
+kind: ImageUpdateAutomation
+metadata:
+  name: homescout
+  namespace: flux-system
+spec:
+  interval: 5m
+  sourceRef:
+    kind: GitRepository
+    name: homescout
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        name: fluxcdbot
+        email: fluxcdbot@users.noreply.github.com
+      messageTemplate: |
+        chore(flux): update image tags
+
+        {{ range .Updated.Images }}- {{ . }}
+        {{ end }}
+    push:
+      branch: main
+  update:
+    path: ./infra/deploy/base
+    strategy: Setters

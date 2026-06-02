@@ -4,7 +4,9 @@ import {
   DEFAULT_PAGE_LIMIT,
   MAX_PAGE_LIMIT,
   clampLimit,
+  decodeCompositeCursor,
   decodeCursor,
+  encodeCompositeCursor,
   encodeCursor,
   paginate,
 } from "./cursor.js";
@@ -45,6 +47,52 @@ describe("encodeCursor / decodeCursor", () => {
   it("throws when the decoded shape is missing fields", () => {
     const bad = Buffer.from(JSON.stringify({ id: 1 })).toString("base64");
     expect(() => decodeCursor(bad)).toThrow(TRPCError);
+  });
+});
+
+describe("encodeCompositeCursor / decodeCompositeCursor", () => {
+  it("round-trips a numeric sortValue + id", () => {
+    const payload = { sortValue: 42_500_000, id: "abc" };
+    expect(decodeCompositeCursor(encodeCompositeCursor(payload))).toEqual(
+      payload,
+    );
+  });
+
+  it("round-trips a string sortValue (ISO timestamp) + id", () => {
+    const payload = { sortValue: "2026-01-01T00:00:00.000Z", id: "def" };
+    expect(decodeCompositeCursor(encodeCompositeCursor(payload))).toEqual(
+      payload,
+    );
+  });
+
+  it("throws a BAD_REQUEST TRPCError on garbage", () => {
+    expect(() => decodeCompositeCursor("@@not-json@@")).toThrow(TRPCError);
+    try {
+      decodeCompositeCursor("@@not-json@@");
+    } catch (err) {
+      expect((err as TRPCError).code).toBe("BAD_REQUEST");
+      expect((err as TRPCError).message).toBe("Invalid cursor");
+    }
+  });
+
+  it("throws when id is missing or non-string", () => {
+    const noId = Buffer.from(JSON.stringify({ sortValue: 1 })).toString(
+      "base64",
+    );
+    expect(() => decodeCompositeCursor(noId)).toThrow(TRPCError);
+    const badId = Buffer.from(
+      JSON.stringify({ sortValue: 1, id: 7 }),
+    ).toString("base64");
+    expect(() => decodeCompositeCursor(badId)).toThrow(TRPCError);
+  });
+
+  it("throws when sortValue is missing or not number/string", () => {
+    const noSort = Buffer.from(JSON.stringify({ id: "x" })).toString("base64");
+    expect(() => decodeCompositeCursor(noSort)).toThrow(TRPCError);
+    const badSort = Buffer.from(
+      JSON.stringify({ id: "x", sortValue: { nested: true } }),
+    ).toString("base64");
+    expect(() => decodeCompositeCursor(badSort)).toThrow(TRPCError);
   });
 });
 

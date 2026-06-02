@@ -37,6 +37,11 @@ path = '''(^|/)\.env(\.[^.]+)?$'''
 description = "Allow declared placeholder/example envfiles"
 paths = [
   '''(^|/)\.env\.(example|sample|template)$''',
+  # k8s Secret *.example.yaml templates ship placeholders (REPLACE_ME / base64
+  # placeholder), never real data — the real values live only in the SOPS
+  # *.enc.yaml. (secret.example.yaml used stringData: so it never tripped this
+  # data:-anchored rule; ghcr-secret.example.yaml uses data: and did.)
+  '''(^|/)[^/]*\.example\.ya?ml$''',
 ]
 regexes = [
   '''(?m)^[A-Z_][A-Z0-9_]*=(?:CHANGEME|XXX+|placeholder|your-[a-z0-9-]+|<[^>]+>|\d+)\s*$''',
@@ -55,6 +60,9 @@ regexes = [
 description = "SOPS-encrypted Secret YAMLs + age public keys + documented placeholder examples"
 paths = [
   '''.*\.enc\.ya?ml$''',
+  # *.example.yaml are placeholder templates (REPLACE_ME / base64 placeholder),
+  # never real secrets — real values live only in the SOPS *.enc.yaml.
+  '''.*\.example\.ya?ml$''',
 ]
 regexes = [
   '''age1[ac-hj-np-z02-9]{58}''',

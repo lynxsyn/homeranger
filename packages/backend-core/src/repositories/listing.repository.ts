@@ -21,10 +21,14 @@ import {
   type Tenure,
 } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import type { ListingSortField, SortDirection } from "@homescout/shared";
 import {
   clampLimit,
   decodeCursor,
+  decodeCompositeCursor,
   encodeCursor,
+  encodeCompositeCursor,
+  type CompositeCursorPayload,
   type CursorPage,
 } from "../lib/pagination/cursor.js";
 
@@ -70,8 +74,19 @@ export interface ListingFilter {
   isPreMarket?: boolean;
 }
 
+/**
+ * Sort descriptor for `list`. `combinedScore` falls back to the id keyset
+ * (the ListingScore relation arrives M5); `price` and `lastSeenAt` use a
+ * correct composite keyset cursor over the (sort column, id) tuple.
+ */
+export interface ListListingsSort {
+  sortBy: ListingSortField;
+  sortDir: SortDirection;
+}
+
 export interface ListListingsInput {
   filter?: ListingFilter;
+  sort?: ListListingsSort;
   cursor?: string;
   limit?: number;
 }
@@ -184,29 +199,191 @@ export function toVectorLiteral(embedding: number[]): string {
   return `[${embedding.join(",")}]`;
 }
 
-function buildCursorFilter(cursor: { id: string }): Prisma.ListingWhereInput {
-  // Keyset on the uuid(7) primary key (DESC) — time-sortable, unique, exact, so
-  // it equals firstSeen/creation order with no timestamp-precision risk.
-  return { id: { lt: cursor.id } };
+function buildCursorFilter(
+  cursor: { id: string },
+  dir: "asc" | "desc" = "desc",
+): Prisma.ListingWhereInput {
+  // Keyset on the uuid(7) primary key — time-sortable, unique, exact, so it
+  // equals firstSeen/creation order with no timestamp-precision risk. Honours
+  // the requested direction: DESC → id < cursor (newest-first), ASC → id >.
+  return { id: { [dir === "asc" ? "gt" : "lt"]: cursor.id } };
+}
+
+/** The Prisma scalar column a non-default sort orders by. */
+type SortColumn = "pricePence" | "lastSeenAt";
+
+/**
+ * Resolve the sort to a Prisma scalar column, or `null` for the default
+ * `combinedScore` path (which keysets on `id` until M5 supplies scores).
+ */
+function sortColumnFor(sort?: ListListingsSort): SortColumn | null {
+  if (!sort || sort.sortBy === "combinedScore") {
+    return null;
+  }
+  return sort.sortBy === "price" ? "pricePence" : "lastSeenAt";
+}
+
+/**
+ * Build the composite cursor payload from a boundary row. pricePence is
+ * nullable, so a NULL boundary is encoded as a FIRST-CLASS keyset value via
+ * `priceIsNull: true` (NOT a `-1` sentinel — see cursor.ts: any numeric
+ * sentinel desyncs because `NULL > sentinel` is NULL, silently dropping every
+ * remaining NULL-priced row from the next page). `sortValue` is a harmless `0`
+ * placeholder when the price is NULL.
+ *
+ * lastSeenAt is encoded as an ISO string (NOT NULL in the schema). The
+ * millisecond-truncation caveat (cursor.ts) is not reachable in M3.
+ */
+function cursorPayloadOf(
+  row: ListingRecord,
+  column: SortColumn,
+): { sortValue: number | string; priceIsNull?: boolean } {
+  if (column === "pricePence") {
+    if (row.pricePence === null) {
+      return { sortValue: 0, priceIsNull: true };
+    }
+    return { sortValue: row.pricePence };
+  }
+  return { sortValue: row.lastSeenAt.toISOString() };
+}
+
+/**
+ * Build the composite keyset WHERE for a `(column, id)`-ordered page.
+ *
+ * For a NOT-NULL column (lastSeenAt): the next ASC page is rows where
+ * `(column, id) > (sortValue, id)`, i.e. `column > sortValue OR (column =
+ * sortValue AND id > lastId)`; DESC flips the comparisons to `<`. The `id`
+ * tiebreaker makes the keyset exact even on tied values — no skip, no overlap.
+ *
+ * For the NULLABLE price column the predicate ALSO branches on whether the
+ * boundary row's price is NULL, matching Postgres' default NULL placement
+ * (ASC → NULLS LAST, DESC → NULLS FIRST). Prisma `{ pricePence: null }`
+ * compiles to `IS NULL` and its default orderBy NULL placement agrees, so no
+ * raw `NULLS LAST/FIRST` is needed:
+ *
+ *   ASC, non-null boundary v:  pricePence > v  OR  pricePence IS NULL  OR
+ *                              (pricePence = v AND id > lastId)
+ *     (NULLs sort AFTER every non-null, so they are still ahead → include them)
+ *   ASC, NULL boundary:        pricePence IS NULL AND id > lastId
+ *     (NULLs are the TRAILING block in ASC, so every non-null is already
+ *      emitted; only the remaining NULLs by id remain)
+ *   DESC, non-null boundary v: pricePence < v  OR  (pricePence = v AND id < lastId)
+ *     (NULLs sort BEFORE every non-null, so they were already emitted →
+ *      do NOT re-include them)
+ *   DESC, NULL boundary:       (pricePence IS NULL AND id < lastId)  OR
+ *                              pricePence IS NOT NULL
+ *     (NULLs are the LEADING block in DESC: the remaining NULLs are those with
+ *      a smaller id, and EVERY non-null row still follows them — both must be
+ *      paged or the entire non-null tail is silently skipped)
+ */
+function buildCompositeCursorFilter(
+  column: SortColumn,
+  cursor: CompositeCursorPayload,
+  dir: "asc" | "desc",
+): Prisma.ListingWhereInput {
+  const cmp = dir === "asc" ? "gt" : "lt";
+
+  if (column === "lastSeenAt") {
+    const boundary = new Date(cursor.sortValue as string);
+    return {
+      OR: [
+        { lastSeenAt: { [cmp]: boundary } } as Prisma.ListingWhereInput,
+        {
+          AND: [{ lastSeenAt: boundary }, { id: { [cmp]: cursor.id } }],
+        } as Prisma.ListingWhereInput,
+      ],
+    };
+  }
+
+  // pricePence (nullable) — branch on direction AND boundary null-ness.
+  if (cursor.priceIsNull) {
+    if (dir === "asc") {
+      // NULLs are the TRAILING block in ASC: every non-null is already
+      // emitted, only the remaining NULLs (by id) follow.
+      return {
+        AND: [{ pricePence: null }, { id: { gt: cursor.id } }],
+      };
+    }
+    // NULLs are the LEADING block in DESC: the remaining NULLs are those with
+    // a smaller id, and EVERY non-null row still follows the NULL block — both
+    // must be paged or the non-null tail is silently skipped.
+    return {
+      OR: [
+        { AND: [{ pricePence: null }, { id: { lt: cursor.id } }] },
+        { pricePence: { not: null } },
+      ],
+    };
+  }
+
+  const boundary = cursor.sortValue as number;
+  if (dir === "asc") {
+    return {
+      OR: [
+        { pricePence: { gt: boundary } },
+        { pricePence: null }, // NULLs sort LAST → still ahead of us in ASC
+        { AND: [{ pricePence: boundary }, { id: { gt: cursor.id } }] },
+      ],
+    };
+  }
+  return {
+    OR: [
+      { pricePence: { lt: boundary } },
+      // NULLs sort FIRST in DESC → already emitted, do NOT re-include.
+      { AND: [{ pricePence: boundary }, { id: { lt: cursor.id } }] },
+    ],
+  };
 }
 
 export class ListingRepository {
   /**
-   * Cursor-paginated list with an optional structured filter. Stable keyset
-   * ordering on the uuid(7) id (DESC = newest first); over-fetches `limit + 1`
-   * to compute `nextCursor`. Returns `{ items, nextCursor }`, default 20 / max
-   * 100. (M3 adds user-selectable sorts by price/lastSeenAt/combinedScore.)
+   * Cursor-paginated list with an optional structured filter + sort.
+   * Over-fetches `limit + 1` to compute `nextCursor`. Returns `{ items,
+   * nextCursor }`, default 20 / max 100.
+   *
+   * Sort (M3 AC#2 — applied in the repository, never in memory):
+   *   - `combinedScore` (default): id-only keyset (DESC). combinedScore lives on
+   *     the ListingScore relation which arrives M5; until then this is a stable
+   *     fallback order, documented so M5 only changes this body, not the wire.
+   *   - `price` / `lastSeenAt`: ordered by `[{column: dir}, {id: dir}]` with a
+   *     COMPOSITE keyset cursor `{ sortValue, id }` so sorted pagination across
+   *     pages has no skip and no overlap even on tied values.
    */
   async list(input: ListListingsInput = {}): Promise<CursorPage<ListingRecord>> {
     const limit = clampLimit(input.limit);
     const where = buildWhere(input.filter);
+    const column = sortColumnFor(input.sort);
+    const dir = input.sort?.sortDir ?? "desc";
+
+    if (column === null) {
+      // Default / combinedScore path: id-only keyset. combinedScore lives on
+      // the ListingScore relation (M5); until then the id keyset is a stable
+      // fallback order. It honours sortDir (asc/desc) so a client requesting
+      // combinedScore+asc is not silently served desc — the id-keyset shape is
+      // unchanged; M5 swaps in the real combinedScore ordering here.
+      const cursorFilter = input.cursor
+        ? buildCursorFilter(decodeCursor(input.cursor), dir)
+        : {};
+      const rows = await prisma.listing.findMany({
+        where: { ...where, ...cursorFilter },
+        orderBy: [{ id: dir }],
+        take: limit + 1,
+        select: LISTING_SELECT,
+      });
+      if (rows.length <= limit) {
+        return { items: rows, nextCursor: null };
+      }
+      const items = rows.slice(0, limit);
+      const last = items[items.length - 1]!;
+      return { items, nextCursor: encodeCursor({ id: last.id }) };
+    }
+
+    // Sorted path: composite (column, id) keyset.
     const cursorFilter = input.cursor
-      ? buildCursorFilter(decodeCursor(input.cursor))
+      ? buildCompositeCursorFilter(column, decodeCompositeCursor(input.cursor), dir)
       : {};
-    // Over-fetch one row so we can detect whether more pages exist.
     const rows = await prisma.listing.findMany({
       where: { ...where, ...cursorFilter },
-      orderBy: [{ id: "desc" }],
+      orderBy: [{ [column]: dir }, { id: dir }],
       take: limit + 1,
       select: LISTING_SELECT,
     });
@@ -217,7 +394,10 @@ export class ListingRepository {
     const last = items[items.length - 1]!;
     return {
       items,
-      nextCursor: encodeCursor({ id: last.id }),
+      nextCursor: encodeCompositeCursor({
+        ...cursorPayloadOf(last, column),
+        id: last.id,
+      }),
     };
   }
 
