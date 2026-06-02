@@ -51,6 +51,7 @@ spec:
         # the DB coming up on a cold namespace start.
         - name: wait-for-postgres
           image: ghcr.io/lynxsyn/homescout-api:0.3.0 # {"$imagepolicy": "flux-system:homescout-api"}
+          imagePullPolicy: Always
           command:
             - sh
             - -c
@@ -66,6 +67,7 @@ spec:
         # Apply migrations as the migrator role before the app boots.
         - name: prisma-migrate
           image: ghcr.io/lynxsyn/homescout-api:0.3.0 # {"$imagepolicy": "flux-system:homescout-api"}
+          imagePullPolicy: Always
           workingDir: /app/apps/api
           command: ["npx", "prisma", "migrate", "deploy"]
           env:
@@ -82,6 +84,7 @@ spec:
       containers:
         - name: api
           image: ghcr.io/lynxsyn/homescout-api:0.3.0 # {"$imagepolicy": "flux-system:homescout-api"}
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 3000
