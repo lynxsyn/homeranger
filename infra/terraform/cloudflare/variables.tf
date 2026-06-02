@@ -38,3 +38,21 @@ variable "tunnel_secret" {
   sensitive   = true
   default     = ""
 }
+
+variable "ai_gateway_id" {
+  description = "Cloudflare AI Gateway slug fronting homescout's outbound LLM calls (M4 Claude extraction; M5 Voyage/Haiku). Set as CF_AI_GATEWAY_ID in the homescout secret."
+  type        = string
+  default     = "homescout"
+}
+
+variable "ai_gateway_authentication" {
+  description = "Require the cf-aig-authorization bearer on the AI Gateway. When true, also set CF_AI_GATEWAY_TOKEN (a CF API token with 'AI Gateway Run') in the homescout secret."
+  type        = bool
+  default     = false
+}
+
+variable "ai_gateway_cache_ttl" {
+  description = "AI Gateway response cache TTL in seconds. 0 disables caching (the default — agent emails rarely repeat byte-for-byte)."
+  type        = number
+  default     = 0
+}

@@ -6,6 +6,7 @@ import {
   TENURES,
 } from "@homescout/shared";
 import { Counter, Histogram, Registry } from "prom-client";
+import { anthropicGatewayClientOptions } from "./ai-gateway.js";
 
 /**
  * Claude structured extraction for the M4 inbound-ingestion pipeline.
@@ -148,6 +149,21 @@ export function getClaudeExtractionConfig(): ClaudeExtractionConfig {
   };
 }
 
+/**
+ * Build the Anthropic client. When the Cloudflare AI Gateway env is set the
+ * call is transparently routed through the gateway (analytics + caching +
+ * retries + logging); otherwise it talks to Anthropic directly. Exported (like
+ * `createR2Client`) so the gateway wiring is unit-testable without poking the
+ * provider's private client.
+ */
+export function createAnthropicClient(config: ClaudeExtractionConfig): Anthropic {
+  return new Anthropic({
+    apiKey: config.apiKey,
+    timeout: config.timeoutMs,
+    ...anthropicGatewayClientOptions(),
+  });
+}
+
 // ── Metrics ────────────────────────────────────────────────────────────────
 
 /**
@@ -276,12 +292,7 @@ export class DefaultClaudeExtractionProvider implements ClaudeExtractionProvider
 
   constructor(deps: ClaudeExtractionDeps = {}) {
     this.config = deps.config ?? getClaudeExtractionConfig();
-    this.client =
-      deps.client ??
-      new Anthropic({
-        apiKey: this.config.apiKey,
-        timeout: this.config.timeoutMs,
-      });
+    this.client = deps.client ?? createAnthropicClient(this.config);
   }
 
   getModel(): string {

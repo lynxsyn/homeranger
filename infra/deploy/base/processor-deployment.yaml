@@ -135,6 +135,31 @@ spec:
                 secretKeyRef:
                   name: homescout-secret
                   key: ANTHROPIC_API_KEY
+            # Cloudflare AI Gateway (OPTIONAL transparent proxy for the LLM calls
+            # — analytics + caching + retries + logging; provisioned by
+            # infra/terraform/cloudflare/ai-gateway.tf). All three are
+            # optional:true so a secret WITHOUT these keys still starts the pod —
+            # the app then calls Anthropic directly (lib/ai/ai-gateway.ts treats
+            # empty/missing as "off"). Set ACCOUNT_ID + ID together to enable;
+            # TOKEN only for an authenticated gateway.
+            - name: CF_AI_GATEWAY_ACCOUNT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: CF_AI_GATEWAY_ACCOUNT_ID
+                  optional: true
+            - name: CF_AI_GATEWAY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: CF_AI_GATEWAY_ID
+                  optional: true
+            - name: CF_AI_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: CF_AI_GATEWAY_TOKEN
+                  optional: true
             # Voyage embeddings — DedupService embedding fallback (M4) + M5 scoring.
             - name: VOYAGE_API_KEY
               valueFrom:
