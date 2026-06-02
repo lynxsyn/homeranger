@@ -38,9 +38,10 @@ resources:
   # the same chicken-and-egg ordering as the api/web images: build + push the
   # tag FIRST, then let Flux reconcile.
   - processor-deployment.yaml
-  # M4 enables Flux image-automation (auto-bump from GHCR) now that the worker
-  # joins the image set. The ImageRepository/ImagePolicy/ImageUpdateAutomation
-  # in image-automation.yaml scan GHCR and rewrite the $imagepolicy markers in
-  # the api/web/processor Deployments. Requires the ghcr-pull-secret-flux secret
-  # in flux-system (see ghcr-secret.example.yaml) BEFORE first reconcile.
-  - image-automation.yaml
+  # Flux image-automation (auto-bump from GHCR) stays DEFERRED — M4 ships on
+  # static :0.4.0 tags. Two unmet cluster prereqs block enabling it: (1)
+  # image-automation.yaml's ImageUpdateAutomation uses apiVersion v1beta1, but
+  # this cluster only serves v1 / v1beta2; (2) a ghcr-pull-secret-flux must exist
+  # in flux-system so the ImageRepository can scan the private GHCR. A later
+  # milestone fixes the apiVersion + creates that secret, then uncomments this.
+  # - image-automation.yaml
