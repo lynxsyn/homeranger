@@ -21,10 +21,13 @@ import {
   type Tenure,
 } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import type { ListingSortField, SortDirection } from "@homescout/shared";
 import {
   clampLimit,
   decodeCursor,
+  decodeCompositeCursor,
   encodeCursor,
+  encodeCompositeCursor,
   type CursorPage,
 } from "../lib/pagination/cursor.js";
 
@@ -70,8 +73,19 @@ export interface ListingFilter {
   isPreMarket?: boolean;
 }
 
+/**
+ * Sort descriptor for `list`. `combinedScore` falls back to the id keyset
+ * (the ListingScore relation arrives M5); `price` and `lastSeenAt` use a
+ * correct composite keyset cursor over the (sort column, id) tuple.
+ */
+export interface ListListingsSort {
+  sortBy: ListingSortField;
+  sortDir: SortDirection;
+}
+
 export interface ListListingsInput {
   filter?: ListingFilter;
+  sort?: ListListingsSort;
   cursor?: string;
   limit?: number;
 }
@@ -197,28 +211,11 @@ export class ListingRepository {
    * to compute `nextCursor`. Returns `{ items, nextCursor }`, default 20 / max
    * 100. (M3 adds user-selectable sorts by price/lastSeenAt/combinedScore.)
    */
-  async list(input: ListListingsInput = {}): Promise<CursorPage<ListingRecord>> {
-    const limit = clampLimit(input.limit);
-    const where = buildWhere(input.filter);
-    const cursorFilter = input.cursor
-      ? buildCursorFilter(decodeCursor(input.cursor))
-      : {};
-    // Over-fetch one row so we can detect whether more pages exist.
-    const rows = await prisma.listing.findMany({
-      where: { ...where, ...cursorFilter },
-      orderBy: [{ id: "desc" }],
-      take: limit + 1,
-      select: LISTING_SELECT,
-    });
-    if (rows.length <= limit) {
-      return { items: rows, nextCursor: null };
-    }
-    const items = rows.slice(0, limit);
-    const last = items[items.length - 1]!;
-    return {
-      items,
-      nextCursor: encodeCursor({ id: last.id }),
-    };
+  async list(
+    _input: ListListingsInput = {},
+  ): Promise<CursorPage<ListingRecord>> {
+    // RED stub — implemented GREEN with the sort + composite-keyset code path.
+    throw new Error("not implemented");
   }
 
   async getById(id: string): Promise<ListingRecord | null> {

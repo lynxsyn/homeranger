@@ -31,6 +31,15 @@ export default defineConfig({
         // index barrels carry no logic.
         "**/index.ts",
         "apps/*/src/index.ts",
+        // The API entrypoint is a side-effecting bootstrap (Fastify listen +
+        // raw /api/health|/api/version routes + tRPC mount). It is proven by
+        // the Playwright E2E (which boots the real server), not by unit tests;
+        // excluded to avoid a false unit-coverage drop (same rationale as the
+        // repository excludes above). The context.ts module reads CF Access
+        // env at import time + builds ctx.user from the request — exercised via
+        // the cloudflare-access unit tests (resolveCfAccessIdentity) and E2E.
+        "apps/api/src/main.ts",
+        "packages/backend-core/src/context.ts",
         // The repository methods + the Prisma client need a live pgvector and
         // are exercised by the integration project, not unit. Excluded to avoid
         // a false unit-coverage drop (mirrors Doxus's dashboard.repository.ts

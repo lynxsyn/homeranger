@@ -1,0 +1,21 @@
+/**
+ * appRouter — the single tRPC router tree for homescout.
+ *
+ * ROOT-level structure (Doxus convention): `router({ listings, health })`.
+ * `AppRouter` is the type the SPA infers over via `inferRouterOutputs`. New
+ * milestones add sibling routers here (M4 ingestion, M6/M7 outreach).
+ */
+import { publicProcedure, router } from "../trpc.js";
+import { listingsRouter } from "./listings.router.js";
+
+export const appRouter = router({
+  /** Unauthenticated liveness probe usable through the tRPC client. */
+  health: publicProcedure.query(() => ({
+    service: "homescout-api" as const,
+    status: "ok" as const,
+  })),
+
+  listings: listingsRouter,
+});
+
+export type AppRouter = typeof appRouter;

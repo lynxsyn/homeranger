@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
+    "e2e:api": "tsx src/main.ts",
     "build": "tsc",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
@@ -17,12 +18,12 @@
   },
   "dependencies": {
     "@homescout/backend-core": "workspace:*",
+    "@homescout/shared": "workspace:*",
     "@fastify/cors": "11.2.0",
     "@fastify/formbody": "8.0.2",
     "@prisma/client": "7.8.0",
     "@trpc/server": "11.16.0",
-    "fastify": "5.8.5",
-    "supertokens-node": "24.0.2"
+    "fastify": "5.8.5"
   },
   "devDependencies": {
     "@types/node": "25.6.2",

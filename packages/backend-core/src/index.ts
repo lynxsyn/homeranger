@@ -13,3 +13,9 @@ export * from "./repositories/index.js";
 
 // Cursor-pagination contract consumed by routers/services.
 export * from "./lib/pagination/cursor.js";
+
+// tRPC surface — the appRouter tree + its type (the SPA infers over AppRouter),
+// and createContext (apps/api mounts the fastify tRPC plugin with these). The
+// raw prisma client stays unexported (repositories own all Prisma access).
+export { appRouter, type AppRouter } from "./routers/index.js";
+export { createContext } from "./context.js";
