@@ -76,6 +76,12 @@ import {
 import { getOutreachService } from "@homescout/backend-core/services/outreach.service";
 import { outreachReplyService } from "@homescout/backend-core/services/outreach-reply.service";
 import { warmupService } from "@homescout/backend-core/services/warmup.service";
+import {
+  FakeAgentDiscoveryProvider,
+  type AgentDiscoveryProvider,
+} from "@homescout/backend-core/lib/discovery/agent-discovery.provider";
+import { FirecrawlAgentDiscoveryProvider } from "@homescout/backend-core/lib/discovery/firecrawl-agent-discovery.provider";
+import { getAgentDiscoveryService } from "@homescout/backend-core/services/agent-discovery.service";
 import { RealResendHydrator } from "./resend-hydrator.js";
 import { makeInboundHandler } from "./inbound-handler.js";
 import { makeAnalyzeHandler } from "./analyze-handler.js";
@@ -84,6 +90,7 @@ import { makeOutreachSendHandler } from "./outreach-send-handler.js";
 import { makeOutreachFollowupHandler } from "./outreach-followup-handler.js";
 import { makeFollowupScanHandler } from "./followup-scan-handler.js";
 import { makeWarmupRecalcHandler } from "./warmup-recalc-handler.js";
+import { makeDiscoverAgentsHandler } from "./discover-agents-handler.js";
 
 const metricsPort = Number(process.env.METRICS_PORT ?? 9090);
 const metricsHost = process.env.METRICS_HOST ?? "0.0.0.0";
@@ -179,6 +186,18 @@ const emailProvider: EmailProvider = useFakeOutreach
 
 const outreachService = getOutreachService({ emailProvider });
 
+// ── Wire M7 agent discovery (real Firecrawl vs DISCOVERY_FAKE seam) ──────────
+// DISCOVERY_FAKE=1 swaps the web search/extract vendor for the deterministic,
+// network-free fake (E2E/CI never scrape or spend). The real provider is dormant
+// without FIRECRAWL_API_KEY — only constructed when DISCOVERY_FAKE !== "1".
+const agentDiscoveryProvider: AgentDiscoveryProvider =
+  process.env.DISCOVERY_FAKE === "1"
+    ? new FakeAgentDiscoveryProvider()
+    : new FirecrawlAgentDiscoveryProvider();
+const agentDiscoveryService = getAgentDiscoveryService({
+  provider: agentDiscoveryProvider,
+});
+
 // ── BullMQ consumer: one processor per queue ────────────────────────────────
 const queueClient = new BullMQQueueClient();
 
@@ -245,6 +264,14 @@ queueClient.registerProcessor(
 queueClient.registerProcessor(
   QUEUE_NAMES.warmup,
   makeWarmupRecalcHandler({ warmupService }),
+);
+
+// M7: discover estate agents in a region (web search/extract → upsert Agents).
+// Can exceed the 30s default lock (multi-page search/scrape) — extend it.
+queueClient.registerProcessor(
+  QUEUE_NAMES.discoverAgents,
+  makeDiscoverAgentsHandler({ agentDiscoveryService }),
+  { lockDuration: 180_000 },
 );
 
 // ── Probe + metrics HTTP server (started LAST, after DB + Redis are healthy) ─
