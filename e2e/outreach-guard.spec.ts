@@ -41,16 +41,17 @@ test.beforeAll(async () => {
   await withClient(async (client) => {
     // Two CORPORATE-subscriber agents (so they clear the PECR gate); one is
     // globally suppressed (the hard-block arm).
+    // Prisma's @updatedAt has no DB default — a raw INSERT must set it.
     await client.query(
-      `INSERT INTO "Agent" (id, email, "agencyName", "mailboxType", "optedOut")
-       VALUES (gen_random_uuid(), $1, 'Blocked Agency', 'corporate_subscriber'::"MailboxType", false),
-              (gen_random_uuid(), $2, 'Allowed Agency', 'corporate_subscriber'::"MailboxType", false)
+      `INSERT INTO "Agent" (id, email, "agencyName", "mailboxType", "optedOut", "updatedAt")
+       VALUES (gen_random_uuid(), $1, 'Blocked Agency', 'corporate_subscriber'::"MailboxType", false, now()),
+              (gen_random_uuid(), $2, 'Allowed Agency', 'corporate_subscriber'::"MailboxType", false, now())
        ON CONFLICT (email) DO NOTHING`,
       [BLOCKED_EMAIL, ALLOWED_EMAIL],
     );
     await client.query(
-      `INSERT INTO "SuppressionEntry" (id, email, reason)
-       VALUES (gen_random_uuid(), $1, 'spam_complaint'::"SuppressionReason")
+      `INSERT INTO "SuppressionEntry" (id, email, reason, "updatedAt")
+       VALUES (gen_random_uuid(), $1, 'spam_complaint'::"SuppressionReason", now())
        ON CONFLICT (email, reason) DO NOTHING`,
       [BLOCKED_EMAIL],
     );
