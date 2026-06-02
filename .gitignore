@@ -32,3 +32,7 @@ infra/deploy/**/secret.example.yaml.filled
 *.log
 .idea/
 .vscode/
+
+# direnv — committed .envrc is tracked; local cache + per-project tool state are not
+.direnv/
+.state/
