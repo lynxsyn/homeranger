@@ -50,12 +50,18 @@ export type ListingRow = ListingRecord;
 
 /**
  * A listings-table row: the listing columns plus its `combinedScore` (0..1, or
- * `null` when the listing has not been analysed yet). The SPA reads this shape
- * via `inferRouterOutputs` — the Match ring renders `combinedScore` and the
- * score sort orders by it.
+ * `null` when the listing has not been analysed yet) and the derived `agency`
+ * label. The SPA reads this shape via `inferRouterOutputs` — the Match ring
+ * renders `combinedScore` and the score sort orders by it.
+ *
+ * `bathrooms` + `agentEmail` arrive on the underlying `ListingRecord` (Scouts
+ * PR2 capture); `agency` is COMPUTED here as `agencyName ?? agentEmail ?? null`
+ * so the Agent column has one display field and the per-agency follow-up
+ * grouping has one key (falling back to the raw sender email, then `null`).
  */
 export type ListingListItem = ListingRecord & {
   combinedScore: number | null;
+  agency: string | null;
 };
 
 /** `list` output: a cursor page of listing rows with their match scores. */
@@ -131,8 +137,12 @@ export const listingsRouter = router({
       );
       return {
         items: page.items.map((item) => ({
+          // `...item` carries bathrooms + agentEmail through from ListingRecord.
           ...item,
           combinedScore: scores.get(item.id) ?? null,
+          // Derived Agent-column / follow-up-group key: prefer the friendly
+          // agency name, fall back to the raw sender email, else null ("—").
+          agency: item.agencyName ?? item.agentEmail ?? null,
         })),
         nextCursor: page.nextCursor,
       };

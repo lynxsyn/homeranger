@@ -42,6 +42,7 @@ const LISTING_SELECT = Prisma.validator<Prisma.ListingSelect>()({
   outcode: true,
   pricePence: true,
   bedrooms: true,
+  bathrooms: true,
   tenure: true,
   propertyType: true,
   epcRating: true,
@@ -49,6 +50,8 @@ const LISTING_SELECT = Prisma.validator<Prisma.ListingSelect>()({
   isPreMarket: true,
   listingUrl: true,
   primarySource: true,
+  agentEmail: true,
+  agencyName: true,
   firstSeenAt: true,
   lastSeenAt: true,
   createdAt: true,
@@ -103,6 +106,11 @@ export interface UpsertListingByAddressInput {
   isPreMarket: boolean;
   listingUrl: string | null;
   primarySource: ListingSource;
+  // The sending agent, captured from the inbound email (M8 PR2). Optional so the
+  // many read-path callers (seed + repo integration tests) need not supply them;
+  // the ingestion service always sets them, and the repo defaults missing → null.
+  agentEmail?: string | null;
+  agencyName?: string | null;
 }
 
 /** A vectorTopK hit: the projected listing columns plus the cosine distance. */
@@ -489,6 +497,8 @@ export class ListingRepository {
         isPreMarket: input.isPreMarket,
         listingUrl: input.listingUrl,
         primarySource: input.primarySource,
+        agentEmail: input.agentEmail,
+        agencyName: input.agencyName,
         firstSeenAt: now,
         lastSeenAt: now,
       },
@@ -504,6 +514,8 @@ export class ListingRepository {
         isPreMarket: input.isPreMarket,
         listingUrl: input.listingUrl,
         primarySource: input.primarySource,
+        agentEmail: input.agentEmail,
+        agencyName: input.agencyName,
         lastSeenAt: now,
       },
       select: LISTING_SELECT,
@@ -540,6 +552,8 @@ export class ListingRepository {
         isPreMarket: fields.isPreMarket,
         listingUrl: fields.listingUrl,
         primarySource: fields.primarySource,
+        agentEmail: fields.agentEmail,
+        agencyName: fields.agencyName,
         lastSeenAt: new Date(),
       },
       select: LISTING_SELECT,
@@ -596,6 +610,7 @@ export class ListingRepository {
         "outcode",
         "pricePence",
         "bedrooms",
+        "bathrooms",
         "tenure",
         "propertyType",
         "epcRating",
@@ -603,6 +618,8 @@ export class ListingRepository {
         "isPreMarket",
         "listingUrl",
         "primarySource",
+        "agentEmail",
+        "agencyName",
         "firstSeenAt",
         "lastSeenAt",
         "createdAt",
@@ -664,6 +681,7 @@ export class ListingRepository {
         l."outcode",
         l."pricePence",
         l."bedrooms",
+        l."bathrooms",
         l."tenure",
         l."propertyType",
         l."epcRating",
@@ -671,6 +689,8 @@ export class ListingRepository {
         l."isPreMarket",
         l."listingUrl",
         l."primarySource",
+        l."agentEmail",
+        l."agencyName",
         l."firstSeenAt",
         l."lastSeenAt",
         l."createdAt",

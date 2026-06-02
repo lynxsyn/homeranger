@@ -8,7 +8,6 @@
  * cross-package imports use the bare specifier.
  */
 import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
-import type { ListingStatus } from "@homescout/shared";
 import { Icon } from "./Icon";
 
 /* ---- Logo lockup --------------------------------------------------------- */
@@ -90,32 +89,6 @@ export function Chip({ icon, accent, children }: ChipProps) {
     <span className={`hs-chip${accent ? " hs-chip--accent" : ""}`}>
       {icon && <Icon name={icon} size={14} />}
       {children}
-    </span>
-  );
-}
-
-/* ---- Status badge -------------------------------------------------------- */
-interface StatusMeta {
-  cls: string;
-  label: string;
-  dot: boolean;
-}
-
-export const STATUS_META: Record<ListingStatus, StatusMeta> = {
-  pre_market: { cls: "premarket", label: "Pre-market", dot: false },
-  live: { cls: "live", label: "Live", dot: true },
-  under_offer: { cls: "offer", label: "Under offer", dot: true },
-  sold: { cls: "sold", label: "Sold", dot: true },
-  withdrawn: { cls: "withdrawn", label: "Withdrawn", dot: true },
-};
-
-export function StatusBadge({ status }: { status: ListingStatus }) {
-  const meta = STATUS_META[status] ?? STATUS_META.live;
-  return (
-    <span
-      className={`hs-badge hs-badge--${meta.cls}${meta.dot ? " hs-badge--dot" : ""}`}
-    >
-      {meta.label}
     </span>
   );
 }

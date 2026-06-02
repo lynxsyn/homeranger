@@ -1,0 +1,72 @@
+/* HomeScout — interest bookmarks + per-agency follow-ups. A faithful port of
+   the 2nd claude.ai/design handoff's INTEREST + FOLLOW-UP block
+   (docs/design/homescout-design/project/app/styles.css). The follow-up modal
+   reuses the existing modal/eyebrow/confirm/preview classes from scouts.css +
+   tokens.css; this layer adds only the interest-specific classes. */
+
+/* ---- Bookmark button ----------------------------------------------------- */
+.intbtn { display: inline-grid; place-items: center; width: 34px; height: 34px;
+  border: 0; background: transparent; border-radius: var(--r-sm); cursor: pointer;
+  color: var(--ink-3);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.intbtn:hover { background: var(--surface-2); color: var(--ink-1); }
+.intbtn.is-on { color: var(--accent); }
+.intbtn.is-on svg { fill: color-mix(in oklch, var(--accent) 22%, transparent); }
+.intbtn.is-on:hover { color: var(--accent-hover); }
+
+/* table: interested column + row tint */
+.col-int { width: 1%; }
+th.col-int { padding-right: 4px; }
+td.col-int { padding-left: 14px; padding-right: 4px; }
+tr.row.is-interested { background: color-mix(in oklch, var(--accent-soft) 55%, transparent); }
+tr.row.is-interested:hover { background: var(--accent-soft); }
+@media (max-width: 680px) { td.col-int, th.col-int { padding-left: 8px; } }
+
+/* card: photo wrapper + overlay bookmark */
+.pcard { position: relative; }
+.pcard-photo { position: relative; }
+.intbtn--overlay { position: absolute; top: 10px; right: 10px; width: 36px; height: 36px;
+  background: rgba(20, 18, 15, 0.42); backdrop-filter: blur(4px); color: #fff; }
+.intbtn--overlay:hover { background: rgba(20, 18, 15, 0.62); color: #fff; }
+.intbtn--overlay.is-on { background: var(--accent); color: #fff; }
+.intbtn--overlay.is-on svg { fill: rgba(255, 255, 255, 0.32); }
+.pcard.is-interested { border-color: color-mix(in oklch, var(--accent) 40%, var(--border)); }
+
+/* sticky interest bar */
+.interest-bar { position: fixed; left: 50%; bottom: 22px; z-index: 60;
+  display: flex; align-items: center; gap: 22px;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--r-full); box-shadow: var(--shadow-lg);
+  padding: 10px 12px 10px 22px;
+  animation: bar-in var(--dur-slow) var(--ease); transform: translateX(-50%); }
+@keyframes bar-in { from { opacity: 0; transform: translate(-50%, 10px); }
+  to { opacity: 1; transform: translate(-50%, 0); } }
+.ib-count { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-sm);
+  color: var(--ink-2); white-space: nowrap; }
+.ib-count svg { color: var(--accent); }
+.ib-count b { color: var(--ink-1); font-weight: var(--fw-semibold); }
+.ib-actions { display: inline-flex; align-items: center; gap: 8px; }
+.ib-clear { border: 0; background: transparent; color: var(--ink-3); cursor: pointer;
+  font-family: var(--font-sans); font-size: var(--fs-sm); font-weight: var(--fw-medium);
+  padding: 7px 10px; border-radius: var(--r-xs);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.ib-clear:hover { color: var(--ink-1); background: var(--surface-2); }
+@media (max-width: 560px) {
+  .interest-bar { left: 16px; right: 16px; transform: none; justify-content: space-between; gap: 12px; }
+  @keyframes bar-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+}
+
+/* follow-up modal */
+.followup-intro { margin: 0; color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.5; }
+.followup-group { border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.fg-head { display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; background: var(--surface-2); }
+.fg-agency { display: inline-flex; align-items: center; gap: 8px; font-weight: var(--fw-semibold);
+  color: var(--ink-1); }
+.fg-agency svg { color: var(--accent); }
+.fg-count { font-size: var(--fs-caption); color: var(--ink-3); }
+.fg-homes { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px 0; }
+.fg-home { font-size: var(--fs-caption); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.fg-draft { border: 0; border-top: 1px solid var(--border); border-radius: 0;
+  margin-top: 12px; background: var(--surface); }
+.confirm-mark--ok { background: var(--success-soft); color: var(--success); }

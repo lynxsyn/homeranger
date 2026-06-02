@@ -107,6 +107,10 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
       expect(listing!.primarySource).toBe("agent_email");
       expect(listing!.listingStatus).toBe("pre_market");
       expect(listing!.pricePence).toBe(45_000_000);
+      // M8 PR2: the sending agent is captured from the inbound email so the
+      // listings table's Agent column + per-agency follow-ups have real data.
+      expect(listing!.agentEmail).toBe(`test-${TEST_PREFIX}-agent@example.com`);
+      expect(listing!.agencyName).toBeNull();
 
       // ListingSourceRecord written (sourceType=agent_email, externalId=email_id).
       const source = await db.listingSourceRecord.findUnique({
