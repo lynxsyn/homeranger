@@ -22,6 +22,14 @@ import {
   type ListingRecord,
   type ListListingsInput,
 } from "../../repositories/listing.repository.js";
+import {
+  PhotoAnalysisRepository,
+  _setPhotoAnalysisRepositoryForTesting,
+} from "../../repositories/photo-analysis.repository.js";
+import {
+  ListingScoreRepository,
+  _setListingScoreRepositoryForTesting,
+} from "../../repositories/listing-score.repository.js";
 
 function makeRow(overrides: Partial<ListingRecord> = {}): ListingRecord {
   const now = new Date("2026-01-01T00:00:00.000Z");
@@ -52,6 +60,8 @@ const authedCaller = appRouter.createCaller({ user: { email: "dev@homescout.loca
 
 afterEach(() => {
   _setListingRepositoryForTesting(null);
+  _setPhotoAnalysisRepositoryForTesting(null);
+  _setListingScoreRepositoryForTesting(null);
   vi.restoreAllMocks();
 });
 
@@ -155,17 +165,78 @@ describe("listingsRouter.getById", () => {
 });
 
 describe("listingsRouter.expand", () => {
-  it("returns the M5 placeholder payload (nulls) for a known id", async () => {
+  it("returns analysed photos + the hybrid match score for a known id", async () => {
     const row = makeRow();
-    const fake = new ListingRepository();
-    vi.spyOn(fake, "getById").mockResolvedValue(row);
-    _setListingRepositoryForTesting(fake);
+    const fakeListings = new ListingRepository();
+    vi.spyOn(fakeListings, "getById").mockResolvedValue(row);
+    _setListingRepositoryForTesting(fakeListings);
+
+    const fakePhotos = new PhotoAnalysisRepository();
+    vi.spyOn(fakePhotos, "listByListingId").mockResolvedValue([
+      {
+        id: "p1",
+        listingId: row.id,
+        imageHash: "h1",
+        imageUrl: "r2://b/h1",
+        tasteScore: 82,
+        featuresJson: { style: "modern", highlights: ["bay window"] },
+        model: "claude-haiku-4-5",
+        costPence: 4,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+    _setPhotoAnalysisRepositoryForTesting(fakePhotos);
+
+    const fakeScore = new ListingScoreRepository();
+    vi.spyOn(fakeScore, "getByListingId").mockResolvedValue({
+      id: "s1",
+      listingId: row.id,
+      vectorScore: 0.8,
+      llmScore: 0.5,
+      combinedScore: 0.62,
+      rationale: "Modern and bright.",
+      scoredAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    _setListingScoreRepositoryForTesting(fakeScore);
+
+    const result = await authedCaller.listings.expand({ id: row.id });
+    expect(result.id).toBe(row.id);
+    expect(result.photos).toHaveLength(1);
+    expect(result.photos[0]).toEqual({
+      imageUrl: "r2://b/h1",
+      tasteScore: 82,
+      features: { style: "modern", highlights: ["bay window"] },
+    });
+    expect(result.combinedScore).toBeCloseTo(0.62);
+    expect(result.vectorScore).toBeCloseTo(0.8);
+    expect(result.llmScore).toBeCloseTo(0.5);
+    expect(result.scoreRationale).toBe("Modern and bright.");
+  });
+
+  it("returns empty photos + null scores for an un-analysed listing", async () => {
+    const row = makeRow();
+    const fakeListings = new ListingRepository();
+    vi.spyOn(fakeListings, "getById").mockResolvedValue(row);
+    _setListingRepositoryForTesting(fakeListings);
+
+    const fakePhotos = new PhotoAnalysisRepository();
+    vi.spyOn(fakePhotos, "listByListingId").mockResolvedValue([]);
+    _setPhotoAnalysisRepositoryForTesting(fakePhotos);
+
+    const fakeScore = new ListingScoreRepository();
+    vi.spyOn(fakeScore, "getByListingId").mockResolvedValue(null);
+    _setListingScoreRepositoryForTesting(fakeScore);
 
     const result = await authedCaller.listings.expand({ id: row.id });
     expect(result).toEqual({
       id: row.id,
-      photoFeatures: null,
+      photos: [],
       combinedScore: null,
+      vectorScore: null,
+      llmScore: null,
       scoreRationale: null,
     });
   });
