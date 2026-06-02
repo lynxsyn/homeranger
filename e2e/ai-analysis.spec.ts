@@ -29,7 +29,12 @@ const SECRET =
   process.env.RESEND_INBOUND_WEBHOOK_SECRET ??
   "whsec_aG9tZXNjb3V0LWUyZS1pbmJvdW5kLXNlY3JldA==";
 
-const RUN_ID = Date.now().toString(36);
+// Digit-free run id: map base36 digits → letters so the prefix can NEVER form a
+// postcode-like token the fake extractor might grab instead of the real
+// postcode (which previously mangled the stored address + leaked the row).
+const RUN_ID = Date.now()
+  .toString(36)
+  .replace(/[0-9]/g, (d) => String.fromCharCode(103 + Number(d)));
 const STREET = `${RUN_ID} Analysis Test Road`;
 const POSTCODE = "EC1A 1BB";
 const EMAIL_ID = `e2e-analysis-${RUN_ID}`;
@@ -53,13 +58,13 @@ test.afterAll(async () => {
   const client = new Client({ connectionString: DB_URL });
   await client.connect();
   try {
+    // Delete the listing this run created — by its source record's externalId
+    // (reliable even if the extractor stored a slightly different address) OR the
+    // expected address; the FK cascade removes its ListingSourceRecord.
     await client.query(
-      `DELETE FROM "ListingSourceRecord" WHERE "externalId" = $1`,
-      [EMAIL_ID],
+      `DELETE FROM "Listing" WHERE "id" IN (SELECT "listingId" FROM "ListingSourceRecord" WHERE "externalId" = $1) OR "addressNormalized" = $2`,
+      [EMAIL_ID, EXPECTED_ADDRESS_NORMALIZED],
     );
-    await client.query(`DELETE FROM "Listing" WHERE "addressNormalized" = $1`, [
-      EXPECTED_ADDRESS_NORMALIZED,
-    ]);
   } finally {
     await client.end();
   }
