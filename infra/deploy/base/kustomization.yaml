@@ -32,7 +32,15 @@ resources:
   - ghcr-secret.enc.yaml
   - api-deployment.yaml
   - web-deployment.yaml
-  # Flux image-automation (auto-bump from GHCR) is deferred to M4 — M3 uses
-  # static :0.3.0 tags, avoiding the GHCR-scan + ghcr-pull-secret-flux bootstrap.
-  # The $imagepolicy markers in the Deployments are inert until then.
-  # - image-automation.yaml
+  # M4 brings up the BullMQ worker (apps/processor) as a consume-only
+  # Deployment. It pulls ghcr.io/lynxsyn/homescout-processor (built by the
+  # release.yml matrix once apps/processor/Dockerfile lands) and is gated by
+  # the same chicken-and-egg ordering as the api/web images: build + push the
+  # tag FIRST, then let Flux reconcile.
+  - processor-deployment.yaml
+  # M4 enables Flux image-automation (auto-bump from GHCR) now that the worker
+  # joins the image set. The ImageRepository/ImagePolicy/ImageUpdateAutomation
+  # in image-automation.yaml scan GHCR and rewrite the $imagepolicy markers in
+  # the api/web/processor Deployments. Requires the ghcr-pull-secret-flux secret
+  # in flux-system (see ghcr-secret.example.yaml) BEFORE first reconcile.
+  - image-automation.yaml

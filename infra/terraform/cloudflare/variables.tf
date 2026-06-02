@@ -26,9 +26,33 @@ variable "app_hostname" {
   default     = "app.aid-engineering.com"
 }
 
+variable "webhook_hostname" {
+  description = "Public hostname for the Resend inbound/event webhooks (M4). Dedicated host that maps to the same homescout-api Service through the tunnel but is NOT behind the Cloudflare Access app — the webhook routes authenticate via Svix signature verification at the API layer. Mirrors Doxus's edge-public api.doxus.app pattern."
+  type        = string
+  default     = "hooks.aid-engineering.com"
+}
+
 variable "tunnel_secret" {
   description = "Secret for Cloudflare Tunnel (base64-encoded, 32+ bytes). Defaults to a generated random_id when empty."
   type        = string
   sensitive   = true
   default     = ""
+}
+
+variable "ai_gateway_id" {
+  description = "Cloudflare AI Gateway slug fronting homescout's outbound LLM calls (M4 Claude extraction; M5 Voyage/Haiku). Set as CF_AI_GATEWAY_ID in the homescout secret."
+  type        = string
+  default     = "homescout"
+}
+
+variable "ai_gateway_authentication" {
+  description = "Require the cf-aig-authorization bearer on the AI Gateway. When true, also set CF_AI_GATEWAY_TOKEN (a CF API token with 'AI Gateway Run') in the homescout secret."
+  type        = bool
+  default     = false
+}
+
+variable "ai_gateway_cache_ttl" {
+  description = "AI Gateway response cache TTL in seconds. 0 disables caching (the default — agent emails rarely repeat byte-for-byte)."
+  type        = number
+  default     = 0
 }

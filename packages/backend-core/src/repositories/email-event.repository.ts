@@ -1,0 +1,106 @@
+/**
+ * EmailEvent repository — owns ALL Prisma access for the provider
+ * delivery/bounce/complaint feed. M2 authored the `EmailEvent` MODEL but NOT a
+ * repository for it; M4 needs one because the events path persists rows and the
+ * `@@unique(providerEventId)` makes a redelivered Resend webhook idempotent.
+ *
+ * Mirrors the homescout repository conventions exactly
+ * (listing-source-record.repository.ts + outreach.repository.ts):
+ *   - `Prisma.validator<...Select>()` projection + `GetPayload` row type
+ *   - optional-tx via `const db = tx ?? prisma`
+ *   - createMany({ skipDuplicates }) + findUnique read-back for the idempotent
+ *     insert (the outreach.repository.ts `createInboundMessageOrIgnore` idiom)
+ *   - bottom singleton + `_set…ForTesting` mutable export
+ */
+import { Prisma, type EmailEventType } from "@prisma/client";
+import { prisma } from "../lib/prisma.js";
+
+type PrismaLike = typeof prisma | Prisma.TransactionClient;
+
+const EMAIL_EVENT_SELECT = Prisma.validator<Prisma.EmailEventSelect>()({
+  id: true,
+  providerEventId: true,
+  messageId: true,
+  email: true,
+  eventType: true,
+  payload: true,
+  occurredAt: true,
+  createdAt: true,
+});
+
+export type EmailEventRecord = Prisma.EmailEventGetPayload<{
+  select: typeof EMAIL_EVENT_SELECT;
+}>;
+
+/** Idempotent insert input keyed on the unique `providerEventId`. */
+export interface RecordEmailEventInput {
+  providerEventId: string;
+  messageId: string | null;
+  email: string;
+  eventType: EmailEventType;
+  payload?: Prisma.InputJsonValue;
+  occurredAt: Date;
+}
+
+export interface RecordEmailEventResult {
+  event: EmailEventRecord;
+  /** false when this providerEventId was already stored (redelivery no-op). */
+  created: boolean;
+}
+
+export class EmailEventRepository {
+  /**
+   * Insert an event, ignoring redeliveries. The DB unique on `providerEventId`
+   * makes this idempotent: `createMany` + `skipDuplicates` inserts 0 rows on a
+   * repeat, then we read the existing row back. `created` tells the caller
+   * whether this was the first delivery (so suppression only mutates once).
+   */
+  async recordOrIgnore(
+    input: RecordEmailEventInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<RecordEmailEventResult> {
+    const db: PrismaLike = tx ?? prisma;
+    const { count } = await db.emailEvent.createMany({
+      data: [
+        {
+          providerEventId: input.providerEventId,
+          messageId: input.messageId,
+          email: input.email,
+          eventType: input.eventType,
+          ...(input.payload !== undefined ? { payload: input.payload } : {}),
+          occurredAt: input.occurredAt,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    const event = await db.emailEvent.findUnique({
+      where: { providerEventId: input.providerEventId },
+      select: EMAIL_EVENT_SELECT,
+    });
+    if (!event) {
+      throw new Error(
+        `EmailEvent not found after recordOrIgnore for ${input.providerEventId}`,
+      );
+    }
+    return { event, created: count > 0 };
+  }
+
+  async findByProviderEventId(
+    providerEventId: string,
+  ): Promise<EmailEventRecord | null> {
+    return prisma.emailEvent.findUnique({
+      where: { providerEventId },
+      select: EMAIL_EVENT_SELECT,
+    });
+  }
+}
+
+const defaultEmailEventRepository = new EmailEventRepository();
+
+export let emailEventRepository = defaultEmailEventRepository;
+
+export function _setEmailEventRepositoryForTesting(
+  repository: EmailEventRepository | null,
+): void {
+  emailEventRepository = repository ?? defaultEmailEventRepository;
+}

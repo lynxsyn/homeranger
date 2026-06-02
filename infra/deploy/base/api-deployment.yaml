@@ -50,7 +50,7 @@ spec:
         # Block until Postgres accepts TCP — Prisma migrate then init can't race
         # the DB coming up on a cold namespace start.
         - name: wait-for-postgres
-          image: ghcr.io/lynxsyn/homescout-api:0.3.0 # {"$imagepolicy": "flux-system:homescout-api"}
+          image: ghcr.io/lynxsyn/homescout-api:0.4.0 # {"$imagepolicy": "flux-system:homescout-api"}
           imagePullPolicy: Always
           command:
             - sh
@@ -66,7 +66,7 @@ spec:
               drop: ["ALL"]
         # Apply migrations as the migrator role before the app boots.
         - name: prisma-migrate
-          image: ghcr.io/lynxsyn/homescout-api:0.3.0 # {"$imagepolicy": "flux-system:homescout-api"}
+          image: ghcr.io/lynxsyn/homescout-api:0.4.0 # {"$imagepolicy": "flux-system:homescout-api"}
           imagePullPolicy: Always
           workingDir: /app/apps/api
           command: ["npx", "prisma", "migrate", "deploy"]
@@ -83,7 +83,7 @@ spec:
               drop: ["ALL"]
       containers:
         - name: api
-          image: ghcr.io/lynxsyn/homescout-api:0.3.0 # {"$imagepolicy": "flux-system:homescout-api"}
+          image: ghcr.io/lynxsyn/homescout-api:0.4.0 # {"$imagepolicy": "flux-system:homescout-api"}
           imagePullPolicy: Always
           ports:
             - name: http
@@ -108,6 +108,28 @@ spec:
                 secretKeyRef:
                   name: homescout-secret
                   key: DATABASE_URL
+            # M4: the Resend webhook routes ENQUEUE onto BullMQ, so the api needs
+            # Redis. REDIS_HOST points at the in-cluster Service; redis-connection
+            # builds redis://:<REDIS_PASSWORD>@homescout-redis:6379 from these.
+            - name: REDIS_HOST
+              value: homescout-redis.homescout.svc.cluster.local
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: REDIS_PASSWORD
+            # M4: the inbound + events webhook routes verify Svix signatures
+            # against these whsec_ secrets (one per Resend endpoint).
+            - name: RESEND_INBOUND_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: RESEND_INBOUND_WEBHOOK_SECRET
+            - name: RESEND_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: RESEND_WEBHOOK_SECRET
             # M3: these four keys are NOT yet in homescout-secret (added in M4
             # with the Cloudflare tunnel). `optional: true` lets the kubelet
             # resolve them to UNSET rather than failing with

@@ -409,6 +409,23 @@ export class ListingRepository {
   }
 
   /**
+   * Exact lookup on the unique dedup key `addressNormalized`. Backs the
+   * DedupService exact-match stage: the canonical address the extractor +
+   * dedup produce is looked up here, and a hit is a certain duplicate. M2
+   * shipped getById / list / upsertByAddress / writeEmbedding / vectorTopK but
+   * no by-dedup-key read; M4 adds this one method (the column is `@unique`, so
+   * findUnique is valid).
+   */
+  async getByAddressNormalized(
+    addressNormalized: string,
+  ): Promise<ListingRecord | null> {
+    return prisma.listing.findUnique({
+      where: { addressNormalized },
+      select: LISTING_SELECT,
+    });
+  }
+
+  /**
    * Idempotent upsert keyed on the unique `addressNormalized` dedup column.
    * Re-ingesting the same address UPDATES (refreshes mutable fields +
    * `lastSeenAt`) rather than inserting a duplicate. `firstSeenAt` is only set
@@ -451,6 +468,42 @@ export class ListingRepository {
         listingUrl: input.listingUrl,
         primarySource: input.primarySource,
         lastSeenAt: now,
+      },
+      select: LISTING_SELECT,
+    });
+  }
+
+  /**
+   * Update an EXISTING listing by id — the merge primitive the dedup path needs
+   * when a match was found by a key OTHER than the candidate's addressNormalized
+   * (the embedding fallback returns the existing listing's id, whose
+   * addressNormalized differs from the new candidate's). `upsertByAddress`
+   * cannot express this because addressNormalized is its only key, so an
+   * embedding match would otherwise INSERT a duplicate. Refreshes the mutable
+   * fields + `lastSeenAt`; `firstSeenAt` and `addressNormalized` are left
+   * untouched (we merge INTO the existing row, never re-key it).
+   */
+  async updateById(
+    listingId: string,
+    fields: Omit<UpsertListingByAddressInput, "addressNormalized">,
+    tx?: Prisma.TransactionClient,
+  ): Promise<ListingRecord> {
+    const db: PrismaLike = tx ?? prisma;
+    return db.listing.update({
+      where: { id: listingId },
+      data: {
+        postcode: fields.postcode,
+        outcode: fields.outcode,
+        pricePence: fields.pricePence,
+        bedrooms: fields.bedrooms,
+        tenure: fields.tenure,
+        propertyType: fields.propertyType,
+        epcRating: fields.epcRating,
+        listingStatus: fields.listingStatus,
+        isPreMarket: fields.isPreMarket,
+        listingUrl: fields.listingUrl,
+        primarySource: fields.primarySource,
+        lastSeenAt: new Date(),
       },
       select: LISTING_SELECT,
     });

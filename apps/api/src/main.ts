@@ -24,6 +24,8 @@ import {
   createContext,
   type AppRouter,
 } from "@homescout/backend-core";
+import { registerResendInboundRoute } from "@homescout/backend-core/routes/resend-inbound.route";
+import { registerResendEventsRoute } from "@homescout/backend-core/routes/resend-events.route";
 
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? "0.0.0.0";
@@ -43,6 +45,15 @@ server.get("/api/version", async () => ({
   service: "homescout-api",
   gitSha: process.env.GIT_SHA ?? "unknown",
 }));
+
+// Raw Resend webhook routes — registered BEFORE the tRPC plugin (the
+// load-bearing ordering from control-plane-api/main.ts). Each registers its OWN
+// per-encapsulation raw-buffer content-type parser so the Svix signature can be
+// verified against the exact bytes, WITHOUT disturbing the default JSON parser
+// the tRPC plugin relies on. They return raw HTTP status (NOT TRPCError) and
+// enqueue onto BullMQ; the processor consumes.
+await registerResendInboundRoute(server);
+await registerResendEventsRoute(server);
 
 await server.register(fastifyTRPCPlugin, {
   prefix: "/trpc",

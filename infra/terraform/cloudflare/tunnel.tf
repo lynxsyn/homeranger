@@ -48,6 +48,22 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "homescout" {
         service  = "http://homescout-web.homescout.svc.cluster.local:8080"
       },
       {
+        # M4 — Resend inbound/event webhooks. Dedicated public host that maps
+        # to the SAME homescout-api Service but is deliberately NOT fronted by
+        # the Cloudflare Access app (access.tf scopes the Access application to
+        # var.app_hostname only). Resend cannot present a CF Access JWT, so the
+        # webhook routes authenticate at the API layer instead: each route
+        # verifies the Svix signature (whsec_… secret) on the raw body before
+        # doing anything. Mirrors Doxus's edge-public api.doxus.app pattern for
+        # its CF Email Routing worker.
+        #
+        # The api's NetworkPolicy already allows ingress from cloudflared on
+        # 3000 (allow-homescout-api) — the same Service answers both hostnames,
+        # so no extra netpol is needed for this host.
+        hostname = var.webhook_hostname
+        service  = "http://homescout-api.homescout.svc.cluster.local:3000"
+      },
+      {
         service = "http_status:404"
       },
     ]
@@ -61,6 +77,21 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "homescout" {
 resource "cloudflare_dns_record" "tunnel_app" {
   zone_id = var.zone_id
   name    = var.app_hostname
+  type    = "CNAME"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.homescout.id}.cfargotunnel.com"
+  proxied = true
+  ttl     = 1
+}
+
+# M4 — Proxied CNAME for the Resend webhook host (var.webhook_hostname, e.g.
+# hooks.aid-engineering.com). Pairs with the var.webhook_hostname ingress entry
+# in cloudflare_zero_trust_tunnel_cloudflared_config.homescout. NOT covered by
+# the CF Access application — webhooks reach the api directly and are
+# authenticated by Svix signature verification at the route layer. Proxied so
+# Cloudflare's edge (and the custom WAF in waf.tf) still front it.
+resource "cloudflare_dns_record" "tunnel_webhook" {
+  zone_id = var.zone_id
+  name    = var.webhook_hostname
   type    = "CNAME"
   content = "${cloudflare_zero_trust_tunnel_cloudflared.homescout.id}.cfargotunnel.com"
   proxied = true

@@ -1,0 +1,286 @@
+# homescout-processor Deployment + headless Service + ServiceMonitor.
+#
+# M4 brings apps/processor up as a BullMQ consumer (the way M3 brought up
+# api/web). Pattern from doxus-infra worker-deployment.yaml, scoped to homescout
+# and SIMPLIFIED:
+#   - Doxus runs the worker off the SHARED doxus-api image with a CMD override
+#     (`node ./apps/processor/dist/worker.js`). homescout ships a DEDICATED
+#     image ghcr.io/lynxsyn/homescout-processor (apps/processor/Dockerfile), so
+#     there is no command override — the image CMD already runs the worker.
+#   - NO prisma-migrate init container. The api Deployment owns migrations
+#     (apps/api/Dockerfile + its prisma-migrate init container); the processor
+#     only waits for postgres TCP, then consumes.
+#   - Single replica (single-user product, low inbound volume). BullMQ workers
+#     are safe to scale later — jobs are claimed atomically per-message.
+#   - No external ingress (allow-homescout-processor in networkpolicy.yaml is
+#     egress-only). Metrics on 9090 are scraped in-cluster by the ServiceMonitor.
+#
+# CHICKEN-AND-EGG: ghcr.io/lynxsyn/homescout-processor:<tag> MUST exist in GHCR
+# before Flux reconciles this pod or it ImagePullBackOffs. The release.yml matrix
+# gains `processor` in M4 so the tag is built+pushed at the release tag; Flux's
+# ImageUpdateAutomation then rewrites the $imagepolicy marker below.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homescout-processor
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: homescout-processor
+    app.kubernetes.io/part-of: homescout-app
+    app.kubernetes.io/component: worker
+spec:
+  revisionHistoryLimit: 3
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homescout-processor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homescout-processor
+        app.kubernetes.io/part-of: homescout-app
+        app.kubernetes.io/component: worker
+    spec:
+      terminationGracePeriodSeconds: 60
+      automountServiceAccountToken: false
+      priorityClassName: platform-critical
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Block until Postgres accepts TCP. The api Deployment runs the
+        # prisma-migrate init container; the processor just needs the DB reachable.
+        - name: wait-for-postgres
+          image: busybox:1.36.1
+          command:
+            - sh
+            - -ec
+            - |
+              host="homescout-postgres.homescout.svc.cluster.local"
+              port="5432"
+              attempts=150
+              i=1
+              while [ "$i" -le "$attempts" ]; do
+                if nc -z -w 2 "$host" "$port"; then
+                  echo "PostgreSQL is reachable at ${host}:${port}"
+                  exit 0
+                fi
+                echo "Waiting for PostgreSQL at ${host}:${port} (${i}/${attempts})"
+                i=$((i + 1))
+                sleep 2
+              done
+              echo "Timed out waiting for PostgreSQL at ${host}:${port}" >&2
+              exit 1
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+      containers:
+        - name: processor
+          image: ghcr.io/lynxsyn/homescout-processor:0.4.0 # {"$imagepolicy": "flux-system:homescout-processor"}
+          imagePullPolicy: Always
+          ports:
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: METRICS_PORT
+              value: "9090"
+            - name: METRICS_HOST
+              value: "0.0.0.0"
+            # BullMQ/ioredis connect via REDIS_URL. homescout-redis requires a
+            # password (redis.yaml --requirepass), so REDIS_URL embeds it via
+            # the $(VAR) reference expansion (REDIS_PASSWORD must be declared
+            # FIRST so the kubelet can substitute it). Mirrors doxus worker env.
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: REDIS_PASSWORD
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@homescout-redis.homescout.svc.cluster.local:6379"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: DATABASE_URL
+            # LLM structured extraction (ClaudeExtractionProvider).
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: ANTHROPIC_API_KEY
+            # Cloudflare AI Gateway (OPTIONAL transparent proxy for the LLM calls
+            # — analytics + caching + retries + logging; provisioned by
+            # infra/terraform/cloudflare/ai-gateway.tf). All three are
+            # optional:true so a secret WITHOUT these keys still starts the pod —
+            # the app then calls Anthropic directly (lib/ai/ai-gateway.ts treats
+            # empty/missing as "off"). Set ACCOUNT_ID + ID together to enable;
+            # TOKEN only for an authenticated gateway.
+            - name: CF_AI_GATEWAY_ACCOUNT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: CF_AI_GATEWAY_ACCOUNT_ID
+                  optional: true
+            - name: CF_AI_GATEWAY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: CF_AI_GATEWAY_ID
+                  optional: true
+            - name: CF_AI_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: CF_AI_GATEWAY_TOKEN
+                  optional: true
+            # Voyage embeddings — DedupService embedding fallback (M4) + M5 scoring.
+            - name: VOYAGE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: VOYAGE_API_KEY
+            # Cloudflare R2 (S3-compatible) — attachment object store. The
+            # storage-config reads R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY /
+            # R2_BUCKET / R2_ENDPOINT (the homescout key names; storage-config
+            # also accepts the S3_* aliases but homescout uses R2_*).
+            - name: R2_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: R2_ACCESS_KEY_ID
+            - name: R2_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: R2_SECRET_ACCESS_KEY
+            - name: R2_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: R2_BUCKET
+            - name: R2_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: R2_ENDPOINT
+            # Worker hydrates inbound emails via the Resend API (metadata-only
+            # webhook → emails.receiving.get + attachments). RealResendHydrator
+            # constructs `new Resend(RESEND_API_KEY)` at boot.
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: RESEND_API_KEY
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1024Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          # worker.ts serves GET /health on the metrics port, started LAST after
+          # the DB + Redis pings succeed — so a 200 here is real readiness (not
+          # merely a bound socket). Mirrors the api's /api/health probes.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+# Headless Service exposing the worker's /metrics port for the ServiceMonitor.
+apiVersion: v1
+kind: Service
+metadata:
+  name: homescout-processor
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: homescout-processor
+    app.kubernetes.io/part-of: homescout-app
+    app.kubernetes.io/component: worker
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: homescout-processor
+---
+# Prometheus scrape of the worker /metrics endpoint. The cluster's
+# kube-prometheus-stack (installed by Doxus's Flux graph — homescout consumes,
+# never installs) discovers this via the `release: kube-prometheus-stack` label.
+# If the ServiceMonitor CRD is not present in this cluster, drop this document
+# (the Deployment + Service still work) — but Doxus already installs it.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: homescout-processor
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: homescout-processor
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homescout-processor
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+  namespaceSelector:
+    matchNames:
+      - homescout

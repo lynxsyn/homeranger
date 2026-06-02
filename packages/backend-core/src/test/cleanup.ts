@@ -17,24 +17,29 @@ export async function cleanupTestData(
 ): Promise<void> {
   const pattern = prefix ? `test-${prefix}-` : "test-";
 
+  // M4 listings store an UPPER-CASED addressNormalized (the dedup key builder
+  // upper-cases), while M2/M3 fixtures use lower-case keys — so the prefix match
+  // is case-INSENSITIVE to catch both.
+  const addressMatch = { startsWith: pattern, mode: "insensitive" as const };
+
   await prisma.$transaction(async (tx) => {
     // ── Listing children ──────────────────────────────────────────────────
     await tx.listingScore.deleteMany({
-      where: { listing: { addressNormalized: { startsWith: pattern } } },
+      where: { listing: { addressNormalized: addressMatch } },
     });
     await tx.photoAnalysis.deleteMany({
-      where: { listing: { addressNormalized: { startsWith: pattern } } },
+      where: { listing: { addressNormalized: addressMatch } },
     });
     await tx.listingSourceRecord.deleteMany({
       where: {
         OR: [
           { externalId: { startsWith: pattern } },
-          { listing: { addressNormalized: { startsWith: pattern } } },
+          { listing: { addressNormalized: addressMatch } },
         ],
       },
     });
     await tx.listing.deleteMany({
-      where: { addressNormalized: { startsWith: pattern } },
+      where: { addressNormalized: addressMatch },
     });
 
     // ── Outreach ──────────────────────────────────────────────────────────
