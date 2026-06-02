@@ -1,5 +1,5 @@
 variable "cloudflare_api_token" {
-  description = "Cloudflare API token with zone DNS edit permissions for aid-engineering.com. Injected at apply time from the CLOUDFLARE_API_TOKEN GitHub Actions secret (Bitwarden source: DOXUS_CF_API_TOKEN — the SAME token Doxus uses, same CF account). Not stored in the SOPS tfvars."
+  description = "Cloudflare API token for the homescout edge. Needs (account) AI Gateway:Edit, Workers R2:Edit, Cloudflare Tunnel:Edit, Access Apps/Policies + Service Tokens:Edit; (zone, aid-engineering.com) DNS:Edit, Zone WAF:Edit, Access Apps/Policies:Edit, Zone:Read. Sourced from the dedicated HOMESCOUT_CF_API_TOKEN (.env locally / GitHub Actions secret CLOUDFLARE_API_TOKEN in CI) — a homescout-scoped token, NOT the shared Doxus token, so its blast radius is isolated. Injected at apply time as TF_VAR_cloudflare_api_token; never stored in the SOPS tfvars."
   type        = string
   sensitive   = true
 }
