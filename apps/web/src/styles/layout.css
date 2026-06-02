@@ -105,6 +105,7 @@ tr.row.clickable:hover { background: var(--surface-2); }
   font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bedbath span { display: inline-flex; align-items: center; gap: 5px; }
 .bedbath svg { color: var(--ink-3); }
+.bedbath.na { color: var(--ink-3); }
 .agent-cell { color: var(--ink-2); white-space: nowrap; }
 .seen-cell { color: var(--ink-3); font-size: var(--fs-caption); white-space: nowrap;
   font-variant-numeric: tabular-nums; }

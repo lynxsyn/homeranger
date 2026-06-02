@@ -247,6 +247,11 @@ export class DefaultInboundIngestionService implements InboundIngestionService {
       isPreMarket: true,
       listingUrl: extracted.listingUrl,
       primarySource: "agent_email" satisfies ListingSource,
+      // Sending-agent capture (Scouts PR2): the per-agency follow-up groups by
+      // these. The sender email is the keying identity; the display name (when
+      // present) is the friendly agency label the listings Agent column shows.
+      agentEmail: normaliseEmail(payload.senderEmail),
+      agencyName: payload.senderName ?? null,
     };
 
     // Listing upsert + provenance source-record share ONE transaction so a

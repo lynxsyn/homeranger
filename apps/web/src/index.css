@@ -6,6 +6,7 @@
 @import "./styles/components.css";
 @import "./styles/layout.css";
 @import "./styles/scouts.css";
+@import "./styles/interest.css";
 
 /*
  * Screen-reader-only utility — used for table <caption>s and visually-hidden

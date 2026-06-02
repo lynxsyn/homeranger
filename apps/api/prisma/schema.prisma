@@ -166,6 +166,8 @@ model Listing {
   isPreMarket       Boolean                      @default(false)
   listingUrl        String?
   primarySource     ListingSource                @default(agent_email)
+  agentEmail        String?
+  agencyName        String?
   embedding         Unsupported("vector(1024)")?
   firstSeenAt       DateTime                     @default(now()) @db.Timestamptz(6)
   lastSeenAt        DateTime                     @default(now()) @db.Timestamptz(6)

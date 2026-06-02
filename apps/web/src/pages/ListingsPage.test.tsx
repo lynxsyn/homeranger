@@ -1,12 +1,15 @@
 /**
  * ListingsPage unit tests — render the screen with a mocked tRPC query and
- * assert the no-filter, sortable, dual-view behaviour ported from the design.
+ * assert the no-filter, sortable, dual-view behaviour ported from the 2nd
+ * design handoff: no listing status, a real Agent column, beds/baths, and the
+ * bookmark → interest-bar → per-agency follow-up flow.
  *
  * The tRPC client is mocked at the module boundary so no backend/DB is needed;
- * `useQueryMock` controls each test's loading/error/data state.
+ * `useQueryMock` controls each test's loading/error/data state. localStorage is
+ * reset between tests so the bookmark persistence ("hs-interested") starts clean.
  */
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 
 const { useQueryMock } = vi.hoisted(() => ({ useQueryMock: vi.fn() }));
 vi.mock("../lib/trpc", () => ({
@@ -25,6 +28,7 @@ function makeItem(overrides: Record<string, unknown> = {}) {
     outcode: "SE1",
     pricePence: 50_000_000,
     bedrooms: 2,
+    bathrooms: 1,
     tenure: null,
     propertyType: "terraced",
     epcRating: "c",
@@ -32,6 +36,8 @@ function makeItem(overrides: Record<string, unknown> = {}) {
     isPreMarket: false,
     listingUrl: "https://x.test/a",
     primarySource: "agent_email",
+    agentEmail: "agent@a.test",
+    agency: "Acme Estates",
     firstSeenAt: NOW,
     lastSeenAt: NOW,
     createdAt: NOW,
@@ -41,35 +47,43 @@ function makeItem(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// alpha: high price, mid score, has a source URL
-// bravo: low price, top score, pre-market (no URL)
-// charlie: mid price, unscored, has a source URL
+// alpha: high price, mid score, has a source URL, Acme Estates
+// bravo: low price, top score, email-only (no URL), Bravo Homes, no baths/beds
+// charlie: mid price, unscored, has a source URL, Acme Estates (shares alpha's agency)
 const ITEMS = [
   makeItem({
     addressNormalized: "alpha road",
     pricePence: 70_000_000,
     combinedScore: 0.6,
-    listingStatus: "live",
+    bedrooms: 3,
+    bathrooms: 2,
     listingUrl: "https://x.test/alpha",
     propertyType: "terraced",
+    agency: "Acme Estates",
+    agentEmail: "alpha@acme.test",
   }),
   makeItem({
     addressNormalized: "bravo street",
     pricePence: 40_000_000,
     combinedScore: 0.9,
-    listingStatus: "pre_market",
-    isPreMarket: true,
+    bedrooms: null,
+    bathrooms: null,
     listingUrl: null,
     propertyType: "semi_detached",
     epcRating: null,
+    agency: "Bravo Homes",
+    agentEmail: "bravo@bravo.test",
   }),
   makeItem({
     addressNormalized: "charlie lane",
     pricePence: 50_000_000,
     combinedScore: null,
-    listingStatus: "live",
+    bedrooms: 2,
+    bathrooms: 1,
     listingUrl: "https://x.test/charlie",
     propertyType: "flat",
+    agency: "Acme Estates",
+    agentEmail: "charlie@acme.test",
   }),
 ];
 
@@ -87,6 +101,14 @@ function renderedAddresses(): string[] {
     .getAllByTestId("listing-row")
     .map((r) => r.getAttribute("data-address") ?? "");
 }
+
+beforeEach(() => {
+  localStorage.clear();
+});
+
+afterEach(() => {
+  localStorage.clear();
+});
 
 describe("ListingsPage states", () => {
   it("shows a loading message while the query is pending", () => {
@@ -150,15 +172,7 @@ describe("ListingsPage table", () => {
     expect(screen.getByText("–")).toBeInTheDocument(); // charlie unscored
   });
 
-  it("counts homes + pre-market in the control bar", () => {
-    withData();
-    render(<ListingsPage />);
-    const count = screen.getByTestId("listings-count");
-    expect(count).toHaveTextContent("3");
-    expect(count).toHaveTextContent("1 pre-market");
-  });
-
-  it("renders a source link for listed homes and an email-only marker for pre-market", () => {
+  it("renders a source link for listed homes and an email-only marker otherwise", () => {
     withData();
     render(<ListingsPage />);
     expect(screen.getAllByTestId("listing-source-link")).toHaveLength(2);
@@ -167,6 +181,63 @@ describe("ListingsPage table", () => {
     const link = screen.getAllByTestId("listing-source-link")[0]!;
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
+  });
+});
+
+describe("ListingsPage status removal", () => {
+  it("counts homes as 'from your agents' with no pre-market count", () => {
+    withData();
+    render(<ListingsPage />);
+    const count = screen.getByTestId("listings-count");
+    expect(count).toHaveTextContent("3");
+    expect(count).toHaveTextContent(/homes from your agents/i);
+    expect(count).not.toHaveTextContent(/pre-market/i);
+  });
+
+  it("renders no Status column header and no status badge text", () => {
+    withData();
+    render(<ListingsPage />);
+    expect(
+      screen.queryByRole("columnheader", { name: /status/i }),
+    ).not.toBeInTheDocument();
+    // The old StatusBadge labels must be gone everywhere.
+    expect(screen.queryByText("Pre-market")).not.toBeInTheDocument();
+    expect(screen.queryByText("Live")).not.toBeInTheDocument();
+    expect(screen.queryByText("Under offer")).not.toBeInTheDocument();
+  });
+});
+
+describe("ListingsPage agent + beds/baths", () => {
+  it("renders the Agent column with the agency name", () => {
+    withData();
+    render(<ListingsPage />);
+    expect(screen.getByRole("columnheader", { name: "Agent" })).toBeInTheDocument();
+    expect(screen.getAllByText("Acme Estates")).toHaveLength(2); // alpha + charlie
+    expect(screen.getByText("Bravo Homes")).toBeInTheDocument(); // bravo
+  });
+
+  it("falls back to an em-dash when an agency is missing", () => {
+    withData([
+      makeItem({ addressNormalized: "no agent road", agency: null, agentEmail: null }),
+    ]);
+    render(<ListingsPage />);
+    const row = screen.getByTestId("listing-row");
+    expect(within(row).getByText("—")).toBeInTheDocument();
+  });
+
+  it("shows beds + baths, and an em-dash for land/no-beds rows", () => {
+    withData();
+    render(<ListingsPage />);
+    const alpha = screen
+      .getAllByTestId("listing-row")
+      .find((r) => r.getAttribute("data-address") === "alpha road")!;
+    expect(within(alpha).getByText("3")).toBeInTheDocument(); // beds
+    expect(within(alpha).getByText("2")).toBeInTheDocument(); // baths
+    const bravo = screen
+      .getAllByTestId("listing-row")
+      .find((r) => r.getAttribute("data-address") === "bravo street")!;
+    // bravo has null bedrooms → the bedbath cell collapses to an em-dash.
+    expect(within(bravo).getByText("—")).toBeInTheDocument();
   });
 });
 
@@ -203,5 +274,96 @@ describe("ListingsPage view toggle", () => {
     expect(document.querySelector(".grid-cards")).not.toBeNull();
     expect(screen.getAllByTestId("listing-row")).toHaveLength(3);
     expect(localStorage.getItem("hs-view")).toBe("cards");
+  });
+});
+
+describe("ListingsPage interest + follow-ups", () => {
+  it("has a bookmark on every row and shows no interest bar initially", () => {
+    withData();
+    render(<ListingsPage />);
+    expect(screen.getAllByTestId("interest-button")).toHaveLength(3);
+    expect(screen.queryByTestId("interest-bar")).not.toBeInTheDocument();
+  });
+
+  it("toggling a bookmark reveals the interest bar and persists to localStorage", () => {
+    withData();
+    render(<ListingsPage />);
+    fireEvent.click(screen.getAllByTestId("interest-button")[0]!);
+
+    const bar = screen.getByTestId("interest-bar");
+    expect(bar).toHaveTextContent("1");
+    expect(bar).toHaveTextContent(/home you're interested in/i);
+    // bravo sorts first (top score) → its id is the one stored.
+    expect(JSON.parse(localStorage.getItem("hs-interested") ?? "[]")).toEqual([
+      "id-bravo street",
+    ]);
+
+    // Un-bookmark → the bar disappears again.
+    fireEvent.click(screen.getAllByTestId("interest-button")[0]!);
+    expect(screen.queryByTestId("interest-bar")).not.toBeInTheDocument();
+  });
+
+  it("rehydrates bookmarks from localStorage on mount", () => {
+    localStorage.setItem("hs-interested", JSON.stringify(["id-alpha road"]));
+    withData();
+    render(<ListingsPage />);
+    expect(screen.getByTestId("interest-bar")).toHaveTextContent("1");
+  });
+
+  it("'Clear' empties the bookmarks and hides the bar", () => {
+    withData();
+    render(<ListingsPage />);
+    fireEvent.click(screen.getAllByTestId("interest-button")[0]!);
+    fireEvent.click(screen.getByText("Clear"));
+    expect(screen.queryByTestId("interest-bar")).not.toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem("hs-interested") ?? "[]")).toEqual([]);
+  });
+
+  it("'Draft follow-ups' opens a modal grouping the bookmarked homes by agency", () => {
+    // Bookmark alpha + charlie (both Acme Estates) and bravo (Bravo Homes).
+    localStorage.setItem(
+      "hs-interested",
+      JSON.stringify(["id-alpha road", "id-charlie lane", "id-bravo street"]),
+    );
+    withData();
+    render(<ListingsPage />);
+
+    fireEvent.click(screen.getByTestId("draft-followups"));
+    const modal = screen.getByTestId("followup-modal");
+    expect(modal).toBeInTheDocument();
+
+    // Two agencies → two groups (Acme covers two homes, Bravo one).
+    const groups = screen.getAllByTestId("followup-group");
+    expect(groups).toHaveLength(2);
+    expect(within(modal).getByText("Acme Estates")).toBeInTheDocument();
+    expect(within(modal).getByText("Bravo Homes")).toBeInTheDocument();
+    // The Acme group lists both of its homes in one note.
+    const acme = groups.find((g) => within(g).queryByText("Acme Estates"))!;
+    expect(within(acme).getByText("2 homes")).toBeInTheDocument();
+    // The title counts agents, not homes.
+    expect(within(modal).getByText(/tell 2 agents you're interested/i)).toBeInTheDocument();
+  });
+
+  it("'Send' is a mock that flips to the sent success state", () => {
+    localStorage.setItem("hs-interested", JSON.stringify(["id-alpha road"]));
+    withData();
+    render(<ListingsPage />);
+
+    fireEvent.click(screen.getByTestId("draft-followups"));
+    fireEvent.click(screen.getByTestId("followup-send"));
+    expect(screen.getByTestId("followup-sent")).toBeInTheDocument();
+    expect(screen.getByText(/sent to 1 agent/i)).toBeInTheDocument();
+  });
+
+  it("falls back to 'your agent' when grouping a home with no agency", () => {
+    localStorage.setItem("hs-interested", JSON.stringify(["id-no agent road"]));
+    withData([
+      makeItem({ addressNormalized: "no agent road", agency: null, agentEmail: null }),
+    ]);
+    render(<ListingsPage />);
+
+    fireEvent.click(screen.getByTestId("draft-followups"));
+    const modal = screen.getByTestId("followup-modal");
+    expect(within(modal).getByText("your agent")).toBeInTheDocument();
   });
 });

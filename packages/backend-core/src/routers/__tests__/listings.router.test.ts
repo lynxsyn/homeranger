@@ -40,6 +40,7 @@ function makeRow(overrides: Partial<ListingRecord> = {}): ListingRecord {
     outcode: "SE1",
     pricePence: 42_500_000,
     bedrooms: 2,
+    bathrooms: 1,
     tenure: null,
     propertyType: null,
     epcRating: null,
@@ -47,6 +48,8 @@ function makeRow(overrides: Partial<ListingRecord> = {}): ListingRecord {
     isPreMarket: false,
     listingUrl: "https://example.test/1",
     primarySource: "agent_email",
+    agentEmail: "agent@acme.test",
+    agencyName: "Acme Estates",
     firstSeenAt: now,
     lastSeenAt: now,
     createdAt: now,
@@ -103,11 +106,17 @@ describe("listingsRouter.list", () => {
       limit: 25,
     });
 
-    // Each row carries its match score; the page envelope is preserved.
+    // Each row carries its match score + derived agency label; the page
+    // envelope is preserved. bathrooms + agentEmail pass through from the record.
     expect(result).toEqual({
-      items: [{ ...row, combinedScore: 0.62 }],
+      items: [
+        { ...row, combinedScore: 0.62, agency: "Acme Estates" },
+      ],
       nextCursor: "CURSOR2",
     });
+    // agency = agencyName ?? agentEmail; bathrooms surfaced from the record.
+    expect(result.items[0]!.agency).toBe("Acme Estates");
+    expect(result.items[0]!.bathrooms).toBe(1);
     expect(scoreSpy).toHaveBeenCalledWith([row.id]);
     expect(listSpy).toHaveBeenCalledTimes(1);
     const arg = listSpy.mock.calls[0]![0] as ListListingsInput;
@@ -135,6 +144,41 @@ describe("listingsRouter.list", () => {
 
     const result = await authedCaller.listings.list({});
     expect(result.items.map((i) => i.combinedScore)).toEqual([0.9, null]);
+  });
+
+  it("derives agency = agencyName ?? agentEmail ?? null and surfaces bathrooms", async () => {
+    const withName = makeRow({
+      id: "00000000-0000-7000-8000-00000000c001",
+      agencyName: "Acme Estates",
+      agentEmail: "agent@acme.test",
+      bathrooms: 2,
+    });
+    const emailOnly = makeRow({
+      id: "00000000-0000-7000-8000-00000000c002",
+      agencyName: null,
+      agentEmail: "solo@agent.test",
+      bathrooms: null,
+    });
+    const neither = makeRow({
+      id: "00000000-0000-7000-8000-00000000c003",
+      agencyName: null,
+      agentEmail: null,
+    });
+    const fake = new ListingRepository();
+    vi.spyOn(fake, "list").mockResolvedValue({
+      items: [withName, emailOnly, neither],
+      nextCursor: null,
+    });
+    _setListingRepositoryForTesting(fake);
+    injectScoreRepo();
+
+    const result = await authedCaller.listings.list({});
+    expect(result.items.map((i) => i.agency)).toEqual([
+      "Acme Estates", // agencyName wins
+      "solo@agent.test", // falls back to agentEmail
+      null, // both null → "—" on the client
+    ]);
+    expect(result.items.map((i) => i.bathrooms)).toEqual([2, null, 1]);
   });
 
   it("maps each filter field independently (partial filters)", async () => {
