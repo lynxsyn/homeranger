@@ -1,0 +1,583 @@
+/* HomeScout — Scouts screen styles. Ported from the claude.ai/design handoff
+   (scout-design/project/app/styles.css), renaming every `campaign` class to
+   `scout` per product. Only the classes NOT already in the shipped design
+   system (tokens.css / components.css / layout.css) live here — `.page-head`,
+   `.controls`, `.empty`, `.hs-card`, `.hs-chip`, `.hs-btn`, etc. are reused.
+
+   Loaded after the design system via an @import in src/index.css. */
+
+/* ---- Page-head row variant (title + action button) ---------------------- */
+.page-head--row {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.page-head--row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.page-head--row .hs-btn {
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.controls .count .green {
+  color: var(--success);
+}
+@media (max-width: 560px) {
+  .page-head--row {
+    flex-direction: column;
+  }
+}
+
+/* ---- Scout filter banner (Listings filtered to one scout) --------------- */
+.scout-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in oklch, var(--accent) 22%, var(--border));
+  border-radius: var(--r-lg);
+  padding: 14px 18px;
+  margin-bottom: 18px;
+}
+.scout-filter .sf-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+.sf-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent-ink);
+}
+.sf-eyebrow svg {
+  color: var(--accent-ink);
+}
+.sf-name {
+  font-family: var(--font-display);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-body-lg);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink-1);
+}
+.sf-outcodes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.sf-oc {
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--accent-ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+}
+.sf-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.02em;
+  padding: 3px 10px;
+  border-radius: var(--r-full);
+}
+.sf-status svg {
+  width: 11px;
+  height: 11px;
+}
+.sf-status--active {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.sf-status--paused {
+  background: var(--surface-3);
+  color: var(--ink-2);
+}
+.scout-filter .hs-btn {
+  flex-shrink: 0;
+}
+@media (max-width: 560px) {
+  .scout-filter {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* ---- Gold "Auction" tag (also on listing rows) -------------------------- */
+.listing-tag {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.02em;
+  color: var(--premarket);
+  background: var(--premarket-soft);
+  border: 1px solid var(--premarket-line);
+  padding: 2px 9px;
+  border-radius: var(--r-full);
+  white-space: nowrap;
+}
+
+/* ========================================================================== */
+/*  SCOUTS (saved-search briefs)                                              */
+/* ========================================================================== */
+.scout-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.scout-card {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.scout-card.is-paused {
+  opacity: 0.82;
+}
+.sc-main {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+.sc-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.sc-name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-h3);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink-1);
+  line-height: 1.25;
+}
+.sc-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.sc-edit {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.scout-card:hover .sc-edit {
+  background: var(--surface-2);
+  color: var(--ink-1);
+}
+.sc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.sc-keywords {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-body);
+  line-height: 1.55;
+  max-width: 72ch;
+  text-wrap: pretty;
+}
+.sc-foot {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+}
+.sc-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.sc-foot svg {
+  color: var(--ink-3);
+}
+.sc-foot .sc-dot {
+  color: var(--border-strong);
+}
+.sc-foot .sc-spacer {
+  flex: 1;
+}
+.sc-seen {
+  color: var(--ink-3);
+}
+.sc-muted {
+  color: var(--ink-3);
+}
+.sc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--accent);
+  transition: color var(--dur-fast) var(--ease);
+  white-space: nowrap;
+}
+.sc-link svg {
+  color: var(--accent);
+}
+.sc-link:hover {
+  color: var(--accent-hover);
+}
+.sc-link:hover svg:last-child {
+  transform: translateX(2px);
+}
+.sc-link svg:last-child {
+  transition: transform var(--dur-fast) var(--ease);
+}
+@media (max-width: 560px) {
+  .sc-foot {
+    flex-wrap: wrap;
+  }
+  .sc-foot .sc-spacer {
+    display: none;
+  }
+  .sc-seen {
+    width: 100%;
+  }
+}
+
+/* ---- Status pill (click to pause / resume) ------------------------------ */
+.statuspill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.02em;
+  padding: 5px 11px;
+  border-radius: var(--r-full);
+  border: 1px solid transparent;
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.statuspill svg {
+  width: 12px;
+  height: 12px;
+}
+.statuspill.is-active {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.statuspill.is-active:hover {
+  border-color: var(--success);
+}
+.statuspill.is-paused {
+  background: var(--surface-3);
+  color: var(--ink-2);
+}
+.statuspill.is-paused:hover {
+  border-color: var(--border-strong);
+}
+
+/* ---- Chip multi-select --------------------------------------------------- */
+.chipselect {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chipselect__opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  padding: 8px 14px;
+  border-radius: var(--r-full);
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.chipselect__opt svg {
+  width: 14px;
+  height: 14px;
+}
+.chipselect__opt:hover {
+  border-color: var(--ink-3);
+  color: var(--ink-1);
+}
+.chipselect__opt.is-on {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-color: transparent;
+  font-weight: var(--fw-semibold);
+}
+
+/* ---- Editor / confirm modal --------------------------------------------- */
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: color-mix(in oklch, var(--ink-1) 38%, transparent);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 56px 20px;
+  overflow-y: auto;
+  animation: scrim-in var(--dur) var(--ease);
+}
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.modal {
+  width: 100%;
+  max-width: 640px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  margin: auto 0;
+  animation: modal-in var(--dur-slow) var(--ease);
+}
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.modal__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.modal__head .eyebrow {
+  display: block;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  margin-bottom: 6px;
+}
+.modal__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-h2);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink-1);
+  line-height: 1.2;
+}
+.modal__close {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.modal__close:hover {
+  background: var(--surface-2);
+  color: var(--ink-1);
+}
+.modal__body {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+.modal__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.modal__foot-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.modal__foot--end {
+  justify-content: flex-end;
+}
+.modal--confirm {
+  max-width: 460px;
+}
+.confirm-body {
+  padding: 28px 26px 22px;
+  text-align: center;
+}
+.confirm-mark {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 16px;
+  border-radius: var(--r-lg);
+  background: var(--surface-3);
+  color: var(--ink-2);
+}
+.confirm-title {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-h3);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink-1);
+}
+.confirm-text {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  max-width: 38ch;
+  margin-inline: auto;
+  text-wrap: pretty;
+}
+.confirm-text b {
+  color: var(--ink-1);
+  font-weight: var(--fw-semibold);
+}
+.danger-text {
+  color: var(--danger);
+}
+.danger-text:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ---- Field row + hint (editor) ------------------------------------------ */
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.field-hint {
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+  line-height: 1.45;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.field-hint svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ---- Outreach email preview --------------------------------------------- */
+.preview {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.preview__toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--accent-ink);
+  text-align: left;
+  transition: background var(--dur-fast) var(--ease);
+}
+.preview__toggle:hover {
+  background: var(--surface-3);
+}
+.preview__body {
+  margin: 0;
+  padding: 16px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---- Empty state (scouts) ----------------------------------------------- */
+.empty-mark {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.empty p {
+  margin: 0 0 16px;
+}

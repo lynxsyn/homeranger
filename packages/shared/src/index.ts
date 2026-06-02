@@ -18,3 +18,9 @@ export * from "./listing-query.js";
 
 // SearchProfile update contract (drives preferencesRouter.update + the form).
 export * from "./preferences.js";
+
+// Scout domain enums + option sets (status / types / condition / land / sale).
+export * from "./scout-enums.js";
+
+// Scout input contracts (drives scoutsRouter create/update/setStatus/byId).
+export * from "./scouts.js";

@@ -17,6 +17,7 @@ import { useMemo, useState } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@homescout/backend-core";
 import type { ListingStatus } from "@homescout/shared";
+import type { ScoutFilter } from "./ScoutsPage";
 import { trpc } from "../lib/trpc";
 import { Icon } from "../components/Icon";
 import {
@@ -341,16 +342,31 @@ function ListingCard({ row: l }: { row: ViewRow }) {
 }
 
 /* ---- Screen -------------------------------------------------------------- */
-export function ListingsPage() {
+export interface ListingsPageProps {
+  /** When set, the list is scoped to a scout's outcodes + a banner is shown. */
+  scoutFilter?: ScoutFilter | null;
+  /** Clear the scout filter (the banner's "All listings" action). */
+  onClearScoutFilter?: () => void;
+}
+
+export function ListingsPage({
+  scoutFilter = null,
+  onClearScoutFilter,
+}: ListingsPageProps = {}) {
   const [view, setView] = useStored<"table" | "cards">("hs-view", "table", [
     "table",
     "cards",
   ]);
   const [sort, setSort] = useState<SortState>({ key: "score", dir: "desc" });
 
-  // No filters: fetch the page ordered by match score (server attaches each
-  // row's combinedScore) and re-sort client-side on header/dropdown change.
+  // No manual filters: fetch the page ordered by match score (server attaches
+  // each row's combinedScore) and re-sort client-side on header/dropdown
+  // change. The one exception is a scout filter — when a scout's "View homes"
+  // pushed us here, the list is scoped to that scout's outcodes.
   const { data, isLoading, isError, refetch } = trpc.listings.list.useQuery({
+    ...(scoutFilter && scoutFilter.outcodes.length > 0
+      ? { filter: { outcodes: scoutFilter.outcodes } }
+      : {}),
     sortBy: "combinedScore",
     sortDir: "desc",
     limit: 100,
@@ -385,6 +401,42 @@ export function ListingsPage() {
           listed.
         </p>
       </div>
+
+      {scoutFilter && (
+        <div className="scout-filter" data-testid="scout-filter-banner">
+          <div className="sf-left">
+            <span className="sf-eyebrow">
+              <Icon name="search" size={13} /> Scout
+            </span>
+            <span className="sf-name">{scoutFilter.name}</span>
+            {scoutFilter.outcodes.length > 0 && (
+              <span className="sf-outcodes">
+                {scoutFilter.outcodes.map((oc) => (
+                  <span key={oc} className="sf-oc">
+                    {oc}
+                  </span>
+                ))}
+              </span>
+            )}
+            <span
+              className={`sf-status sf-status--${
+                scoutFilter.status === "active" ? "active" : "paused"
+              }`}
+            >
+              <Icon name={scoutFilter.status === "active" ? "play" : "pause"} size={11} />
+              {scoutFilter.status === "active" ? "Active" : "Paused"}
+            </span>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            data-testid="scout-filter-clear"
+            onClick={() => onClearScoutFilter?.()}
+          >
+            All listings
+          </Button>
+        </div>
+      )}
 
       {isError ? (
         <div className="empty" role="alert">
