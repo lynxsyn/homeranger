@@ -93,6 +93,21 @@ export class EmailEventRepository {
       select: EMAIL_EVENT_SELECT,
     });
   }
+
+  /**
+   * Count events of one type since a cutoff — the NUMERATOR for the M6
+   * circuit-breaker (gate 4). Uses the `[eventType, occurredAt DESC]` index.
+   * The DENOMINATOR (attempted sends in the window) comes from
+   * OutreachRepository.countOutboundSince, NOT from here.
+   */
+  async countByTypeSince(
+    eventType: EmailEventType,
+    since: Date,
+  ): Promise<number> {
+    return prisma.emailEvent.count({
+      where: { eventType, occurredAt: { gte: since } },
+    });
+  }
 }
 
 const defaultEmailEventRepository = new EmailEventRepository();

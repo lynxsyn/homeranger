@@ -9,6 +9,7 @@ import {
   Prisma,
   type EmailAuthVerdict,
   type MessageDirection,
+  type OutreachThreadStatus,
 } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import {
@@ -17,6 +18,10 @@ import {
   paginate,
   type CursorPage,
 } from "../lib/pagination/cursor.js";
+import {
+  advanceThreadStatus,
+  type ThreadEvent,
+} from "../lib/outreach/thread-status.js";
 
 type PrismaLike = typeof prisma | Prisma.TransactionClient;
 
@@ -24,6 +29,7 @@ const THREAD_SELECT = Prisma.validator<Prisma.OutreachThreadSelect>()({
   id: true,
   agentId: true,
   subject: true,
+  status: true,
   lastMessageAt: true,
   createdAt: true,
   updatedAt: true,
@@ -109,6 +115,105 @@ export class OutreachRepository {
   async getThreadById(id: string): Promise<OutreachThreadRecord | null> {
     return prisma.outreachThread.findUnique({
       where: { id },
+      select: THREAD_SELECT,
+    });
+  }
+
+  /**
+   * Resolve the open conversation for an agent: the most recent non-`closed`
+   * thread, or a fresh `active` one. One open thread per agent at a time — a
+   * `closed` (opted-out) thread is never reused, so an opt-out is permanent.
+   */
+  async findOrCreateOpenThreadByAgent(
+    input: { agentId: string; subject: string },
+    tx?: Prisma.TransactionClient,
+  ): Promise<OutreachThreadRecord> {
+    const db: PrismaLike = tx ?? prisma;
+    const existing = await db.outreachThread.findFirst({
+      where: { agentId: input.agentId, status: { not: "closed" } },
+      orderBy: { createdAt: "desc" },
+      select: THREAD_SELECT,
+    });
+    if (existing) {
+      return existing;
+    }
+    return db.outreachThread.create({
+      data: { agentId: input.agentId, subject: input.subject },
+      select: THREAD_SELECT,
+    });
+  }
+
+  /**
+   * Advance a thread through the guarded state machine (AC#4). Reads the current
+   * status, applies the pure `advanceThreadStatus` reducer, and persists ONLY
+   * when the status actually changes (an illegal/no-op event leaves the row
+   * untouched). `bumpLastMessageAt` updates lastMessageAt for send/reply events.
+   * Returns the resulting status.
+   */
+  async applyThreadEvent(
+    input: { threadId: string; event: ThreadEvent; at?: Date },
+    tx?: Prisma.TransactionClient,
+  ): Promise<OutreachThreadStatus> {
+    const db: PrismaLike = tx ?? prisma;
+    const thread = await db.outreachThread.findUnique({
+      where: { id: input.threadId },
+      select: { status: true },
+    });
+    if (!thread) {
+      throw new Error(`OutreachThread ${input.threadId} not found`);
+    }
+    const next = advanceThreadStatus(thread.status, input.event);
+    const bump = input.event === "outbound_sent" || input.event === "inbound_reply";
+    if (next === thread.status && !bump) {
+      return thread.status;
+    }
+    await db.outreachThread.update({
+      where: { id: input.threadId },
+      data: {
+        ...(next !== thread.status ? { status: next } : {}),
+        ...(bump ? { lastMessageAt: input.at ?? new Date() } : {}),
+      },
+      select: { id: true },
+    });
+    return next;
+  }
+
+  /**
+   * Attempted outbound sends since a cutoff — the DENOMINATOR for the M6
+   * circuit-breaker (gate 4). Counts persisted outbound messages (a send is
+   * persisted only after the provider accepted it), so the rate is
+   * bounced/complained events ÷ this count.
+   */
+  async countOutboundSince(since: Date): Promise<number> {
+    return prisma.outreachMessage.count({
+      where: { direction: "outbound", sentAt: { gte: since } },
+    });
+  }
+
+  /** Whether an inbound reply landed on this thread since a cutoff (follow-up gate). */
+  async hasInboundSince(threadId: string, since: Date): Promise<boolean> {
+    const hit = await prisma.outreachMessage.findFirst({
+      where: { threadId, direction: "inbound", receivedAt: { gte: since } },
+      select: { id: true },
+    });
+    return hit !== null;
+  }
+
+  /**
+   * Threads due a follow-up: still `awaiting_reply` with no activity since the
+   * cutoff, oldest first. Drives the outreach:followup cadence.
+   */
+  async listFollowupDue(input: {
+    cutoff: Date;
+    limit: number;
+  }): Promise<OutreachThreadRecord[]> {
+    return prisma.outreachThread.findMany({
+      where: {
+        status: "awaiting_reply",
+        lastMessageAt: { lt: input.cutoff },
+      },
+      orderBy: { lastMessageAt: "asc" },
+      take: input.limit,
       select: THREAD_SELECT,
     });
   }
