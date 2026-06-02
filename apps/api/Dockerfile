@@ -36,6 +36,12 @@ RUN cd apps/api && pnpm build
 
 # Production image
 FROM base AS runner
+# Bake the git commit SHA into the image so /api/version reports the exact
+# commit that built it. release.yml passes --build-arg GIT_SHA=${github.sha};
+# local/imperative builds pass --build-arg GIT_SHA=$(git rev-parse HEAD).
+# This is what app-mode post-release verify greps for (NOT the semver tag).
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
 COPY --chown=node:node --from=deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --chown=node:node --from=deps /app/packages/backend-core/node_modules ./packages/backend-core/node_modules

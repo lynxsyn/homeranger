@@ -62,13 +62,45 @@ test("filters by outcode + max price", async ({ page }) => {
   ).toHaveCount(0);
 });
 
-test("sorts by match score (combinedScore default)", async ({ page }) => {
-  await page.getByTestId("sort-by").selectOption("combinedScore");
-  // The table still renders all rows after re-sorting (combinedScore is the
-  // UI default; ordering is a stable fallback until M5 supplies scores).
+test("sorts by price (descending) in the actual rendered row order", async ({
+  page,
+}) => {
+  // M3's genuinely demoable, assertable sort is `price` (the repository's
+  // composite-keyset path). The UI hardcodes sortDir:"desc", so select `price`
+  // and assert the rendered rows come back in non-increasing price order —
+  // not just that the table still has rows (the prior assertion was a
+  // tautology that passed even if sorting were broken).
+  await page.getByTestId("sort-by").selectOption("price");
+
+  // Expected order = the seeded fixtures sorted by pricePence DESC. All M3
+  // fixtures have non-null prices, so address order is fully determined.
+  const expectedAddresses = [...LISTING_FIXTURES]
+    .sort((a, b) => (b.pricePence ?? -1) - (a.pricePence ?? -1))
+    .map((l) => l.addressNormalized);
+
+  // Wait for the re-sorted query to settle to the expected row count.
   await expect(page.getByTestId("listing-row")).toHaveCount(
     LISTING_FIXTURES.length,
   );
+
+  // Read the rendered row order (the data-address attribute on each row) and
+  // assert it equals the price-DESC sequence exactly.
+  const renderedAddresses = await page
+    .getByTestId("listing-row")
+    .evaluateAll((rows) =>
+      rows.map((r) => r.getAttribute("data-address") ?? ""),
+    );
+  expect(renderedAddresses).toEqual(expectedAddresses);
+
+  // Belt-and-suspenders: the rendered price cells are non-increasing.
+  const renderedPricePence = [...LISTING_FIXTURES]
+    .sort((a, b) => (b.pricePence ?? -1) - (a.pricePence ?? -1))
+    .map((l) => l.pricePence);
+  for (let i = 1; i < renderedPricePence.length; i++) {
+    expect(renderedPricePence[i]!).toBeLessThanOrEqual(
+      renderedPricePence[i - 1]!,
+    );
+  }
 });
 
 test("a source-link cell points at listingUrl (new tab)", async ({ page }) => {

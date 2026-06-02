@@ -18,12 +18,8 @@
  *     token. When EXACTLY ONE is set, we THROW — a half-configured prod env
  *     fails loudly rather than silently bypassing.
  */
-import {
-  createRemoteJWKSet,
-  jwtVerify,
-  type JWTPayload,
-  type JWTVerifyGetKey,
-} from "jose";
+import { createRemoteJWKSet, errors, jwtVerify } from "jose";
+import type { JWTPayload, JWTVerifyGetKey } from "jose";
 
 /** The single-request identity attached to `ctx.user`. */
 export interface CfAccessIdentity {
@@ -118,6 +114,37 @@ export function readCfAccessConfigFromEnv(): CfAccessConfig | null {
   };
 }
 
+/**
+ * jose error `code`s that represent an EXPECTED JWT-verification failure (the
+ * token is bad / not for us): bad signature, expiry, wrong issuer/audience,
+ * malformed JWT/JWS, no matching key in the JWKS, disallowed/unsupported alg.
+ * These resolve to "no identity" → UNAUTHORIZED (401).
+ *
+ * Everything else thrown out of `jwtVerify` — `JWKSTimeout`
+ * (`ERR_JWKS_TIMEOUT`), the bare `JOSEError` (`ERR_JOSE_GENERIC`) jose raises on
+ * a non-200 JWKS HTTP response or a JWKS JSON-parse failure, and any raw
+ * fetch/network error with no jose code — is a genuine INFRA fault. Those
+ * RETHROW so tRPC surfaces a 500 (fail-loud on a CF certs outage instead of
+ * silently denying every user). Mirrors the Doxus expected-vs-infra split.
+ */
+const EXPECTED_JWT_ERROR_CODES: ReadonlySet<string> = new Set([
+  errors.JWTClaimValidationFailed.code, // ERR_JWT_CLAIM_VALIDATION_FAILED
+  errors.JWTExpired.code, // ERR_JWT_EXPIRED
+  errors.JWTInvalid.code, // ERR_JWT_INVALID
+  errors.JWSInvalid.code, // ERR_JWS_INVALID
+  errors.JWSSignatureVerificationFailed.code, // ERR_JWS_SIGNATURE_VERIFICATION_FAILED
+  errors.JWKSNoMatchingKey.code, // ERR_JWKS_NO_MATCHING_KEY
+  errors.JWKSMultipleMatchingKeys.code, // ERR_JWKS_MULTIPLE_MATCHING_KEYS
+  errors.JOSEAlgNotAllowed.code, // ERR_JOSE_ALG_NOT_ALLOWED
+  errors.JOSENotSupported.code, // ERR_JOSE_NOT_SUPPORTED (alg-confusion path)
+]);
+
+/** True when `err` is an expected JWT-verification failure (→ UNAUTHORIZED). */
+function isExpectedVerificationError(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === "string" && EXPECTED_JWT_ERROR_CODES.has(code);
+}
+
 function extractEmail(payload: JWTPayload): string {
   const raw = payload["email"];
   if (typeof raw !== "string" || raw.length === 0) {
@@ -146,9 +173,19 @@ export async function verifyCfAccessJwt(
     const verified = await jwtVerify(token, keyGetter, {
       issuer: `https://${config.teamDomain}`,
       audience: config.audience,
+      // CF Access exclusively signs assertions with RS256 — pin it
+      // (defense-in-depth against alg-confusion; jose's JWKS kty mapping
+      // already blocks it, this makes the contract explicit).
+      algorithms: ["RS256"],
     });
     payload = verified.payload;
   } catch (err: unknown) {
+    // Expected JWT-verification failure → wrap to CfAccessVerificationError so
+    // the caller resolves null → UNAUTHORIZED. A genuine JWKS infra fault
+    // (fetch/network/non-200/timeout) RETHROWS so tRPC surfaces a 500.
+    if (!isExpectedVerificationError(err)) {
+      throw err;
+    }
     const reason = err instanceof Error ? err.message : String(err);
     throw new CfAccessVerificationError(`CF Access JWT invalid: ${reason}`);
   }

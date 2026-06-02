@@ -61,6 +61,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Bake the git commit SHA into the api image so /api/version reports
+          # the merge SHA app-mode post-release verify greps for. Only the api
+          # Dockerfile declares ARG GIT_SHA; passing it to the other images is a
+          # harmless no-op, but we scope it to api to keep intent explicit.
+          build-args: ${{ matrix.app == 'api' && format('GIT_SHA={0}', github.sha) || '' }}
 
   create-release:
     needs: [detect, build]

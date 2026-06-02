@@ -43,7 +43,10 @@ export default defineConfig({
       command:
         "pnpm --filter @homescout/api prisma:deploy && " +
         "pnpm --filter @homescout/api db:seed && " +
-        "pnpm --filter @homescout/api dev",
+        // Non-watch entrypoint (e2e:api = `tsx src/main.ts`). A file watcher
+        // under Playwright can tear down + rebind :3000 mid-run and flake an
+        // in-flight tRPC request, so we use the dedicated non-watch script.
+        "pnpm --filter @homescout/api e2e:api",
       port: 3000,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createLocalJWKSet,
+  errors,
   exportJWK,
   generateKeyPair,
   SignJWT,
@@ -148,20 +149,69 @@ describe("verifyCfAccessJwt", () => {
 
   it("falls back to the remote JWKS when no keyGetter is injected (and caches it)", async () => {
     // No keyGetter → defaultKeyGetter builds a createRemoteJWKSet against the
-    // (unreachable) team domain. Verification fails (wrapped), proving the
-    // remote path is exercised; a second call reuses the cached resolver.
+    // (unreachable) team domain. The JWKS fetch is a genuine INFRA failure, so
+    // it RETHROWS (NOT wrapped to CfAccessVerificationError) — this is the
+    // expected-vs-infra split: a CF certs outage must surface as a 500, not a
+    // silent 401. A second call still reuses the cached resolver (same throw).
     const token = await signToken(key, { email: ALLOWED_EMAIL });
     const cfg: CfAccessConfig = {
       teamDomain: "nonexistent.cloudflareaccess.test",
       audience: AUDIENCE,
       allowedEmail: ALLOWED_EMAIL,
     };
-    await expect(verifyCfAccessJwt(token, cfg)).rejects.toBeInstanceOf(
+    await expect(verifyCfAccessJwt(token, cfg)).rejects.not.toBeInstanceOf(
       CfAccessVerificationError,
     );
-    await expect(verifyCfAccessJwt(token, cfg)).rejects.toBeInstanceOf(
+    await expect(verifyCfAccessJwt(token, cfg)).rejects.not.toBeInstanceOf(
       CfAccessVerificationError,
     );
+  });
+
+  it("RETHROWS a JWKS infra error (timeout) instead of wrapping it as a verification failure (→ 500, not 401)", async () => {
+    // Inject a keyGetter that throws JWKSTimeout — the genuine infra fault
+    // jose raises when the CF certs endpoint is unreachable/slow. The verifier
+    // must let it propagate (NOT wrap to CfAccessVerificationError) so the
+    // documented infra-error → 500 contract holds.
+    const token = await signToken(key, { email: ALLOWED_EMAIL });
+    const timeoutGetter: JWTVerifyGetKey = () => {
+      throw new errors.JWKSTimeout();
+    };
+    await expect(
+      verifyCfAccessJwt(token, config(key, { keyGetter: timeoutGetter })),
+    ).rejects.toBeInstanceOf(errors.JWKSTimeout);
+  });
+
+  it("RETHROWS the bare JOSEError (non-200/parse JWKS failure) as an infra error", async () => {
+    const token = await signToken(key, { email: ALLOWED_EMAIL });
+    const genericGetter: JWTVerifyGetKey = () => {
+      throw new errors.JOSEError("Expected 200 OK from the JSON Web Key Set");
+    };
+    const promise = verifyCfAccessJwt(
+      token,
+      config(key, { keyGetter: genericGetter }),
+    );
+    await expect(promise).rejects.toBeInstanceOf(errors.JOSEError);
+    await expect(promise).rejects.not.toBeInstanceOf(CfAccessVerificationError);
+  });
+
+  it("wraps a disallowed algorithm (ES256 token) as a verification failure (→ UNAUTHORIZED)", async () => {
+    // A token signed with ES256 hits the pinned algorithms: ['RS256'] guard.
+    // That is an EXPECTED verification failure, so it wraps (→ null → 401),
+    // NOT an infra rethrow.
+    const { privateKey, publicKey } = await generateKeyPair("ES256", {
+      extractable: true,
+    });
+    const esJwk = { ...(await exportJWK(publicKey)), alg: "ES256", kid: "es-kid" };
+    const esToken = await new SignJWT({ email: ALLOWED_EMAIL })
+      .setProtectedHeader({ alg: "ES256", kid: "es-kid" })
+      .setIssuer(ISSUER)
+      .setAudience(AUDIENCE)
+      .setIssuedAt()
+      .setExpirationTime(Math.floor(Date.now() / 1000) + 300)
+      .sign(privateKey);
+    await expect(
+      verifyCfAccessJwt(esToken, config(key, { keyGetter: localJwks([esJwk]) })),
+    ).rejects.toBeInstanceOf(CfAccessVerificationError);
   });
 });
 
@@ -259,5 +309,16 @@ describe("resolveCfAccessIdentity", () => {
     const key = await makeTestKey();
     expect(await resolveCfAccessIdentity(undefined, config(key))).toBeNull();
     expect(await resolveCfAccessIdentity("garbage", config(key))).toBeNull();
+  });
+
+  it("REJECTS (rethrows) on a JWKS infra error rather than resolving null (locks the infra-error → 500 contract)", async () => {
+    const key = await makeTestKey();
+    const token = await signToken(key, { email: ALLOWED_EMAIL });
+    const timeoutGetter: JWTVerifyGetKey = () => {
+      throw new errors.JWKSTimeout();
+    };
+    await expect(
+      resolveCfAccessIdentity(token, config(key, { keyGetter: timeoutGetter })),
+    ).rejects.toBeInstanceOf(errors.JWKSTimeout);
   });
 });

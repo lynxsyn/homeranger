@@ -94,33 +94,48 @@ spec:
               value: production
             - name: WEB_ORIGIN
               value: https://app.aid-engineering.com
-            - name: GIT_SHA
-              value: "unknown" # {"$imagepolicy": "flux-system:homescout-api:tag"}
+            # GIT_SHA is baked into the image at BUILD time
+            # (apps/api/Dockerfile ARG GIT_SHA ← release.yml build-arg
+            # github.sha). It is NOT injected from the image tag here — the tag
+            # is a semver (e.g. 0.3.0) and app-mode post-release verify greps
+            # /api/version for the 40-char merge SHA. No $imagepolicy marker on
+            # this env (the image: tag markers above/below still drive Flux).
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: homescout-secret
                   key: DATABASE_URL
+            # M3: these four keys are NOT yet in homescout-secret (added in M4
+            # with the Cloudflare tunnel). `optional: true` lets the kubelet
+            # resolve them to UNSET rather than failing with
+            # CreateContainerConfigError — unset CF_ACCESS_* takes the api's
+            # documented dev-bypass path. M4 adds the real values to the secret
+            # AND flips these back to required (a missing prod secret must fail
+            # loud, which a non-optional ref guarantees).
             - name: CF_ACCESS_TEAM_DOMAIN
               valueFrom:
                 secretKeyRef:
                   name: homescout-secret
                   key: CF_ACCESS_TEAM_DOMAIN
+                  optional: true
             - name: CF_ACCESS_AUD
               valueFrom:
                 secretKeyRef:
                   name: homescout-secret
                   key: CF_ACCESS_AUD
+                  optional: true
             - name: ALLOWED_USER_EMAIL
               valueFrom:
                 secretKeyRef:
                   name: homescout-secret
                   key: ALLOWED_USER_EMAIL
+                  optional: true
             - name: DEV_USER_EMAIL
               valueFrom:
                 secretKeyRef:
                   name: homescout-secret
                   key: DEV_USER_EMAIL
+                  optional: true
           readinessProbe:
             httpGet:
               path: /api/health
