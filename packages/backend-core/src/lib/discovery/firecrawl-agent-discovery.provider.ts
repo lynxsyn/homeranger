@@ -40,7 +40,11 @@ export class FirecrawlAgentDiscoveryProvider implements AgentDiscoveryProvider {
   ) {
     this.apiKey = apiKey?.trim() || undefined;
     this.baseUrl = baseUrl.replace(/\/+$/, "");
-    this.limit = Number.parseInt(process.env.DISCOVERY_SEARCH_LIMIT ?? "20", 10);
+    const parsedLimit = Number.parseInt(
+      process.env.DISCOVERY_SEARCH_LIMIT ?? "20",
+      10,
+    );
+    this.limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 20;
   }
 
   async discover(input: DiscoverInput): Promise<DiscoveredAgent[]> {

@@ -39,9 +39,23 @@ states the purpose (a buyer enquiry), and carries the one-click unsubscribe
 `SuppressionEntry` + opt-out, and a suppressed contact is **skipped at discovery**
 (never re-sourced).
 
+## Classification is a best-effort heuristic (known limitation)
+
+Mailbox classification is a domain DENYLIST: a free-webmail domain ⇒ `individual`
+(blocked); anything else ⇒ `corporate_subscriber` (cold-emailable). This can
+misjudge two edges: (a) a sole-trader on a custom domain (not truly a corporate
+subscriber) classified corporate, and (b) an unlisted webmail provider classified
+corporate. Mitigations: the denylist is kept reasonably broad; the first email is
+identifiable + carries one-click unsubscribe (a misjudged recipient opts out in one
+click → permanent suppression); and **M8 surfaces discovered agents for operator
+review before a campaign sends** (human-in-the-loop on the PECR boundary). The
+guard, suppression, and unsubscribe are the backstops for any misclassification.
+
 ## Collection conduct
 
-- Respect site `robots.txt` / terms via the discovery vendor's compliant fetch.
+- The discovery vendor performs the fetch; configure it to honour `robots.txt`
+  where supported and confirm the vendor's robots/ToS handling before enabling
+  (not guaranteed in our code — verify per the vendor decision doc).
 - Dedup on email; store provenance (source URL) for accountability.
 - Retain a suppression as a do-not-contact record even after erasing other data.
 - Discovery is operator-triggered per region (not a continuous crawl).

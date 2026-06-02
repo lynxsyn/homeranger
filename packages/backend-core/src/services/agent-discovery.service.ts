@@ -37,12 +37,28 @@ export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
   "aol.com",
   "msn.com",
   "btinternet.com",
+  "btopenworld.com",
   "sky.com",
   "virginmedia.com",
+  "virgin.net",
+  "blueyonder.co.uk",
+  "ntlworld.com",
+  "talktalk.net",
+  "tiscali.co.uk",
   "protonmail.com",
   "proton.me",
+  "pm.me",
   "gmx.com",
   "gmx.co.uk",
+  "gmx.net",
+  "zoho.com",
+  "fastmail.com",
+  "fastmail.co.uk",
+  "mail.com",
+  "ymail.com",
+  "rocketmail.com",
+  "hey.com",
+  "yandex.com",
 ]);
 
 /**
@@ -114,8 +130,22 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
 
     let upserted = 0;
     let skipped = 0;
+    // `skipped` folds: intra-batch duplicates, malformed (unknown) addresses, and
+    // already-suppressed contacts — so `discovered === upserted + skipped` holds
+    // regardless of whether the provider deduped.
+    const seen = new Set<string>();
     for (const candidate of candidates) {
       const email = candidate.email.trim().toLowerCase();
+      if (seen.has(email)) {
+        skipped += 1; // intra-batch duplicate
+        continue;
+      }
+      seen.add(email);
+      const mailboxType = classifyMailboxType(email);
+      if (mailboxType === "unknown") {
+        skipped += 1; // malformed address — never persisted as an Agent
+        continue;
+      }
       // Never re-source a suppressed/opted-out contact.
       if (await this.suppressionEntryRepository.isSuppressed(email)) {
         skipped += 1;
@@ -124,7 +154,7 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
       await this.agentRepository.upsertByEmail({
         email,
         agencyName: candidate.agencyName,
-        mailboxType: classifyMailboxType(email),
+        mailboxType,
         coveredOutcodes: outcodes,
       });
       upserted += 1;

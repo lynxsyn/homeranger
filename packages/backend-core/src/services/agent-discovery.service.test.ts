@@ -109,6 +109,33 @@ describe("AgentDiscoveryService.discoverRegion", () => {
     expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1 });
   });
 
+  it("skips a malformed (unknown) address — never persisted", async () => {
+    const h = makeHarness({
+      agents: [
+        { email: "info@a.co.uk", agencyName: "A" },
+        { email: "not-an-email", agencyName: "Broken" },
+      ],
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
+    expect(h.upsertByEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "info@a.co.uk" }),
+    );
+    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1 });
+  });
+
+  it("dedups duplicate emails within a batch (counted once)", async () => {
+    const h = makeHarness({
+      agents: [
+        { email: "info@a.co.uk", agencyName: "A" },
+        { email: "INFO@a.co.uk", agencyName: "A (dupe, different case)" },
+      ],
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1 });
+  });
+
   it("is a no-op for an unsupported region (provider not called)", async () => {
     const h = makeHarness({ agents: [] });
     const result = await h.service.discoverRegion("Atlantis");

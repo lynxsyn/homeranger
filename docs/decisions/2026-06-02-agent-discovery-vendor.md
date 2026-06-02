@@ -20,7 +20,7 @@ call to find agency pages and extract business emails.
 
 | Option | Notes |
 |---|---|
-| **Firecrawl** | Single API for web search + scrape + (optional) LLM extraction; managed, handles JS-rendered sites + robots; pay-as-you-go. Good fit for "search agents in region → scrape → extract emails". |
+| **Firecrawl** | Single API for web search + scrape + (optional) LLM extraction; managed, handles JS-rendered sites; pay-as-you-go. Good fit for "search agents in region → scrape → extract emails". (Verify its robots.txt/ToS handling before enabling — we rely on the vendor's fetch, not our own robots logic.) |
 | Raw search API (Brave/SerpAPI) + DIY scraper | More moving parts (search + fetch + parse + anti-bot); we'd own scraping robustness. |
 | Manual import only | The operator's chosen path was discovery, not manual; rejected. |
 
