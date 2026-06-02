@@ -89,6 +89,12 @@ export interface AgentDiscoveryResult {
 
 export interface AgentDiscoveryService {
   discoverRegion(regionName: string): Promise<AgentDiscoveryResult>;
+  /**
+   * Discover by an EXPLICIT outcode set (PR3 scout-launch path) — the same
+   * provider→classify→dedup→skip-suppressed→upsert pipeline as discoverRegion,
+   * but skipping the region→outcode resolution. Blank/empty ⇒ a no-op result.
+   */
+  discoverByOutcodes(outcodes: string[]): Promise<AgentDiscoveryResult>;
 }
 
 export interface AgentDiscoveryDependencies {
@@ -122,11 +128,48 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
       );
       return { discovered: 0, upserted: 0, skipped: 0 };
     }
+    return this.runDiscovery({ region: regionName, outcodes });
+  }
 
-    const candidates = await this.provider.discover({
-      region: regionName,
-      outcodes,
-    });
+  async discoverByOutcodes(outcodes: string[]): Promise<AgentDiscoveryResult> {
+    // Normalise + dedup the explicit outcode set (a scout supplies already-
+    // resolved, upper-cased codes, but stay defensive against blanks/dupes).
+    const seen = new Set<string>();
+    const targets: string[] = [];
+    for (const raw of outcodes) {
+      const code = raw.trim().toUpperCase();
+      if (code.length > 0 && !seen.has(code)) {
+        seen.add(code);
+        targets.push(code);
+      }
+    }
+    if (targets.length === 0) {
+      // No target outcodes — nothing to discover, never an error.
+      console.info(
+        JSON.stringify({
+          type: "info",
+          scope: "discovery.outcodes.empty",
+        }),
+      );
+      return { discovered: 0, upserted: 0, skipped: 0 };
+    }
+    // The provider takes `region` for its query context; with an explicit set the
+    // outcode list IS the context (no curated region name), so pass it joined.
+    return this.runDiscovery({ region: targets.join(", "), outcodes: targets });
+  }
+
+  /**
+   * The shared discovery pipeline both entry points delegate to: ask the provider
+   * for candidates over `outcodes`, then classify → intra-batch-dedup →
+   * skip-suppressed → upsert each as an Agent stamped with `outcodes`. The
+   * `region` string is the provider's query context + a log label only.
+   */
+  private async runDiscovery(input: {
+    region: string;
+    outcodes: string[];
+  }): Promise<AgentDiscoveryResult> {
+    const { region, outcodes } = input;
+    const candidates = await this.provider.discover({ region, outcodes });
 
     let upserted = 0;
     let skipped = 0;
@@ -164,7 +207,7 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
       JSON.stringify({
         type: "info",
         scope: "discovery.region.done",
-        region: regionName,
+        region,
         discovered: candidates.length,
         upserted,
         skipped,

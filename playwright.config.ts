@@ -104,6 +104,12 @@ export default defineConfig({
         // OutreachService boot config (the verified sending address).
         OUTREACH_FAKE: "1",
         RESEND_FROM: "Homescout <outreach@homescout.test>",
+        // M8 PR3: deterministic, network-free agent discovery (no Firecrawl /
+        // web scrape / spend). The FakeAgentDiscoveryProvider mints stable
+        // business-domain agents from the discovery input so the scout-launch
+        // E2E can prove the launch loop — discover:agents → reviewed drafts →
+        // approve → guarded send — end-to-end against real infra.
+        DISCOVERY_FAKE: "1",
         NODE_ENV: "development",
       },
     },

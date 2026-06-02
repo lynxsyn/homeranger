@@ -182,6 +182,79 @@ function draftScoutEmail(form: ScoutForm): string {
   );
 }
 
+/* ---- Global kill-switch (pause ALL sending) ------------------------------ */
+/**
+ * The system-wide outreach kill-switch (M6 `WarmupState.killSwitch`, the 5th
+ * compliance gate). When ON, no approved send leaves the building regardless of
+ * per-scout state — a single, prominent panic stop. Reads
+ * `outreach.killSwitch.get` and flips it via `outreach.killSwitch.toggle`.
+ */
+function KillSwitch() {
+  const utils = trpc.useUtils();
+  const { data } = trpc.outreach.killSwitch.get.useQuery();
+  const toggle = trpc.outreach.killSwitch.toggle.useMutation({
+    onSuccess: () => {
+      void utils.outreach.killSwitch.get.invalidate();
+    },
+  });
+  // Treat undefined (loading) as "not paused" so the control reads safe-by-default.
+  const enabled = data?.enabled ?? false;
+  return (
+    <div
+      className={`killswitch${enabled ? " is-on" : ""}`}
+      data-testid="kill-switch"
+      data-enabled={enabled}
+    >
+      <span className="killswitch__face">
+        <span className="killswitch__icon">
+          <Icon name="power" size={16} />
+        </span>
+        <span className="killswitch__copy">
+          <span className="killswitch__title">Outreach</span>
+          <span className="killswitch__state" data-testid="kill-switch-state">
+            {enabled ? "Sending paused" : "Sending live"}
+          </span>
+        </span>
+      </span>
+      <button
+        type="button"
+        className={`killswitch__toggle${enabled ? " is-on" : ""}`}
+        role="switch"
+        aria-checked={enabled}
+        aria-label={enabled ? "Resume all outreach" : "Pause all outreach"}
+        disabled={toggle.isPending}
+        onClick={() => toggle.mutate({ enabled: !enabled })}
+      >
+        <span className="killswitch__knob" />
+      </button>
+    </div>
+  );
+}
+
+/* ---- Per-scout stats strip ----------------------------------------------- */
+/**
+ * The live counters for one scout — homes found in its patch and how many
+ * agents in the patch have already been contacted. Lazy per-card query
+ * (`scouts.stats`) so the list view stays one cheap `scouts.list` call until a
+ * card is on screen.
+ */
+function ScoutStats({ scoutId }: { scoutId: string }) {
+  const { data, isLoading } = trpc.scouts.stats.useQuery({ id: scoutId });
+  return (
+    <span className="sc-stats" data-testid="scout-stats">
+      <span className="sc-stat">
+        <Icon name="home" size={13} />
+        <b>{isLoading || !data ? "–" : data.homesFound}</b> homes
+      </span>
+      <span className="sc-stat">
+        <Icon name="send" size={13} />
+        <b>{isLoading || !data ? "–" : data.agentsContacted}</b>/
+        {isLoading || !data ? "–" : data.agentsInPatch} agents
+      </span>
+    </span>
+  );
+}
+
 /* ---- Status pill (click to pause / resume) ------------------------------- */
 interface StatusPillProps {
   status: ScoutStatus;
@@ -213,9 +286,10 @@ interface ScoutCardProps {
   onOpen: (scout: Scout) => void;
   onToggle: (scout: Scout) => void;
   onViewHomes: (scout: Scout) => void;
+  onLaunch: (scout: Scout) => void;
 }
 
-function ScoutCard({ scout, onOpen, onToggle, onViewHomes }: ScoutCardProps) {
+function ScoutCard({ scout, onOpen, onToggle, onViewHomes, onLaunch }: ScoutCardProps) {
   const maxPricePounds =
     scout.maxPricePence == null ? null : Math.round(scout.maxPricePence / 100);
   // We can link through to the scout's patch whenever it resolved any outcodes;
@@ -233,6 +307,23 @@ function ScoutCard({ scout, onOpen, onToggle, onViewHomes }: ScoutCardProps) {
         <div className="sc-head">
           <h3 className="sc-name">{scout.name}</h3>
           <div className="sc-controls">
+            <button
+              type="button"
+              className="sc-launch"
+              data-testid="scout-launch"
+              disabled={!canViewHomes}
+              title={
+                canViewHomes
+                  ? "Launch — find agents and prepare outreach"
+                  : "Add a place with target outcodes first"
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                onLaunch(scout);
+              }}
+            >
+              <Icon name="rocket" size={14} /> Launch
+            </button>
             <StatusPill status={scout.status} onToggle={() => onToggle(scout)} />
             <span className="sc-edit" aria-hidden="true">
               <Icon name="sliders-horizontal" size={16} />
@@ -284,6 +375,7 @@ function ScoutCard({ scout, onOpen, onToggle, onViewHomes }: ScoutCardProps) {
             <Icon name="home" size={14} /> No patch yet
           </span>
         )}
+        {canViewHomes && <ScoutStats scoutId={scout.id} />}
         <span className="sc-spacer" />
         <span className="sc-seen">Last activity {relativeTime(scout.updatedAt)}</span>
       </div>
@@ -633,6 +725,282 @@ function ConfirmPause({ scout, pausing, onCancel, onConfirm }: ConfirmPauseProps
   );
 }
 
+/* ---- Launch loop modal ---------------------------------------------------- */
+/**
+ * The Scout Launch loop, operator-driven and send-safe end to end:
+ *
+ *   1. LAUNCH   — `scouts.launch` enqueues agent discovery across the scout's
+ *                 outcodes (M7). Returns the outcodes it's working.
+ *   2. REVIEW   — `scouts.reviewDrafts` returns the woven scout email + every
+ *                 agent in the patch, each pre-checked by ComplianceGuard
+ *                 (`eligible` + a `reason` code when blocked).
+ *   3. APPROVE  — the operator ticks the eligible agents and confirms;
+ *                 `scouts.approveSends` enqueues the guarded M6 send for each.
+ *
+ * No email is ever sent autonomously: a send only fires after the operator
+ * approves AND the worker's ComplianceGuard passes (corporate-only, not opted
+ * out, not suppressed, breaker closed, kill-switch off, warm-up cap free).
+ */
+interface LaunchModalProps {
+  scout: Scout;
+  onClose: () => void;
+}
+
+type ReviewAgent = inferRouterOutputs<AppRouter>["scouts"]["reviewDrafts"]["agents"][number];
+
+function LaunchModal({ scout, onClose }: LaunchModalProps) {
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [sentCount, setSentCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  // Kick discovery, then pull the drafts + pre-checked agents. reviewDrafts only
+  // runs once launch has resolved so the patch reflects the just-found agents.
+  const launch = trpc.scouts.launch.useMutation();
+  const review = trpc.scouts.reviewDrafts.useQuery(
+    { id: scout.id },
+    {
+      // Runs on open (independent of the launch mutation's resolution) so the
+      // woven draft shows immediately; discovery is async (worker-consumed), so
+      // poll until the just-found agents land in the patch, then stop.
+      refetchInterval: (query) =>
+        query.state.data && query.state.data.agents.length === 0 ? 1500 : false,
+    },
+  );
+  const approve = trpc.scouts.approveSends.useMutation({
+    onSuccess: (res) => setSentCount(res.enqueued),
+  });
+
+  // Auto-launch on open so the operator's single click ("Launch") drives the
+  // whole loop; the modal then walks discovery → review → approve.
+  const launchMutate = launch.mutate;
+  const launchedRef = useRef(false);
+  useEffect(() => {
+    if (!launchedRef.current) {
+      launchedRef.current = true;
+      launchMutate({ id: scout.id });
+    }
+  }, [launchMutate, scout.id]);
+
+  // Default-select every eligible agent the moment the review lands, so the
+  // common case (approve everyone the guard cleared) is one click.
+  const agents = review.data?.agents ?? [];
+  const seededRef = useRef(false);
+  useEffect(() => {
+    // Pre-select every eligible agent the moment agents FIRST appear (discovery
+    // may land them after the initial empty review), so the common case (approve
+    // everyone the guard cleared) is a single click.
+    if (!seededRef.current && agents.length > 0) {
+      seededRef.current = true;
+      setChecked(new Set(agents.filter((a) => a.eligible).map((a) => a.id)));
+    }
+  }, [agents]);
+
+  function toggle(id: string) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  const eligibleCount = agents.filter((a) => a.eligible).length;
+  const checkedCount = checked.size;
+  // "Finding agents…" while the launch enqueue is in flight, the first review is
+  // loading, or discovery hasn't yet landed any agents in the patch.
+  const loading =
+    launch.isPending ||
+    review.isLoading ||
+    (review.data != null && agents.length === 0);
+  const launchFailed = launch.isError;
+
+  return (
+    <div className="modal-scrim" onMouseDown={onClose}>
+      <div
+        className="modal modal--launch"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Launch ${scout.name}`}
+        data-testid="launch-modal"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="modal__head">
+          <div>
+            <span className="eyebrow">
+              <Icon name="rocket" size={13} /> Launch scout
+            </span>
+            <h2 className="modal__title">{scout.name}</h2>
+          </div>
+          <button
+            type="button"
+            className="modal__close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+
+        {sentCount != null ? (
+          <div className="launch-sent" data-testid="launch-sent">
+            <div className="confirm-mark launch-sent__mark">
+              <Icon name="send" size={22} />
+            </div>
+            <h3 className="confirm-title">
+              {sentCount === 0
+                ? "No sends queued"
+                : `${sentCount} ${sentCount === 1 ? "agent" : "agents"} queued`}
+            </h3>
+            <p className="confirm-text">
+              {sentCount === 0
+                ? "Nothing was approved, so no outreach was queued."
+                : "Each send still passes the live ComplianceGuard before it leaves — corporate-only, not opted out, kill-switch off, within the warm-up cap."}
+            </p>
+          </div>
+        ) : (
+          <div className="modal__body">
+            {loading && (
+              <div className="launch-busy" data-testid="launch-busy">
+                <Icon name="loader" size={18} className="spin" />
+                Finding estate agents across {scout.outcodes.join(", ") || "this patch"}…
+              </div>
+            )}
+
+            {launchFailed && (
+              <div className="launch-error" role="alert">
+                {launch.error?.message ?? "Couldn’t launch this scout."}
+              </div>
+            )}
+
+            {review.data && (
+              <>
+                <div className="launch-section">
+                  <span className="launch-label">The email each agent receives</span>
+                  <pre className="preview__body" data-testid="launch-draft">
+                    {review.data.draft}
+                  </pre>
+                </div>
+
+                <div className="launch-section">
+                  <span className="launch-label">
+                    Agents in patch
+                    <span className="launch-count">
+                      {eligibleCount} eligible · {agents.length} found
+                    </span>
+                  </span>
+                  {agents.length === 0 ? (
+                    <p className="launch-empty">
+                      No estate agents found in this patch yet.
+                    </p>
+                  ) : (
+                    <ul className="launch-agents">
+                      {agents.map((agent) => (
+                        <AgentRow
+                          key={agent.id}
+                          agent={agent}
+                          checked={checked.has(agent.id)}
+                          onToggle={() => toggle(agent.id)}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {sentCount != null ? (
+          <div className="modal__foot modal__foot--end">
+            <Button variant="primary" onClick={onClose}>
+              Done
+            </Button>
+          </div>
+        ) : (
+          <div className="modal__foot modal__foot--end">
+            <Button variant="secondary" onClick={onClose} disabled={approve.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              icon="send"
+              data-testid="launch-approve"
+              disabled={
+                !review.data || checkedCount === 0 || approve.isPending
+              }
+              onClick={() =>
+                approve.mutate({ id: scout.id, agentIds: [...checked] })
+              }
+            >
+              {approve.isPending
+                ? "Queuing…"
+                : `Approve & send ${checkedCount}`}
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---- Single agent row in the launch checklist ---------------------------- */
+interface AgentRowProps {
+  agent: ReviewAgent;
+  checked: boolean;
+  onToggle: () => void;
+}
+
+function AgentRow({ agent, checked, onToggle }: AgentRowProps) {
+  return (
+    <li
+      className={`launch-agent${agent.eligible ? "" : " is-blocked"}`}
+      data-testid="launch-agent"
+      data-eligible={agent.eligible}
+    >
+      <label className="launch-agent__label">
+        <input
+          type="checkbox"
+          className="launch-agent__check"
+          checked={checked}
+          disabled={!agent.eligible}
+          onChange={onToggle}
+        />
+        <span className="launch-agent__body">
+          <span className="launch-agent__name">
+            {agent.agencyName || agent.email}
+          </span>
+          <span className="launch-agent__email">{agent.email}</span>
+        </span>
+        {agent.eligible ? (
+          <span className="launch-agent__ok">
+            <Icon name="check" size={13} /> Eligible
+          </span>
+        ) : (
+          <span className="launch-agent__reason" title={agent.reason ?? undefined}>
+            {agent.reason ?? "Blocked"}
+          </span>
+        )}
+      </label>
+    </li>
+  );
+}
+
 /* ---- Screen --------------------------------------------------------------- */
 type EditingState =
   | { kind: "new" }
@@ -649,6 +1017,7 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
 
   const [editing, setEditing] = useState<EditingState>(null);
   const [pausing, setPausing] = useState<Scout | null>(null);
+  const [launching, setLaunching] = useState<Scout | null>(null);
 
   const invalidate = () => {
     void utils.scouts.list.invalidate();
@@ -742,14 +1111,17 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
             the taste that shapes every message it sends to local agents.
           </p>
         </div>
-        <Button
-          variant="primary"
-          icon="search"
-          data-testid="new-scout"
-          onClick={() => setEditing({ kind: "new" })}
-        >
-          New scout
-        </Button>
+        <div className="page-head__actions">
+          <KillSwitch />
+          <Button
+            variant="primary"
+            icon="search"
+            data-testid="new-scout"
+            onClick={() => setEditing({ kind: "new" })}
+          >
+            New scout
+          </Button>
+        </div>
       </div>
 
       {isError ? (
@@ -801,6 +1173,7 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
                   onOpen={(s) => setEditing({ kind: "edit", scout: s })}
                   onToggle={requestToggle}
                   onViewHomes={viewHomes}
+                  onLaunch={setLaunching}
                 />
               ))}
             </div>
@@ -827,6 +1200,10 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
           onCancel={() => setPausing(null)}
           onConfirm={() => setStatus.mutate({ id: pausing.id, status: "paused" })}
         />
+      )}
+
+      {launching && (
+        <LaunchModal scout={launching} onClose={() => setLaunching(null)} />
       )}
     </main>
   );

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "../index.js";
-import { _setOutreachSendEnqueuerForTesting } from "../outreach.router.js";
+import {
+  _setOutreachSendEnqueuerForTesting,
+  _setWarmupStateRepositoryForTesting,
+} from "../outreach.router.js";
 import {
   _setComplianceGuardForTesting,
   ComplianceError,
@@ -11,6 +14,10 @@ import {
   AgentRepository,
   type AgentRecord,
 } from "../../repositories/agent.repository.js";
+import {
+  WarmupStateRepository,
+  type WarmupStateRecord,
+} from "../../repositories/warmup-state.repository.js";
 
 const caller = appRouter.createCaller({ user: { email: "dev@homescout.local" } });
 
@@ -42,8 +49,22 @@ afterEach(() => {
   _setAgentRepositoryForTesting(null);
   _setComplianceGuardForTesting(null);
   _setOutreachSendEnqueuerForTesting(null);
+  _setWarmupStateRepositoryForTesting(null);
   vi.restoreAllMocks();
 });
+
+function warmupState(killSwitch: boolean): WarmupStateRecord {
+  return {
+    id: "warmup-1",
+    dailyCap: 20,
+    sentToday: 0,
+    windowDate: new Date("2026-06-02"),
+    killSwitch,
+    rampStartedAt: new Date("2026-06-01"),
+    createdAt: new Date("2026-06-01"),
+    updatedAt: new Date("2026-06-02"),
+  } as WarmupStateRecord;
+}
 
 describe("outreach.send", () => {
   it("404s when the agent does not exist", async () => {
@@ -84,6 +105,51 @@ describe("outreach.send", () => {
     expect(enqueue).toHaveBeenCalledWith({
       idempotencyKey: "outreach:send:agent-1",
       payload: { agentId: "agent-1" },
+    });
+  });
+});
+
+describe("outreach.killSwitch", () => {
+  it("get reads the current WarmupState.killSwitch", async () => {
+    const repo = new WarmupStateRepository();
+    const spy = vi
+      .spyOn(repo, "getOrCreate")
+      .mockResolvedValue(warmupState(true));
+    _setWarmupStateRepositoryForTesting(repo);
+
+    const result = await caller.outreach.killSwitch.get();
+    expect(result).toEqual({ enabled: true });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggle ON sets the kill-switch and echoes the new state", async () => {
+    const repo = new WarmupStateRepository();
+    const spy = vi
+      .spyOn(repo, "setKillSwitch")
+      .mockResolvedValue(warmupState(true));
+    _setWarmupStateRepositoryForTesting(repo);
+
+    const result = await caller.outreach.killSwitch.toggle({ enabled: true });
+    expect(result).toEqual({ enabled: true });
+    expect(spy).toHaveBeenCalledWith(true);
+  });
+
+  it("toggle OFF sets the kill-switch back to false", async () => {
+    const repo = new WarmupStateRepository();
+    const spy = vi
+      .spyOn(repo, "setKillSwitch")
+      .mockResolvedValue(warmupState(false));
+    _setWarmupStateRepositoryForTesting(repo);
+
+    const result = await caller.outreach.killSwitch.toggle({ enabled: false });
+    expect(result).toEqual({ enabled: false });
+    expect(spy).toHaveBeenCalledWith(false);
+  });
+
+  it("rejects an anonymous caller with UNAUTHORIZED", async () => {
+    const anon = appRouter.createCaller({ user: null });
+    await expect(anon.outreach.killSwitch.get()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
     });
   });
 });

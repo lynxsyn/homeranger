@@ -24,3 +24,6 @@ export * from "./scout-enums.js";
 
 // Scout input contracts (drives scoutsRouter create/update/setStatus/byId).
 export * from "./scouts.js";
+
+// Outreach control contracts (drives outreachRouter.killSwitch toggle).
+export * from "./outreach.js";

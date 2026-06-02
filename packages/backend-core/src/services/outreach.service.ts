@@ -31,12 +31,87 @@ import {
   type OutreachRepository,
 } from "../repositories/outreach.repository.js";
 import {
+  scoutRepository as defaultScoutRepository,
+  type ScoutRepository,
+} from "../repositories/scout.repository.js";
+import {
   getOutreachEmailConfig,
   type EmailProvider,
   type OutreachEmailConfig,
 } from "../lib/email/email-provider.js";
 import { draftOutreach, type OutreachDraft } from "../lib/outreach/draft.js";
+import { draftScoutEmail } from "../lib/scouts/scout-brief.js";
 import { signUnsubscribeToken } from "../lib/outreach/unsubscribe-token.js";
+
+/**
+ * A scout-tailored draft (subject + body) the send path substitutes for the
+ * generic draft when an `outreach:send` job carries a `scoutId`. Body comes from
+ * the EXISTING draftScoutEmail(scout); subject names the scout's location.
+ */
+export interface ScoutDraft {
+  subject: string;
+  bodyText: string;
+}
+
+/** Loads a scout-tailored draft for a scoutId, or null if the scout is gone. */
+export type ScoutDraftLoader = (scoutId: string) => Promise<ScoutDraft | null>;
+
+/**
+ * Default scout-draft loader: read the scout via the repository and weave its
+ * brief into the body via the existing pure `draftScoutEmail`. Subject names the
+ * scout's location (falling back to a generic line for a blank location).
+ */
+export function makeDefaultScoutDraftLoader(
+  scoutRepository: ScoutRepository,
+): ScoutDraftLoader {
+  return async (scoutId: string): Promise<ScoutDraft | null> => {
+    const scout = await scoutRepository.getById(scoutId);
+    if (!scout) {
+      return null;
+    }
+    const location = scout.location.trim();
+    return {
+      subject: location
+        ? `A private buyer looking in ${location}`
+        : "A private buyer looking in your area",
+      bodyText: draftScoutEmail(scout),
+    };
+  };
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+/**
+ * Render a scout-tailored draft into the {subject, bodyText, bodyHtml} the
+ * provider sends, re-appending the SAME RFC 8058 one-click unsubscribe footer
+ * draftOutreach uses so a scout send stays one-click-unsubscribable. bodyHtml is
+ * a paragraph-per-line port of the plain text (the body is trusted, structured
+ * scout-brief output — escaped defensively).
+ */
+function renderScoutDraft(
+  scoutDraft: ScoutDraft,
+  unsubscribeUrl: string,
+): OutreachDraft {
+  const bodyText = [
+    scoutDraft.bodyText,
+    "",
+    "—",
+    `To stop receiving these emails, unsubscribe here: ${unsubscribeUrl}`,
+  ].join("\n");
+  const htmlBody = scoutDraft.bodyText
+    .split("\n")
+    .map((line) => (line === "" ? "<br/>" : `<p>${escapeHtml(line)}</p>`))
+    .join("");
+  const bodyHtml = `${htmlBody}<hr/><p style="font-size:12px;color:#888">To stop receiving these emails, <a href="${escapeHtml(
+    unsubscribeUrl,
+  )}">unsubscribe here</a>.</p>`;
+  return { subject: scoutDraft.subject, bodyText, bodyHtml };
+}
 
 /** Typed, transport-free service error. `retryable` drives the worker's retry. */
 export class OutreachError extends Error {
@@ -56,8 +131,15 @@ export interface SendOutreachResult {
 }
 
 export interface OutreachService {
-  /** Cold-contact an agent (initial send). Throws ComplianceError if blocked. */
-  sendOutreach(input: { agentId: string }): Promise<SendOutreachResult>;
+  /**
+   * Cold-contact an agent (initial send). Throws ComplianceError if blocked.
+   * `scoutId` (PR3, optional): when present the email body is drafted from that
+   * scout's brief (draftScoutEmail) instead of the generic first-contact draft.
+   */
+  sendOutreach(input: {
+    agentId: string;
+    scoutId?: string;
+  }): Promise<SendOutreachResult>;
   /** Send a follow-up on an existing awaiting_reply thread. */
   sendFollowup(input: { threadId: string }): Promise<SendOutreachResult>;
 }
@@ -90,9 +172,12 @@ export interface OutreachDependencies {
   complianceGuard?: ComplianceGuard;
   agentRepository?: AgentRepository;
   outreachRepository?: OutreachRepository;
+  scoutRepository?: ScoutRepository;
   emailConfig?: OutreachEmailConfig;
   config?: OutreachConfig;
   draft?: (input: Parameters<typeof draftOutreach>[0]) => OutreachDraft;
+  /** Loads a scout-tailored draft for an `outreach:send` carrying a scoutId. */
+  scoutDraft?: ScoutDraftLoader;
   signToken?: (email: string) => string;
   now?: () => Date;
 }
@@ -107,6 +192,7 @@ export class DefaultOutreachService implements OutreachService {
   private readonly draft: (
     input: Parameters<typeof draftOutreach>[0],
   ) => OutreachDraft;
+  private readonly scoutDraft: ScoutDraftLoader;
   private readonly signToken: (email: string) => string;
   private readonly now: () => Date;
 
@@ -122,6 +208,13 @@ export class DefaultOutreachService implements OutreachService {
     this.emailConfigOverride = deps.emailConfig;
     this.config = deps.config ?? getOutreachConfig();
     this.draft = deps.draft ?? draftOutreach;
+    // Default loader reads the scout via the (default or injected) repository and
+    // weaves its brief into the body via the pure draftScoutEmail.
+    this.scoutDraft =
+      deps.scoutDraft ??
+      makeDefaultScoutDraftLoader(
+        deps.scoutRepository ?? defaultScoutRepository,
+      );
     this.signToken = deps.signToken ?? ((email) => signUnsubscribeToken(email));
     this.now = deps.now ?? (() => new Date());
   }
@@ -143,21 +236,33 @@ export class DefaultOutreachService implements OutreachService {
 
   async sendOutreach({
     agentId,
+    scoutId,
   }: {
     agentId: string;
+    scoutId?: string;
   }): Promise<SendOutreachResult> {
     const agent = await this.agentRepository.getById(agentId);
     if (!agent) {
       throw new OutreachError(`Agent ${agentId} not found`, false);
     }
     // Authoritative guard (consumes a warm-up token). Lets ComplianceError
-    // propagate so the worker maps retryable→retry, non-retryable→drop.
+    // propagate so the worker maps retryable→retry, non-retryable→drop. The guard
+    // runs BEFORE any scout-draft load, so a blocked send never touches the scout.
     await this.complianceGuard.assertCanSend(this.guardAgent(agent), {
       reserve: true,
     });
-    // Stable per-agent key — a BullMQ retry forwards the SAME Idempotency-Key,
-    // so the provider returns the original id and the persist is idempotent.
-    return this.dispatch(agent, `outreach:send:${agent.id}`);
+    // When the job carries a scoutId, weave that scout's brief into the body
+    // (the subject/body the operator reviewed). A missing scout falls back to the
+    // generic draft — the send is still guarded + compliant, just not tailored.
+    const scoutDraft = scoutId ? await this.scoutDraft(scoutId) : null;
+    // Stable key forwarded as the provider Idempotency-Key — a BullMQ retry
+    // re-sends the SAME key (provider returns the original id, persist is
+    // idempotent). Scope it to (scout, agent) for a scout send so it can't
+    // collide with a generic send to the same agent and deliver the wrong body.
+    const dispatchKey = scoutId
+      ? `outreach:send:scout:${scoutId}:${agent.id}`
+      : `outreach:send:${agent.id}`;
+    return this.dispatch(agent, dispatchKey, undefined, scoutDraft);
   }
 
   async sendFollowup({
@@ -190,6 +295,7 @@ export class DefaultOutreachService implements OutreachService {
     agent: AgentRecord,
     idempotencyKey: string,
     thread?: { id: string },
+    scoutDraft?: ScoutDraft | null,
   ): Promise<SendOutreachResult> {
     const now = this.now();
     const emailConfig = this.resolveEmailConfig();
@@ -204,11 +310,17 @@ export class DefaultOutreachService implements OutreachService {
     const unsubscribeUrl = `${this.config.unsubscribeBaseUrl}?email=${encodeURIComponent(
       agent.email,
     )}&token=${token}`;
-    const draft = this.draft({
+    // Generic first-contact draft (carries the RFC 8058 one-click footer).
+    const genericDraft = this.draft({
       agencyName: agent.agencyName,
       coveredOutcodes: agent.coveredOutcodes,
       unsubscribeUrl,
     });
+    // A scout-launched send substitutes the operator-reviewed scout subject/body,
+    // re-appending the SAME unsubscribe footer so the one-click contract holds.
+    const draft = scoutDraft
+      ? renderScoutDraft(scoutDraft, unsubscribeUrl)
+      : genericDraft;
 
     // Send FIRST (with the idempotency key), then persist. A crash between the
     // two is retry-safe: the same key returns the same provider id, and the

@@ -10,27 +10,51 @@
  * mutation `.mutate` spies record the wire payloads.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const {
   listQueryMock,
   invalidateMock,
+  killSwitchInvalidateMock,
   createMutateMock,
   updateMutateMock,
   deleteMutateMock,
   setStatusMutateMock,
+  launchMutateMock,
+  launchStateMock,
+  reviewQueryMock,
+  approveMutateMock,
+  approveStateMock,
+  statsQueryMock,
+  killSwitchGetMock,
+  killSwitchToggleMock,
+  killSwitchToggleStateMock,
 } = vi.hoisted(() => ({
   listQueryMock: vi.fn(),
   invalidateMock: vi.fn(),
+  killSwitchInvalidateMock: vi.fn(),
   createMutateMock: vi.fn(),
   updateMutateMock: vi.fn(),
   deleteMutateMock: vi.fn(),
   setStatusMutateMock: vi.fn(),
+  launchMutateMock: vi.fn(),
+  // Mutable state the mocked launch mutation reports back to the component.
+  launchStateMock: { isPending: false, isSuccess: true, isError: false, error: null },
+  reviewQueryMock: vi.fn(),
+  approveMutateMock: vi.fn(),
+  approveStateMock: { isPending: false },
+  statsQueryMock: vi.fn(),
+  killSwitchGetMock: vi.fn(),
+  killSwitchToggleMock: vi.fn(),
+  killSwitchToggleStateMock: { isPending: false },
 }));
 
 vi.mock("../lib/trpc", () => ({
   trpc: {
-    useUtils: () => ({ scouts: { list: { invalidate: invalidateMock } } }),
+    useUtils: () => ({
+      scouts: { list: { invalidate: invalidateMock } },
+      outreach: { killSwitch: { get: { invalidate: killSwitchInvalidateMock } } },
+    }),
     scouts: {
       list: { useQuery: listQueryMock },
       create: { useMutation: () => ({ mutate: createMutateMock, isPending: false }) },
@@ -38,6 +62,40 @@ vi.mock("../lib/trpc", () => ({
       delete: { useMutation: () => ({ mutate: deleteMutateMock, isPending: false }) },
       setStatus: {
         useMutation: () => ({ mutate: setStatusMutateMock, isPending: false }),
+      },
+      launch: {
+        useMutation: () => ({
+          mutate: launchMutateMock,
+          ...launchStateMock,
+        }),
+      },
+      reviewDrafts: { useQuery: reviewQueryMock },
+      approveSends: {
+        useMutation: (opts?: { onSuccess?: (res: unknown) => void }) => ({
+          mutate: (input: unknown) => {
+            approveMutateMock(input);
+            // Echo the enqueued count back through onSuccess so the modal can
+            // render its success state, matching the real router contract.
+            const ids = (input as { agentIds: string[] }).agentIds;
+            opts?.onSuccess?.({ enqueued: ids.length });
+          },
+          ...approveStateMock,
+        }),
+      },
+      stats: { useQuery: statsQueryMock },
+    },
+    outreach: {
+      killSwitch: {
+        get: { useQuery: killSwitchGetMock },
+        toggle: {
+          useMutation: (opts?: { onSuccess?: () => void }) => ({
+            mutate: (input: unknown) => {
+              killSwitchToggleMock(input);
+              opts?.onSuccess?.();
+            },
+            ...killSwitchToggleStateMock,
+          }),
+        },
       },
     },
   },
@@ -100,12 +158,75 @@ function withScouts(scouts: unknown[] = SCOUTS) {
   });
 }
 
+/** Default-eligible/ineligible agent pair for the launch checklist. */
+const REVIEW_AGENTS = [
+  {
+    id: "agent-eligible",
+    email: "sales@finch.co.uk",
+    agencyName: "Finch & Co",
+    eligible: true,
+    reason: null,
+  },
+  {
+    id: "agent-blocked",
+    email: "opt@out.co.uk",
+    agencyName: "Out Estates",
+    eligible: false,
+    reason: "AGENT_OPTED_OUT",
+  },
+];
+
+const DEFAULT_REVIEW = {
+  draft: "Hello,\n\nI'm a private buyer searching in Snowdonia.",
+  agents: REVIEW_AGENTS,
+};
+
+function withReview(
+  data: { draft: string; agents: typeof REVIEW_AGENTS } | null = DEFAULT_REVIEW,
+  state: { isLoading?: boolean } = {},
+) {
+  reviewQueryMock.mockReturnValue({
+    // `null` from a caller means "no data yet"; the component reads
+    // `review.data` truthily, so coalesce to `undefined`.
+    data: data ?? undefined,
+    isLoading: state.isLoading ?? false,
+  });
+}
+
+function withStats(
+  stats = { homesFound: 12, agentsInPatch: 5, agentsContacted: 2 },
+) {
+  statsQueryMock.mockReturnValue({ data: stats, isLoading: false });
+}
+
+function withKillSwitch(enabled = false) {
+  killSwitchGetMock.mockReturnValue({ data: { enabled } });
+}
+
 beforeEach(() => {
   invalidateMock.mockClear();
+  killSwitchInvalidateMock.mockClear();
   createMutateMock.mockClear();
   updateMutateMock.mockClear();
   deleteMutateMock.mockClear();
   setStatusMutateMock.mockClear();
+  launchMutateMock.mockClear();
+  reviewQueryMock.mockClear();
+  approveMutateMock.mockClear();
+  statsQueryMock.mockClear();
+  killSwitchGetMock.mockClear();
+  killSwitchToggleMock.mockClear();
+  launchStateMock.isPending = false;
+  launchStateMock.isSuccess = true;
+  launchStateMock.isError = false;
+  launchStateMock.error = null;
+  approveStateMock.isPending = false;
+  killSwitchToggleStateMock.isPending = false;
+  // Sensible defaults so existing tests that never touch the launch loop still
+  // render: a resolved review, populated stats, and a live (off) kill-switch.
+  withReview();
+  withStats();
+  withKillSwitch();
 });
 
 describe("ScoutsPage states", () => {
@@ -316,5 +437,136 @@ describe("ScoutsPage editor", () => {
     fireEvent.click(snowdonia);
     fireEvent.click(screen.getByTestId("scout-delete"));
     expect(deleteMutateMock).toHaveBeenCalledWith({ id: "scout-snowdonia" });
+  });
+});
+
+/** Open the launch modal for the named scout (clicks its card's Launch). */
+function openLaunch(name = "Snowdonia — detached with a view") {
+  const card = screen.getByText(name).closest(
+    "[data-testid='scout-card']",
+  ) as HTMLElement;
+  fireEvent.click(within(card).getByTestId("scout-launch"));
+}
+
+describe("ScoutsPage per-scout stats", () => {
+  it("renders homes-found and contacted/in-patch counts per card", () => {
+    withScouts();
+    withStats({ homesFound: 12, agentsInPatch: 5, agentsContacted: 2 });
+    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    // Both cards have outcodes → both show a stats strip.
+    const strips = screen.getAllByTestId("scout-stats");
+    expect(strips.length).toBe(2);
+    expect(strips[0]).toHaveTextContent("12");
+    expect(strips[0]).toHaveTextContent("2");
+    expect(strips[0]).toHaveTextContent("5");
+    // The stats query is keyed by scout id.
+    expect(statsQueryMock).toHaveBeenCalledWith({ id: "scout-snowdonia" });
+  });
+
+  it("shows placeholders while stats are loading", () => {
+    withScouts([SCOUTS[0]]);
+    statsQueryMock.mockReturnValue({ data: undefined, isLoading: true });
+    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    expect(screen.getByTestId("scout-stats")).toHaveTextContent("–");
+  });
+});
+
+describe("ScoutsPage launch loop", () => {
+  it("launches on open and renders the woven draft + pre-checked agents", async () => {
+    withScouts();
+    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    openLaunch();
+
+    // The launch mutation fires once with the scout id.
+    expect(launchMutateMock).toHaveBeenCalledWith({ id: "scout-snowdonia" });
+
+    const modal = await screen.findByTestId("launch-modal");
+    expect(within(modal).getByTestId("launch-draft")).toHaveTextContent(
+      /private buyer searching in Snowdonia/i,
+    );
+
+    // One row per agent; the blocked one is disabled and shows its reason code.
+    const rows = within(modal).getAllByTestId("launch-agent");
+    expect(rows).toHaveLength(2);
+    const eligibleRow = rows.find((r) => r.dataset.eligible === "true")!;
+    const blockedRow = rows.find((r) => r.dataset.eligible === "false")!;
+    expect(within(eligibleRow).getByRole("checkbox")).not.toBeDisabled();
+    expect(within(blockedRow).getByRole("checkbox")).toBeDisabled();
+    expect(blockedRow).toHaveTextContent("AGENT_OPTED_OUT");
+  });
+
+  it("pre-selects only eligible agents and approves the checked ids", async () => {
+    withScouts();
+    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    openLaunch();
+
+    const modal = await screen.findByTestId("launch-modal");
+    // Eligible agent is pre-checked → approve button reflects 1.
+    const approveBtn = within(modal).getByTestId("launch-approve");
+    await waitFor(() => expect(approveBtn).toHaveTextContent("Approve & send 1"));
+
+    fireEvent.click(approveBtn);
+    expect(approveMutateMock).toHaveBeenCalledWith({
+      id: "scout-snowdonia",
+      agentIds: ["agent-eligible"], // the blocked agent is NOT enqueued
+    });
+
+    // Success state confirms the queued count.
+    expect(within(modal).getByTestId("launch-sent")).toHaveTextContent(
+      "1 agent queued",
+    );
+  });
+
+  it("blocks approval when nothing eligible is checked", async () => {
+    withScouts();
+    // Only an ineligible agent in the patch → nothing gets pre-selected.
+    withReview({
+      draft: "Hello,",
+      agents: [REVIEW_AGENTS[1]],
+    });
+    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    openLaunch();
+
+    const modal = await screen.findByTestId("launch-modal");
+    const approveBtn = within(modal).getByTestId("launch-approve");
+    expect(approveBtn).toBeDisabled();
+    expect(approveBtn).toHaveTextContent("Approve & send 0");
+  });
+
+  it("shows a busy state while discovery is still running", () => {
+    withScouts();
+    // Launch hasn't resolved yet → review is gated off and we show the spinner.
+    launchStateMock.isPending = true;
+    launchStateMock.isSuccess = false;
+    withReview(null, { isLoading: true });
+    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    openLaunch();
+    expect(screen.getByTestId("launch-busy")).toBeInTheDocument();
+    expect(screen.queryByTestId("launch-draft")).not.toBeInTheDocument();
+  });
+});
+
+describe("ScoutsPage kill-switch", () => {
+  it("reads the live (off) state and toggles it on", () => {
+    withScouts();
+    withKillSwitch(false);
+    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    const sw = screen.getByTestId("kill-switch");
+    expect(screen.getByTestId("kill-switch-state")).toHaveTextContent(/sending live/i);
+    fireEvent.click(within(sw).getByRole("switch"));
+    expect(killSwitchToggleMock).toHaveBeenCalledWith({ enabled: true });
+    // Refetches the kill-switch after a successful toggle.
+    expect(killSwitchInvalidateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the paused state and toggles it back off", () => {
+    withScouts();
+    withKillSwitch(true);
+    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    const sw = screen.getByTestId("kill-switch");
+    expect(screen.getByTestId("kill-switch-state")).toHaveTextContent(/sending paused/i);
+    expect(within(sw).getByRole("switch")).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(sw).getByRole("switch"));
+    expect(killSwitchToggleMock).toHaveBeenCalledWith({ enabled: false });
   });
 });

@@ -1,9 +1,12 @@
 /**
- * discover:agents consumer (M7) — runs region agent discovery + upsert. The
- * campaign (M8) / an operator enqueues a { regionName }; this delegates to the
- * AgentDiscoveryService. Discovery errors (transient search/scrape failures) are
- * retryable via the shared worker-error mapper. Discovery only SOURCES — the
- * ComplianceGuard still gates every subsequent send (corporate-only).
+ * discover:agents consumer (M7 + PR3) — runs agent discovery + upsert. Two
+ * targeting modes, branched on the payload:
+ *   - { outcodes } (PR3 scout launch): discover by an EXPLICIT outcode set.
+ *   - { regionName } (M7): discover by a curated region name (resolved server-side).
+ * Delegates to the AgentDiscoveryService. Discovery errors (transient
+ * search/scrape failures) are retryable via the shared worker-error mapper.
+ * Discovery only SOURCES — the ComplianceGuard still gates every subsequent send
+ * (corporate-only).
  */
 import type { DiscoverAgentsJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
 import type { AgentDiscoveryService } from "@homescout/backend-core/services/agent-discovery.service";
@@ -17,12 +20,19 @@ export function makeDiscoverAgentsHandler(deps: DiscoverAgentsHandlerDeps) {
   return async function handleDiscoverAgents(job: {
     data: DiscoverAgentsJobPayload;
   }): Promise<void> {
+    const { outcodes, regionName } = job.data;
     try {
-      await deps.agentDiscoveryService.discoverRegion(job.data.regionName);
+      if (outcodes && outcodes.length > 0) {
+        await deps.agentDiscoveryService.discoverByOutcodes(outcodes);
+      } else {
+        await deps.agentDiscoveryService.discoverRegion(regionName ?? "");
+      }
     } catch (error) {
       throw toWorkerError(error, {
         scope: "discover.agents.failed",
-        region: job.data.regionName,
+        ...(outcodes && outcodes.length > 0
+          ? { outcodes }
+          : { region: regionName }),
       });
     }
   };

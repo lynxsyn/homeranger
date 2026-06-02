@@ -31,6 +31,10 @@ import {
   X,
   Sparkles,
   Trash2,
+  Send,
+  Power,
+  Loader2,
+  Rocket,
   type LucideIcon,
 } from "lucide-react";
 
@@ -60,6 +64,10 @@ const ICONS: Record<string, LucideIcon> = {
   x: X,
   sparkles: Sparkles,
   "trash-2": Trash2,
+  send: Send,
+  power: Power,
+  loader: Loader2,
+  rocket: Rocket,
 };
 
 export interface IconProps {

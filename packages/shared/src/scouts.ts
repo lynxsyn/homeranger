@@ -87,3 +87,19 @@ export const scoutByIdInputSchema = z
   })
   .strict();
 export type ScoutByIdInput = z.infer<typeof scoutByIdInputSchema>;
+
+/**
+ * Approve outreach sends for a launched scout (PR3): the scout `id` plus the
+ * operator-selected agent ids to contact. `agentIds` is capped at 200 to bound a
+ * single approval burst (the warm-up cap still gates the actual send rate). An
+ * empty list is allowed (a no-op approval enqueues nothing).
+ */
+export const scoutApproveSendsInputSchema = z
+  .object({
+    id: z.uuid(),
+    agentIds: z.array(z.uuid()).max(200),
+  })
+  .strict();
+export type ScoutApproveSendsInput = z.infer<
+  typeof scoutApproveSendsInputSchema
+>;
