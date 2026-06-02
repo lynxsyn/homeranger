@@ -1,0 +1,8 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="HomeScout">
+  <rect width="64" height="64" rx="15" fill="#2E6A4F"></rect>
+  
+  <path d="M20 32 L27.5 27 L32 13 L36.5 27 L44 32 Z" fill="#FFFFFF"></path>
+  <path d="M20 32 L27.5 37 L32 51 L36.5 37 L44 32 Z" fill="#FFFFFF" fill-opacity="0.42"></path>
+  
+  <circle cx="32" cy="32" r="2.7" fill="#2E6A4F"></circle>
+</svg>

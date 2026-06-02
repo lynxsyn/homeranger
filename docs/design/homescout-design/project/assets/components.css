@@ -1,0 +1,193 @@
+/* ============================================================================
+   HomeScout — Component Layer
+   Reusable, framework-free component classes built on colors_and_type.css.
+   Used by the design-system preview cards AND mirrored by the UI-kit JSX.
+   Load AFTER colors_and_type.css.
+   ========================================================================== */
+
+/* ---- Buttons ------------------------------------------------------------- */
+.hs-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--sp-2);
+  font-family: var(--font-sans); font-size: var(--fs-body);
+  font-weight: var(--fw-semibold); line-height: 1;
+  padding: 11px 16px; border-radius: var(--r-sm);
+  border: 1px solid transparent; cursor: pointer;
+  transition: background var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease),
+              transform var(--dur-fast) var(--ease);
+  white-space: nowrap; user-select: none;
+}
+.hs-btn:active { transform: translateY(0.5px); }
+.hs-btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.hs-btn svg { width: 17px; height: 17px; }
+
+.hs-btn--primary { background: var(--accent); color: var(--on-accent); }
+.hs-btn--primary:hover { background: var(--accent-hover); }
+
+.hs-btn--secondary {
+  background: var(--surface); color: var(--ink-1);
+  border-color: var(--border-strong);
+}
+.hs-btn--secondary:hover { background: var(--surface-2); border-color: var(--ink-3); }
+
+.hs-btn--ghost { background: transparent; color: var(--ink-2); }
+.hs-btn--ghost:hover { background: var(--surface-2); color: var(--ink-1); }
+
+.hs-btn--sm { padding: 7px 12px; font-size: var(--fs-sm); border-radius: var(--r-xs); }
+.hs-btn--icon { padding: 9px; border-radius: var(--r-sm); }
+.hs-btn--icon svg { width: 18px; height: 18px; }
+
+.hs-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ---- Inputs / select ----------------------------------------------------- */
+.hs-field { display: flex; flex-direction: column; gap: var(--sp-2); }
+.hs-field > span {
+  font-family: var(--font-sans); font-size: var(--fs-label);
+  font-weight: var(--fw-semibold); letter-spacing: var(--tracking-wide);
+  text-transform: uppercase; color: var(--ink-2);
+}
+.hs-input, .hs-select, .hs-textarea {
+  font-family: var(--font-sans); font-size: var(--fs-body); color: var(--ink-1);
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm); padding: 10px 13px; width: 100%;
+  transition: border-color var(--dur-fast) var(--ease),
+              box-shadow var(--dur-fast) var(--ease);
+}
+.hs-textarea { resize: vertical; min-height: 84px; line-height: 1.5; }
+.hs-input::placeholder, .hs-textarea::placeholder { color: var(--ink-3); }
+.hs-input:focus, .hs-select:focus, .hs-textarea:focus {
+  outline: none; border-color: var(--accent); box-shadow: var(--shadow-focus);
+}
+.hs-select {
+  appearance: none; cursor: pointer; padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239A958B' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
+
+/* Search field with leading icon */
+.hs-search { position: relative; display: flex; align-items: center; }
+.hs-search svg {
+  position: absolute; left: 13px; width: 17px; height: 17px;
+  color: var(--ink-3); pointer-events: none;
+}
+.hs-search .hs-input { padding-left: 38px; }
+
+/* ---- Chips (metadata pills) --------------------------------------------- */
+.hs-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-sans); font-size: var(--fs-sm);
+  font-weight: var(--fw-medium); color: var(--ink-2);
+  background: var(--surface-2); border: 1px solid var(--border);
+  padding: 5px 11px; border-radius: var(--r-full); white-space: nowrap;
+}
+.hs-chip svg { width: 14px; height: 14px; color: var(--ink-3); }
+.hs-chip--accent {
+  background: var(--accent-soft); color: var(--accent-ink);
+  border-color: transparent;
+}
+.hs-chip--accent svg { color: var(--accent-ink); }
+
+/* ---- Badges (status) ----------------------------------------------------- */
+.hs-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--font-sans); font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold); letter-spacing: 0.02em;
+  padding: 3px 9px; border-radius: var(--r-full);
+  border: 1px solid transparent; white-space: nowrap;
+}
+.hs-badge svg { width: 12px; height: 12px; }
+.hs-badge--premarket {
+  background: var(--premarket-soft); color: var(--premarket);
+  border-color: var(--premarket-line);
+}
+.hs-badge--live    { background: var(--success-soft); color: var(--success); }
+.hs-badge--offer   { background: var(--warning-soft); color: var(--warning); }
+.hs-badge--sold    { background: var(--surface-3); color: var(--ink-2); }
+.hs-badge--withdrawn { background: var(--danger-soft); color: var(--danger); }
+.hs-badge--dot::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; display: inline-block;
+}
+
+/* ---- EPC band badge ------------------------------------------------------ */
+.hs-epc {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: var(--r-xs);
+  font-family: var(--font-mono); font-weight: var(--fw-semibold);
+  font-size: 13px;
+}
+.hs-epc[data-band="a"] { background: var(--epc-a); color: var(--epc-on-dark); }
+.hs-epc[data-band="b"] { background: var(--epc-b); color: var(--epc-on-dark); }
+.hs-epc[data-band="c"] { background: var(--epc-c); color: var(--epc-on-light); }
+.hs-epc[data-band="d"] { background: var(--epc-d); color: var(--epc-on-light); }
+.hs-epc[data-band="e"] { background: var(--epc-e); color: var(--epc-on-light); }
+.hs-epc[data-band="f"] { background: var(--epc-f); color: var(--epc-on-dark); }
+.hs-epc[data-band="g"] { background: var(--epc-g); color: var(--epc-on-dark); }
+
+/* ---- Match-score indicator ---------------------------------------------- */
+.hs-score {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+}
+.hs-score__ring {
+  --val: 0; --size: 38px;
+  width: var(--size); height: var(--size); border-radius: 50%;
+  display: grid; place-items: center; position: relative;
+  background:
+    conic-gradient(var(--accent) calc(var(--val) * 1%), var(--surface-3) 0);
+}
+.hs-score__ring::after {
+  content: ""; position: absolute; inset: 3.5px; border-radius: 50%;
+  background: var(--surface);
+}
+.hs-score__num {
+  position: relative; z-index: 1; font-family: var(--font-mono);
+  font-weight: var(--fw-semibold); font-size: 12.5px; color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+}
+.hs-score__label {
+  display: flex; flex-direction: column; line-height: 1.2;
+}
+.hs-score__label b { font-family: var(--font-sans); font-weight: var(--fw-semibold);
+  font-size: var(--fs-sm); color: var(--ink-1); white-space: nowrap; }
+.hs-score__label span { font-size: var(--fs-caption); color: var(--ink-3); white-space: nowrap; }
+
+/* ---- Card ---------------------------------------------------------------- */
+.hs-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: box-shadow var(--dur) var(--ease),
+              border-color var(--dur) var(--ease),
+              transform var(--dur) var(--ease);
+}
+.hs-card--interactive { cursor: pointer; }
+.hs-card--interactive:hover {
+  box-shadow: var(--shadow-md); border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+/* Photo placeholder tile (warm architectural gradient + image glyph) */
+.hs-photo {
+  position: relative; aspect-ratio: 4 / 3; width: 100%;
+  background:
+    linear-gradient(150deg,
+      color-mix(in oklch, var(--accent) 14%, var(--surface-2)),
+      var(--surface-2) 55%,
+      color-mix(in oklch, var(--premarket) 12%, var(--surface-2)));
+  display: grid; place-items: center;
+}
+.hs-photo svg { width: 34px; height: 34px; color: var(--ink-3); opacity: 0.55; }
+.hs-photo__count {
+  position: absolute; bottom: 8px; right: 8px;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--font-sans); font-size: var(--fs-caption);
+  font-weight: var(--fw-medium); color: #fff;
+  background: rgba(20,18,15,0.55); backdrop-filter: blur(4px);
+  padding: 3px 8px; border-radius: var(--r-full);
+}
+.hs-photo__count svg { width: 12px; height: 12px; color: #fff; opacity: 1; }
+
+/* ---- Divider ------------------------------------------------------------- */
+.hs-divider { height: 1px; background: var(--border); border: 0; }

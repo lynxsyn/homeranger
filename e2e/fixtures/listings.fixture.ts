@@ -5,9 +5,10 @@
  * and the Playwright spec (e2e/listings.spec.ts). Keeping one module means the
  * seed and the assertions can never drift.
  *
- * Prices are integer pence (£X = X * 100 pence). The SE1 set exercises the
- * outcode + max-price filter; one row is a pre-market flat with a null
- * `listingUrl` (the email-only "no broken link" case, AC#4).
+ * Prices are integer pence (£X = X * 100 pence). The set spans outcodes +
+ * statuses so the table's sort can be asserted in rendered order; one row is a
+ * pre-market flat with a null `listingUrl` (the email-only "no broken link"
+ * case — the table shows an email-only marker, never a dead link).
  */
 
 /** A seedable listing fixture (the upsertByAddress input shape). */
@@ -22,9 +23,6 @@ export interface ListingFixture {
   listingUrl: string | null;
   primarySource: "agent_email" | "manual";
 }
-
-/** £600,000 expressed in integer pence = 60,000,000. */
-export const FILTER_MAX_PRICE_PENCE = 600_000_00;
 
 export const LISTING_FIXTURES: ListingFixture[] = [
   {
@@ -73,7 +71,7 @@ export const LISTING_FIXTURES: ListingFixture[] = [
     primarySource: "agent_email",
   },
   {
-    // A different outcode so the SE1 filter must exclude it.
+    // A different outcode + the lowest price (sorts last by price-desc).
     addressNormalized: "deansgate m3",
     postcode: "M3 4LZ",
     outcode: "M3",
@@ -85,11 +83,3 @@ export const LISTING_FIXTURES: ListingFixture[] = [
     primarySource: "agent_email",
   },
 ];
-
-/** Fixtures that match outcode=SE1 AND price <= £600,000 (the filter test). */
-export const SE1_UNDER_600K = LISTING_FIXTURES.filter(
-  (l) =>
-    l.outcode === "SE1" &&
-    l.pricePence !== null &&
-    l.pricePence <= FILTER_MAX_PRICE_PENCE,
-);

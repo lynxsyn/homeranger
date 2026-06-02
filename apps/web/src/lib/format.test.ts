@@ -1,0 +1,70 @@
+import { describe, expect, it } from "vitest";
+import {
+  ageHoursSince,
+  gbp,
+  humanizePropertyType,
+  penceToPounds,
+  relativeTime,
+} from "./format";
+
+describe("gbp", () => {
+  it("formats whole pounds as GBP with no decimals", () => {
+    expect(gbp(625_000)).toBe("£625,000");
+    expect(gbp(0)).toBe("£0");
+  });
+  it("renders an em dash for null", () => {
+    expect(gbp(null)).toBe("—");
+  });
+});
+
+describe("penceToPounds", () => {
+  it("converts pence to whole pounds", () => {
+    expect(penceToPounds(62_500_000)).toBe(625_000);
+  });
+  it("passes null through", () => {
+    expect(penceToPounds(null)).toBeNull();
+  });
+});
+
+describe("humanizePropertyType", () => {
+  it("title-cases and hyphenates snake_case values", () => {
+    expect(humanizePropertyType("semi_detached")).toBe("Semi-detached");
+    expect(humanizePropertyType("terraced")).toBe("Terraced");
+    expect(humanizePropertyType("flat")).toBe("Flat");
+  });
+  it("returns null for unknown / null (caller omits the segment)", () => {
+    expect(humanizePropertyType("unknown")).toBeNull();
+    expect(humanizePropertyType(null)).toBeNull();
+  });
+});
+
+describe("ageHoursSince", () => {
+  it("returns whole-ish hours since the timestamp", () => {
+    const now = new Date("2026-01-01T12:00:00.000Z");
+    expect(ageHoursSince(new Date("2026-01-01T09:00:00.000Z"), now)).toBe(3);
+  });
+  it("never goes negative for a future timestamp", () => {
+    const now = new Date("2026-01-01T12:00:00.000Z");
+    expect(ageHoursSince(new Date("2026-01-01T13:00:00.000Z"), now)).toBe(0);
+  });
+});
+
+describe("relativeTime", () => {
+  const now = new Date("2026-01-10T12:00:00.000Z");
+  it("renders sub-minute as 'just now'", () => {
+    expect(relativeTime(new Date("2026-01-10T11:59:30.000Z"), now)).toBe("just now");
+  });
+  it("renders minutes / hours / days / weeks", () => {
+    expect(relativeTime(new Date("2026-01-10T11:45:00.000Z"), now)).toBe("15m ago");
+    expect(relativeTime(new Date("2026-01-10T09:00:00.000Z"), now)).toBe("3h ago");
+    expect(relativeTime(new Date("2026-01-08T12:00:00.000Z"), now)).toBe("2d ago");
+    expect(relativeTime(new Date("2025-12-27T12:00:00.000Z"), now)).toBe("2w ago");
+  });
+  it("renders months and years for older timestamps", () => {
+    expect(relativeTime(new Date("2025-11-01T12:00:00.000Z"), now)).toBe("2mo ago");
+    expect(relativeTime(new Date("2024-01-10T12:00:00.000Z"), now)).toBe("2y ago");
+  });
+  it("accepts an ISO string as well as a Date", () => {
+    expect(relativeTime("2026-01-10T10:00:00.000Z", now)).toBe("2h ago");
+  });
+});

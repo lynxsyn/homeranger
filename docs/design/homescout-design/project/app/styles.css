@@ -1,0 +1,159 @@
+/* HomeScout — listings app layout. Builds on assets/colors_and_type.css +
+   assets/components.css (design tokens & component classes). */
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  background: var(--paper);
+  color: var(--ink-1);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+#root { min-height: 100%; }
+a { color: inherit; text-decoration: none; }
+
+/* ---- App shell ----------------------------------------------------------- */
+.app { max-width: 1080px; margin: 0 auto; padding: 0 28px 96px; }
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; padding: 18px 0 16px;
+  background: color-mix(in oklch, var(--paper) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 30px;
+}
+.topbar__right { display: flex; align-items: center; gap: 10px; }
+.tagline {
+  font-family: var(--font-sans); font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold); letter-spacing: var(--tracking-wide);
+  text-transform: uppercase; color: var(--accent-ink);
+  display: none;
+}
+@media (min-width: 620px) { .tagline { display: inline; } }
+
+/* ---- Page header --------------------------------------------------------- */
+.page-head { display: flex; flex-direction: column; gap: 7px; margin-bottom: 22px; }
+.page-head h1 { margin: 0; }
+.page-head p { margin: 0; color: var(--ink-2); font-size: var(--fs-body-lg); max-width: 62ch; }
+
+/* ---- Slim control bar (sort + view) -------------------------------------- */
+.controls {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.controls .count { font-size: var(--fs-sm); color: var(--ink-2); }
+.controls .count b { color: var(--ink-1); font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums; }
+.controls .count .gold { color: var(--premarket); }
+.controls__right { display: flex; align-items: center; gap: 12px; }
+.sortwrap { display: inline-flex; align-items: center; gap: 8px; }
+.sortwrap label {
+  font-size: var(--fs-label); font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--ink-3);
+}
+.sortwrap .hs-select { width: auto; padding-top: 8px; padding-bottom: 8px; }
+
+.viewtoggle { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 3px; gap: 2px; }
+.viewtoggle button {
+  display: grid; place-items: center; width: 34px; height: 30px;
+  border: 0; background: transparent; border-radius: 6px; cursor: pointer; color: var(--ink-3);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.viewtoggle button:hover { color: var(--ink-1); }
+.viewtoggle button[aria-pressed="true"] { background: var(--surface); color: var(--ink-1); box-shadow: var(--shadow-sm); }
+
+/* ---- Listings table ------------------------------------------------------ */
+.tablewrap { background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+table.listings { width: 100%; border-collapse: collapse; }
+table.listings thead th {
+  text-align: left; font-size: var(--fs-label); letter-spacing: var(--tracking-wide);
+  text-transform: uppercase; color: var(--ink-3); font-weight: var(--fw-semibold);
+  padding: 13px 16px; background: var(--surface-2); border-bottom: 1px solid var(--border);
+  white-space: nowrap; user-select: none;
+}
+table.listings thead th.num { text-align: right; }
+th.sortable { cursor: pointer; transition: color var(--dur-fast) var(--ease); }
+th.sortable:hover { color: var(--ink-1); }
+th.sortable .th-inner { display: inline-flex; align-items: center; gap: 5px; }
+th.num.sortable .th-inner { flex-direction: row-reverse; }
+th .sort-ind { display: inline-flex; opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
+th.active .sort-ind { opacity: 1; color: var(--accent); }
+th.active { color: var(--ink-1); }
+
+table.listings tbody td { padding: 13px 16px; border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm); color: var(--ink-1); vertical-align: middle; }
+table.listings tbody tr:last-child td { border-bottom: 0; }
+table.listings td.num { text-align: right; }
+tr.row { transition: background var(--dur-fast) var(--ease); }
+tr.row.clickable { cursor: pointer; }
+tr.row.clickable:hover { background: var(--surface-2); }
+
+.cell-addr { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.cell-addr .thumb { width: 46px; height: 46px; border-radius: var(--r-sm); flex-shrink: 0; }
+.cell-addr .at { min-width: 0; }
+.cell-addr b { font-weight: var(--fw-semibold); display: block; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.cell-addr small { display: block; color: var(--ink-3); font-size: var(--fs-caption);
+  margin-top: 2px; font-family: var(--font-mono); }
+.price-cell { font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums;
+  font-size: var(--fs-body); }
+.bedbath { display: inline-flex; align-items: center; gap: 12px; color: var(--ink-2);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bedbath span { display: inline-flex; align-items: center; gap: 5px; }
+.bedbath svg { color: var(--ink-3); }
+.agent-cell { color: var(--ink-2); white-space: nowrap; }
+.seen-cell { color: var(--ink-3); font-size: var(--fs-caption); white-space: nowrap;
+  font-variant-numeric: tabular-nums; }
+.src-link { color: var(--accent); font-weight: var(--fw-semibold); display: inline-flex;
+  align-items: center; gap: 5px; white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease); }
+.src-link:hover { color: var(--accent-hover); }
+.src-none { color: var(--ink-3); font-size: var(--fs-caption); display: inline-flex;
+  align-items: center; gap: 5px; white-space: nowrap; }
+.src-icon { display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: var(--r-sm); color: var(--accent);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.src-icon:hover { background: var(--accent-soft); }
+.src-icon--mail { color: var(--premarket); cursor: default; }
+.col-src { width: 1%; text-align: center; }
+td.col-src { padding-left: 6px; padding-right: 12px; }
+
+/* Hide lower-priority columns on narrow screens — graceful, calm */
+@media (max-width: 900px) {
+  .col-agent, .col-seen { display: none; }
+}
+@media (max-width: 680px) {
+  .col-bedbath { display: none; }
+  table.listings thead th, table.listings tbody td { padding: 12px 12px; }
+  .cell-addr .thumb { width: 40px; height: 40px; }
+}
+
+/* ---- Card grid view ------------------------------------------------------ */
+.grid-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+@media (max-width: 760px) { .grid-cards { grid-template-columns: 1fr; } }
+.pcard { display: flex; flex-direction: column; }
+.pcard .body { padding: 15px 16px 16px; display: flex; flex-direction: column; gap: 11px; flex: 1; }
+.pcard .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.pcard .price { font-family: var(--font-sans); font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums; font-size: 21px; letter-spacing: -0.01em; color: var(--ink-1); }
+.pcard .addr { font-size: var(--fs-sm); color: var(--ink-2); margin-top: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pcard .sub { font-size: var(--fs-caption); color: var(--ink-3); font-family: var(--font-mono); margin-top: 3px; }
+.pcard .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pcard .foot { display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-top: auto; padding-top: 6px; }
+.pcard .hs-score { gap: 10px; }
+
+/* ---- Empty state --------------------------------------------------------- */
+.empty { text-align: center; padding: 64px 20px; color: var(--ink-3); }
+.empty .hs-photo { width: 56px; height: 56px; aspect-ratio: 1; border-radius: var(--r-md);
+  margin: 0 auto 14px; }
+
+/* ---- Footer note --------------------------------------------------------- */
+.foot-note { margin-top: 28px; text-align: center; font-size: var(--fs-caption);
+  color: var(--ink-3); display: flex; align-items: center; justify-content: center; gap: 7px; }
+.foot-note svg { color: var(--ink-3); }

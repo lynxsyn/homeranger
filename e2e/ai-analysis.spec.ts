@@ -9,11 +9,13 @@
  *      analyze:listing; the analysis handler scores a synthetic photo, embeds
  *      the listing, and re-matches it against the seeded SearchProfile —
  *      writing PhotoAnalysis + Listing.embedding + ListingScore.
- *   3. /listings renders the row; expanding it shows the match score, the
- *      rationale, and the photo features (AC#7).
+ *   3. /listings renders the row; its match-score RING shows the blended 0–100
+ *      score once analysis lands (the HomeScout design surfaces the score as a
+ *      per-row ring — there is no row-expand panel; the `listings.expand`
+ *      endpoint remains for a future detail view).
  *   4. Because the analysed listing is the only SCORED row, the default
- *      combinedScore sort places it FIRST (scored before the unscored seed
- *      fixtures — NULLS LAST), proving the table sorts by match score.
+ *      match-score sort places it FIRST (scored before the unscored seed
+ *      fixtures — nulls sink), proving the table sorts by match score.
  *
  * The Svix secret MUST equal E2E_RESEND_INBOUND_SECRET in playwright.config.ts.
  */
@@ -63,7 +65,7 @@ test.afterAll(async () => {
   }
 });
 
-test("ingest → analyze → row-expand renders features + match score + rationale", async ({
+test("ingest → analyze → the row's score ring shows the match score", async ({
   page,
   request,
 }) => {
@@ -94,48 +96,34 @@ test("ingest → analyze → row-expand renders features + match score + rationa
 
   const rowSelector = `[data-testid="listing-row"][data-address="${EXPECTED_ADDRESS_NORMALIZED}"]`;
 
-  // Poll: wait for the row to appear (ingested), expand it, and wait for the
-  // analysis to land (the match score renders once analyze:listing completes).
+  // Poll: reload until the row appears (ingested) AND its match-score ring shows
+  // a real number. The ring reads "–" while the listing is unscored; once
+  // analyze:listing writes a ListingScore, list() attaches combinedScore and the
+  // ring renders the blended 0–100 score. (Deterministic fake vectors are
+  // near-orthogonal, so a low score can legitimately round to 0 — 0 is valid.)
   await expect(async () => {
     await page.goto("/listings");
     await expect(page.getByTestId("listings-table")).toBeVisible();
 
     const row = page.locator(rowSelector);
     await expect(row).toHaveCount(1, { timeout: 2000 });
-
-    // Open the row-expand (idempotent — only clicks when currently collapsed).
-    const toggle = row.getByRole("button");
-    if ((await toggle.getAttribute("aria-expanded")) !== "true") {
-      await toggle.click();
-    }
-
-    // The analysis is async; the score appears only after the worker finishes.
-    await expect(page.getByTestId("match-score")).toBeVisible({ timeout: 2000 });
-    await expect(page.getByTestId("score-rationale")).toBeVisible();
-    await expect(page.getByTestId("photo-features")).toBeVisible();
+    await expect(row.getByTestId("match-score")).toHaveText(
+      /^(0|[1-9][0-9]?|100)$/,
+      { timeout: 2000 },
+    );
   }).toPass({ timeout: 45_000 });
-
-  // The match score reads as "Match score: N / 100" with N a real number in
-  // range (not "—"/NaN). Not asserting non-zero: deterministic fake vectors are
-  // near-orthogonal so a low blended score can legitimately round to 0.
-  await expect(page.getByTestId("match-score")).toHaveText(
-    /Match score: (0|[1-9][0-9]?|100) \/ 100/,
-  );
-  // At least one analysed photo with a taste score is shown.
-  await expect(page.getByTestId("photo-feature").first()).toContainText("Taste:");
 });
 
 test("the analysed (scored) listing sorts first by match score", async ({
   page,
 }) => {
-  // Default sort is combinedScore DESC NULLS LAST: the only scored row (the one
-  // this suite analysed) must lead the unscored seed fixtures.
-  await page.goto("/listings");
-  await expect(page.getByTestId("listings-table")).toBeVisible();
-
+  // Default sort is match-score DESC, nulls last: the only scored row (the one
+  // this suite analysed) must lead the unscored seed fixtures. Reload each poll
+  // so the query refetches (react-query staleTime would otherwise serve cache).
   await expect(async () => {
-    const firstRow = page.getByTestId("listing-row").first();
-    await expect(firstRow).toHaveAttribute(
+    await page.goto("/listings");
+    await expect(page.getByTestId("listings-table")).toBeVisible();
+    await expect(page.getByTestId("listing-row").first()).toHaveAttribute(
       "data-address",
       EXPECTED_ADDRESS_NORMALIZED,
     );

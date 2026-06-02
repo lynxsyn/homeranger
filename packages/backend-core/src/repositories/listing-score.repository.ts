@@ -68,6 +68,26 @@ export class ListingScoreRepository {
       select: LISTING_SCORE_SELECT,
     });
   }
+
+  /**
+   * Batch combinedScore lookup for a page of listings — backs the listings
+   * table's Match ring + score sort (the router merges `combinedScore` onto each
+   * `list` row). One `IN (...)` query for the whole page (no N+1); returns a Map
+   * keyed by listingId with only the scores that exist (unscored listings are
+   * simply absent, and the caller defaults them to `null`).
+   */
+  async getCombinedScoresByListingIds(
+    listingIds: string[],
+  ): Promise<Map<string, number>> {
+    if (listingIds.length === 0) {
+      return new Map();
+    }
+    const rows = await prisma.listingScore.findMany({
+      where: { listingId: { in: listingIds } },
+      select: { listingId: true, combinedScore: true },
+    });
+    return new Map(rows.map((row) => [row.listingId, row.combinedScore]));
+  }
 }
 
 const defaultListingScoreRepository = new ListingScoreRepository();

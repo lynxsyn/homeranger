@@ -65,14 +65,30 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/**
+ * Inject a fake ListingScoreRepository whose `getCombinedScoresByListingIds`
+ * resolves to `scores` — the router merges these onto each `list` row's
+ * `combinedScore` (absent id → `null`). Every `list` test needs this so the
+ * resolver does not fall through to the real Prisma-backed repo.
+ */
+function injectScoreRepo(scores: Map<string, number> = new Map()) {
+  const fake = new ListingScoreRepository();
+  const spy = vi
+    .spyOn(fake, "getCombinedScoresByListingIds")
+    .mockResolvedValue(scores);
+  _setListingScoreRepositoryForTesting(fake);
+  return spy;
+}
+
 describe("listingsRouter.list", () => {
-  it("maps filter (status→listingStatus) + sort + cursor + limit to the repo and returns { items, nextCursor }", async () => {
+  it("maps filter (status→listingStatus) + sort + cursor + limit to the repo and merges combinedScore", async () => {
     const row = makeRow();
     const fake = new ListingRepository();
     const listSpy = vi
       .spyOn(fake, "list")
       .mockResolvedValue({ items: [row], nextCursor: "CURSOR2" });
     _setListingRepositoryForTesting(fake);
+    const scoreSpy = injectScoreRepo(new Map([[row.id, 0.62]]));
 
     const result = await authedCaller.listings.list({
       filter: {
@@ -87,7 +103,12 @@ describe("listingsRouter.list", () => {
       limit: 25,
     });
 
-    expect(result).toEqual({ items: [row], nextCursor: "CURSOR2" });
+    // Each row carries its match score; the page envelope is preserved.
+    expect(result).toEqual({
+      items: [{ ...row, combinedScore: 0.62 }],
+      nextCursor: "CURSOR2",
+    });
+    expect(scoreSpy).toHaveBeenCalledWith([row.id]);
     expect(listSpy).toHaveBeenCalledTimes(1);
     const arg = listSpy.mock.calls[0]![0] as ListListingsInput;
     expect(arg.filter).toEqual({
@@ -101,12 +122,28 @@ describe("listingsRouter.list", () => {
     expect(arg.limit).toBe(25);
   });
 
+  it("attaches combinedScore per row — null when the listing has no score", async () => {
+    const scored = makeRow({ id: "00000000-0000-7000-8000-00000000aaaa" });
+    const unscored = makeRow({ id: "00000000-0000-7000-8000-00000000bbbb" });
+    const fake = new ListingRepository();
+    vi.spyOn(fake, "list").mockResolvedValue({
+      items: [scored, unscored],
+      nextCursor: null,
+    });
+    _setListingRepositoryForTesting(fake);
+    injectScoreRepo(new Map([[scored.id, 0.9]]));
+
+    const result = await authedCaller.listings.list({});
+    expect(result.items.map((i) => i.combinedScore)).toEqual([0.9, null]);
+  });
+
   it("maps each filter field independently (partial filters)", async () => {
     const fake = new ListingRepository();
     const listSpy = vi
       .spyOn(fake, "list")
       .mockResolvedValue({ items: [], nextCursor: null });
     _setListingRepositoryForTesting(fake);
+    injectScoreRepo();
 
     await authedCaller.listings.list({ filter: { outcodes: ["se1"] } });
     await authedCaller.listings.list({ filter: { maxPricePence: 9_000 } });
@@ -128,6 +165,7 @@ describe("listingsRouter.list", () => {
       .spyOn(fake, "list")
       .mockResolvedValue({ items: [], nextCursor: null });
     _setListingRepositoryForTesting(fake);
+    injectScoreRepo();
 
     const result = await authedCaller.listings.list({});
     expect(result).toEqual({ items: [], nextCursor: null });
