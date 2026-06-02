@@ -1,8 +1,8 @@
 # ── Cloudflare Tunnel ──
 # Outbound-only tunnel fronting the homescout app (app.aid-engineering.com).
 # Mirrors Doxus's tunnel pattern: one named tunnel, a config with path-based
-# ingress (/api + /ws → API service, everything else → web), and a proxied
-# CNAME pointing the public hostname at <tunnel-id>.cfargotunnel.com.
+# ingress (/api + /ws + /trpc → API service, everything else → web), and a
+# proxied CNAME pointing the public hostname at <tunnel-id>.cfargotunnel.com.
 #
 # The cluster-internal service targets use the homescout namespace and the
 # @homescout/api + @homescout/web service names. Adjust the Service DNS names
@@ -37,6 +37,20 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "homescout" {
       {
         hostname = var.app_hostname
         path     = "/ws"
+        service  = "http://homescout-api.homescout.svc.cluster.local:3000"
+      },
+      {
+        # tRPC data plane. The SPA's tRPC client posts to the same-origin
+        # relative path "/trpc" (apps/web/src/lib/trpc.ts) and the API mounts
+        # the tRPC plugin at prefix "/trpc" (apps/api/src/main.ts) — NOT under
+        # /api (only /api/health + /api/version live there). Without this rule
+        # "/trpc" falls through to the web catch-all below and nginx returns the
+        # index.html SPA shell for every query/mutation, so the whole app is
+        # dead through the tunnel. MUST precede the path-less web catch-all
+        # (cloudflared matches ingress top-to-bottom). Behind the CF Access app
+        # like the rest of app_hostname — correct for the authenticated data plane.
+        hostname = var.app_hostname
+        path     = "/trpc"
         service  = "http://homescout-api.homescout.svc.cluster.local:3000"
       },
       {

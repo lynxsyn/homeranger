@@ -23,6 +23,14 @@ resource "cloudflare_ai_gateway" "homescout" {
   # collect_logs=false — at the cost of the analytics this adoption exists for.
   collect_logs = true
 
+  # Logpush OFF — set explicitly to false rather than left unset. The
+  # cloudflare provider v5.19.1 serialises an unset `logpush` as JSON null on the
+  # UPDATE (PUT) call, and the AI Gateway API rejects that with
+  # `7001: Expected boolean, received null`, so every in-place apply errors with
+  # an opaque "failed to make http request". A concrete boolean makes update
+  # idempotent. (We rely on collect_logs for analytics, not Logpush export.)
+  logpush = false
+
   # Caching OFF by default: estate-agent emails rarely repeat byte-for-byte, so a
   # cache mostly adds surprise (a retried extraction returning a stale result).
   # cache_ttl = 0 disables it; raise var.ai_gateway_cache_ttl if ever wanted.
