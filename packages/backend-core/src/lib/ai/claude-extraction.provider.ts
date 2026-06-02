@@ -610,13 +610,19 @@ function getCode(error: unknown): string | undefined {
 
 function isRetryableStatus(status: number | undefined): boolean {
   if (status === undefined) {
+    return true; // network / unknown transport error — retry
+  }
+  // Transient: rate limit (429), request timeout (408), Anthropic "overloaded"
+  // (529) and any other 5xx — retry these.
+  if (status === 429 || status === 408 || status >= 500) {
     return true;
   }
-  if (status === 429 || status === 529 || status >= 500) {
-    return true;
-  }
-  if (status === 400 || status === 401 || status === 403) {
+  // Every OTHER 4xx is a terminal client error that never succeeds on retry:
+  // 400 bad request, 401/403 auth, 404 (e.g. a misconfigured AI Gateway id →
+  // the gateway URL 404s), 405/410, etc. Retrying just burns the BullMQ attempt
+  // budget + backoff on a permanent failure, so fail fast.
+  if (status >= 400) {
     return false;
   }
-  return true;
+  return true; // non-error / unexpected — retry defensively
 }
