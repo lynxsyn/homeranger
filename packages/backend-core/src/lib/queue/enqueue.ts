@@ -11,5 +11,7 @@ export {
   enqueueResendEvent,
   enqueueAnalyzeListing,
   enqueueRecompute,
+  enqueueOutreachSend,
+  enqueueOutreachFollowup,
   type EnqueueInput,
 } from "./queue-client.js";

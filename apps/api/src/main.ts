@@ -26,6 +26,7 @@ import {
 } from "@homescout/backend-core";
 import { registerResendInboundRoute } from "@homescout/backend-core/routes/resend-inbound.route";
 import { registerResendEventsRoute } from "@homescout/backend-core/routes/resend-events.route";
+import { registerOutreachUnsubscribeRoute } from "@homescout/backend-core/routes/outreach-unsubscribe.route";
 
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? "0.0.0.0";
@@ -54,6 +55,9 @@ server.get("/api/version", async () => ({
 // enqueue onto BullMQ; the processor consumes.
 await registerResendInboundRoute(server);
 await registerResendEventsRoute(server);
+// RFC 8058 one-click unsubscribe — unauthenticated, HMAC-token verified,
+// idempotent. Registered before the tRPC catch-all (M6 AC#5).
+await registerOutreachUnsubscribeRoute(server);
 
 await server.register(fastifyTRPCPlugin, {
   prefix: "/trpc",

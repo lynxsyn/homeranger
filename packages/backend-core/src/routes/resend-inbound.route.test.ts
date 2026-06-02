@@ -38,6 +38,9 @@ class SpyQueueClient implements QueueClient {
   registerProcessor(): void {
     throw new Error("not used in route tests");
   }
+  async upsertScheduledJob(): Promise<void> {
+    throw new Error("not used in route tests");
+  }
   async getQueueDepth(): Promise<number> {
     return 0;
   }

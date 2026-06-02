@@ -65,10 +65,25 @@ import type { MatchScorer } from "@homescout/backend-core/lib/ai/match-scorer.pr
 import type { PhotoSource } from "@homescout/backend-core/lib/ai/photo-source";
 import { getPreferenceMatchService } from "@homescout/backend-core/services/preference-match.service";
 import { getListingAnalysisService } from "@homescout/backend-core/services/listing-analysis.service";
+import {
+  FakeEmailSendProvider,
+  type EmailProvider,
+} from "@homescout/backend-core/lib/email/email-provider";
+import {
+  NodemailerEmailProvider,
+  ResendEmailSendProvider,
+} from "@homescout/backend-core/lib/email/mailbox-adapter";
+import { getOutreachService } from "@homescout/backend-core/services/outreach.service";
+import { outreachReplyService } from "@homescout/backend-core/services/outreach-reply.service";
+import { warmupService } from "@homescout/backend-core/services/warmup.service";
 import { RealResendHydrator } from "./resend-hydrator.js";
 import { makeInboundHandler } from "./inbound-handler.js";
 import { makeAnalyzeHandler } from "./analyze-handler.js";
 import { makeRecomputeHandler } from "./recompute-handler.js";
+import { makeOutreachSendHandler } from "./outreach-send-handler.js";
+import { makeOutreachFollowupHandler } from "./outreach-followup-handler.js";
+import { makeFollowupScanHandler } from "./followup-scan-handler.js";
+import { makeWarmupRecalcHandler } from "./warmup-recalc-handler.js";
 
 const metricsPort = Number(process.env.METRICS_PORT ?? 9090);
 const metricsHost = process.env.METRICS_HOST ?? "0.0.0.0";
@@ -150,12 +165,31 @@ const listingAnalysisService = getListingAnalysisService({
   preferenceMatchService,
 });
 
+// ── Wire the M6 outreach send path (real Resend / SMTP vs OUTREACH_FAKE seam) ─
+// OUTREACH_FAKE=1 swaps the real transport for the deterministic, network-free
+// fake (E2E/CI never dispatch a real email). EMAIL_TRANSPORT=smtp selects the
+// nodemailer fallback; otherwise Resend. The guard re-checks authoritatively on
+// the send path; the OutreachService persists + advances thread status.
+const useFakeOutreach = process.env.OUTREACH_FAKE === "1";
+const emailProvider: EmailProvider = useFakeOutreach
+  ? new FakeEmailSendProvider()
+  : process.env.EMAIL_TRANSPORT === "smtp"
+    ? new NodemailerEmailProvider()
+    : new ResendEmailSendProvider();
+
+const outreachService = getOutreachService({ emailProvider });
+
 // ── BullMQ consumer: one processor per queue ────────────────────────────────
 const queueClient = new BullMQQueueClient();
 
 queueClient.registerProcessor(
   QUEUE_NAMES.inbound,
-  makeInboundHandler({ hydrator, inboundIngestionService }),
+  makeInboundHandler({
+    hydrator,
+    inboundIngestionService,
+    // M6: link a listing-bearing agent reply back to its OutreachThread.
+    outreachReplyService,
+  }),
   // Claude extraction can exceed the 30s default lock — extend it.
   { lockDuration: 180_000 },
 );
@@ -183,6 +217,34 @@ queueClient.registerProcessor(
   makeRecomputeHandler({ preferenceMatchService }),
   // Top-K LLM re-score can exceed the 30s default lock — extend it.
   { lockDuration: 180_000 },
+);
+
+// ── M6 outreach consumers ────────────────────────────────────────────────────
+queueClient.registerProcessor(
+  QUEUE_NAMES.send,
+  makeOutreachSendHandler({ outreachService }),
+  // The SMTP/Resend round-trip can exceed the 30s default lock — extend it.
+  { lockDuration: 60_000 },
+);
+
+queueClient.registerProcessor(
+  QUEUE_NAMES.followup,
+  makeOutreachFollowupHandler({ outreachService }),
+  { lockDuration: 60_000 },
+);
+
+// Cadence scan (scheduler-driven): list awaiting_reply threads past the
+// follow-up cadence + fan out one outreach:followup per due thread.
+queueClient.registerProcessor(
+  QUEUE_NAMES.followupScan,
+  makeFollowupScanHandler(),
+);
+
+// warmup:recalc is enqueued on a cadence by the scheduler (leader-lock); the
+// processor consumes it here (ramp the daily cap + reconcile the window).
+queueClient.registerProcessor(
+  QUEUE_NAMES.warmup,
+  makeWarmupRecalcHandler({ warmupService }),
 );
 
 // ── Probe + metrics HTTP server (started LAST, after DB + Redis are healthy) ─

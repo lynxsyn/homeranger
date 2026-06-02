@@ -62,6 +62,17 @@ export interface QueueClient {
     handler: JobHandler<JobPayloadByType[N]>,
     workerOptions?: Partial<WorkerOptions>,
   ): void;
+  /**
+   * Register a recurring job via BullMQ's job scheduler (idempotent on
+   * schedulerId — re-registering is safe). Used by the scheduler app to drive
+   * warmup:recalc on a cadence under a leader-lock.
+   */
+  upsertScheduledJob<N extends QueueName>(
+    name: N,
+    schedulerId: string,
+    repeat: { every: number },
+    payload: JobPayloadByType[N],
+  ): Promise<void>;
   getQueueDepth(name: QueueName): Promise<number>;
   close(force?: boolean): Promise<void>;
 }
@@ -153,6 +164,19 @@ export class BullMQQueueClient implements QueueClient {
     this.workers.set(name, worker);
   }
 
+  async upsertScheduledJob<N extends QueueName>(
+    name: N,
+    schedulerId: string,
+    repeat: { every: number },
+    payload: JobPayloadByType[N],
+  ): Promise<void> {
+    await this.getQueue(name).upsertJobScheduler(
+      sanitizeJobId(schedulerId),
+      { every: repeat.every },
+      { name, data: payload as object },
+    );
+  }
+
   async getQueueDepth(name: QueueName): Promise<number> {
     const counts = await this.getQueue(name).getJobCounts();
     return (counts.waiting ?? 0) + (counts.active ?? 0);
@@ -208,4 +232,16 @@ export async function enqueueRecompute(
   input: EnqueueInput<JobPayloadByType["analyze:recompute"]>,
 ): Promise<void> {
   await getQueueClient().enqueue(QUEUE_NAMES.recompute, input);
+}
+
+export async function enqueueOutreachSend(
+  input: EnqueueInput<JobPayloadByType["outreach:send"]>,
+): Promise<void> {
+  await getQueueClient().enqueue(QUEUE_NAMES.send, input);
+}
+
+export async function enqueueOutreachFollowup(
+  input: EnqueueInput<JobPayloadByType["outreach:followup"]>,
+): Promise<void> {
+  await getQueueClient().enqueue(QUEUE_NAMES.followup, input);
 }

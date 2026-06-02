@@ -98,6 +98,12 @@ export default defineConfig({
         // fake vision/embedding/match/photo providers drive PhotoAnalysis +
         // Listing.embedding + ListingScore so the row-expand renders real data.
         ANALYSIS_FAKE: "1",
+        // M6: deterministic, network-free outbound send (no real Resend). The
+        // fake send provider returns a stable providerMessageId so the guard
+        // E2E can assert an OutreachMessage row lands. RESEND_FROM satisfies the
+        // OutreachService boot config (the verified sending address).
+        OUTREACH_FAKE: "1",
+        RESEND_FROM: "Homescout <outreach@homescout.test>",
         NODE_ENV: "development",
       },
     },

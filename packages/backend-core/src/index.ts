@@ -37,6 +37,12 @@ export * from "./services/inbound-ingestion.service.js";
 // M5 analysis services (DI singletons initialised at worker boot).
 export * from "./services/listing-analysis.service.js";
 export * from "./services/preference-match.service.js";
+// M6 outreach + ComplianceGuard (DI singletons / worker-boot factory).
+export * from "./services/outreach.service.js";
+export * from "./services/outreach-reply.service.js";
+export * from "./services/warmup.service.js";
+export * from "./lib/compliance/compliance-guard.js";
+export * from "./lib/email/email-provider.js";
 
 // tRPC surface — the appRouter tree + its type (the SPA infers over AppRouter),
 // and createContext (apps/api mounts the fastify tRPC plugin with these). The
