@@ -45,11 +45,21 @@ import { photoAnalysisRepository } from "../repositories/photo-analysis.reposito
 import { listingScoreRepository } from "../repositories/listing-score.repository.js";
 import type { CursorPage } from "../lib/pagination/cursor.js";
 
-/** The exact row shape the SPA table consumes (via `inferRouterOutputs`). */
+/** A single listing row as `getById` returns it. */
 export type ListingRow = ListingRecord;
 
-/** `list` output: a cursor page of listing rows. */
-export type ListListingsOutput = CursorPage<ListingRow>;
+/**
+ * A listings-table row: the listing columns plus its `combinedScore` (0..1, or
+ * `null` when the listing has not been analysed yet). The SPA reads this shape
+ * via `inferRouterOutputs` — the Match ring renders `combinedScore` and the
+ * score sort orders by it.
+ */
+export type ListingListItem = ListingRecord & {
+  combinedScore: number | null;
+};
+
+/** `list` output: a cursor page of listing rows with their match scores. */
+export type ListListingsOutput = CursorPage<ListingListItem>;
 
 /** One analysed photo as the row-expand renders it. */
 export interface ListingExpandPhoto {
@@ -108,12 +118,24 @@ export const listingsRouter = router({
   list: protectedProcedure
     .input(listListingsInputSchema)
     .query(async ({ input }): Promise<ListListingsOutput> => {
-      return listingRepository.list({
+      const page = await listingRepository.list({
         filter: toRepositoryFilter(input.filter),
         sort: toRepositorySort(input),
         cursor: input.cursor,
         limit: input.limit,
       });
+      // Attach each row's match score in ONE batch query (no N+1) so the table's
+      // Match ring + score sort have real data. Unscored listings → null.
+      const scores = await listingScoreRepository.getCombinedScoresByListingIds(
+        page.items.map((item) => item.id),
+      );
+      return {
+        items: page.items.map((item) => ({
+          ...item,
+          combinedScore: scores.get(item.id) ?? null,
+        })),
+        nextCursor: page.nextCursor,
+      };
     }),
 
   getById: protectedProcedure

@@ -1,0 +1,267 @@
+/* ============================================================================
+   HomeScout — Design Tokens (colours + type)
+   ----------------------------------------------------------------------------
+   HomeScout is a calm, single-user UK property aggregator: a quiet table of
+   homes pulled from estate-agent emails, photo + metadata, click out to the
+   source. The visual language is "editorial & trustworthy, not portal-flashy" —
+   warm paper neutrals, one confident evergreen accent, generous rounding, soft
+   hairline borders. Light + dark are first-class siblings.
+
+   USAGE
+     <html data-theme="light">  (default)  |  <html data-theme="dark">
+   The :root block holds the LIGHT palette; [data-theme="dark"] overrides the
+   raw colour ramp only. Every semantic token below references the ramp, so
+   nothing else needs to change between themes.
+
+   Fonts are loaded from Google Fonts (see fonts/fonts.css or the <link> in your
+   HTML). NOTE: the source codebase shipped no brand fonts (Tailwind defaults),
+   so this type pairing is a HomeScout design-system decision — see README.
+   ========================================================================== */
+
+/* ---- Font face imports (Google Fonts) ----------------------------------- */
+@import url('https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
+
+/* ========================================================================== */
+/*  COLOUR RAMP — LIGHT (default)                                             */
+/* ========================================================================== */
+:root {
+  /* Warm neutral surfaces (paper → ink) */
+  --paper:        #FBFAF7;  /* app background — warm near-white       */
+  --surface:      #FFFFFF;  /* cards, panels                          */
+  --surface-2:    #F4F2EC;  /* recessed panels, table header, chips   */
+  --surface-3:    #ECE9E1;  /* hover fill on neutral rows             */
+
+  /* Hairline + structural borders */
+  --border:       #E7E3DA;  /* default hairline                       */
+  --border-strong:#D6D0C4;  /* emphasised dividers, input borders     */
+
+  /* Foreground / ink */
+  --ink-1:        #232220;  /* primary text (warm near-black)         */
+  --ink-2:        #6B665E;  /* secondary text, metadata labels        */
+  --ink-3:        #9A958B;  /* tertiary text, placeholders, captions  */
+
+  /* Brand — "Scout" evergreen */
+  --accent:       #2E6A4F;  /* primary actions, links, brand mark     */
+  --accent-hover: #275B43;  /* hover/press                            */
+  --accent-soft:  #E7F0EA;  /* tinted chip / selected row background   */
+  --accent-ink:   #1E4A37;  /* accent text on a soft-accent fill       */
+  --on-accent:    #FFFFFF;  /* text/icons on the solid accent          */
+
+  /* Pre-market — the product's special-sauce highlight (warm gold) */
+  --premarket:      #9A6F1E;  /* badge text / icon                    */
+  --premarket-soft: #F6EEDB;  /* badge background                     */
+  --premarket-line: #E7D29B;  /* badge border                         */
+
+  /* Semantic status */
+  --success:      #2E7D55;
+  --success-soft: #E6F1E9;
+  --warning:      #B5852F;
+  --warning-soft: #F7EED9;
+  --danger:       #B23B3B;
+  --danger-soft:  #F6E4E1;
+  --info:         #2F6A8E;
+  --info-soft:    #E4EEF4;
+
+  /* EPC energy-rating bands (UK canonical A→G) — domain-specific scale */
+  --epc-a: #1A7A3C;
+  --epc-b: #4CAE3F;
+  --epc-c: #9DC63F;
+  --epc-d: #F2D029;
+  --epc-e: #F4A93C;
+  --epc-f: #ED7D31;
+  --epc-g: #E03C31;
+  --epc-on-light: #1B1B1B;  /* readable ink on light EPC bands (C–E)   */
+  --epc-on-dark:  #FFFFFF;  /* readable ink on dark EPC bands (A,B,F,G) */
+
+  /* Focus ring */
+  --ring: color-mix(in oklch, var(--accent) 45%, transparent);
+
+  /* Elevation — soft, warm, low-contrast */
+  --shadow-sm: 0 1px 2px rgba(34, 30, 24, 0.05);
+  --shadow-md: 0 4px 16px -6px rgba(34, 30, 24, 0.12);
+  --shadow-lg: 0 16px 40px -12px rgba(34, 30, 24, 0.18);
+  --shadow-focus: 0 0 0 3px var(--ring);
+
+  color-scheme: light;
+}
+
+/* ========================================================================== */
+/*  COLOUR RAMP — DARK                                                        */
+/* ========================================================================== */
+[data-theme="dark"] {
+  --paper:        #15171B;  /* warm-cool ink background               */
+  --surface:      #1C1F24;
+  --surface-2:    #23262C;
+  --surface-3:    #2C3037;
+
+  --border:       #2D3137;
+  --border-strong:#3C414A;
+
+  --ink-1:        #ECEAE4;
+  --ink-2:        #A8A49A;
+  --ink-3:        #716E66;
+
+  --accent:       #5FB286;  /* lifted evergreen for dark surfaces      */
+  --accent-hover: #71C096;
+  --accent-soft:  #1E2C25;
+  --accent-ink:   #9BD5B5;
+  --on-accent:    #0F1A14;
+
+  --premarket:      #E0B85F;
+  --premarket-soft: #2A2418;
+  --premarket-line: #4A3F23;
+
+  --success:      #5FB286;
+  --success-soft: #1C2A22;
+  --warning:      #E0B85F;
+  --warning-soft: #2A2418;
+  --danger:       #E07A6F;
+  --danger-soft:  #2E1D1B;
+  --info:         #6FA8C9;
+  --info-soft:    #182530;
+
+  /* EPC bands stay constant (they are a fixed legal scale); the ink-on-band
+     helpers below already cover both light and dark band fills. */
+  --epc-on-light: #1B1B1B;
+  --epc-on-dark:  #FFFFFF;
+
+  --ring: color-mix(in oklch, var(--accent) 55%, transparent);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 6px 20px -6px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 20px 48px -12px rgba(0, 0, 0, 0.65);
+
+  color-scheme: dark;
+}
+
+/* ========================================================================== */
+/*  TYPOGRAPHY                                                                */
+/* ========================================================================== */
+:root {
+  /* Families */
+  --font-display: 'Schibsted Grotesk', system-ui, -apple-system, sans-serif;
+  --font-sans:    'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono:    'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Type scale — px (tuned for screen UI; 15px base body) */
+  --fs-display: 44px;  --lh-display: 1.04;
+  --fs-h1:      32px;  --lh-h1:      1.1;
+  --fs-h2:      24px;  --lh-h2:      1.18;
+  --fs-h3:      19px;  --lh-h3:      1.3;
+  --fs-body-lg: 17px;  --lh-body-lg: 1.55;
+  --fs-body:    15px;  --lh-body:    1.55;
+  --fs-sm:      13.5px;--lh-sm:      1.5;
+  --fs-label:   12.5px;--lh-label:   1.3;
+  --fs-caption: 11.5px;--lh-caption: 1.3;
+
+  /* Weights */
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semibold:600;
+  --fw-bold:    700;
+
+  /* Tracking */
+  --tracking-tight: -0.02em;  /* display + h1 */
+  --tracking-snug:  -0.01em;  /* h2 / h3 */
+  --tracking-wide:  0.08em;   /* eyebrow / label uppercase */
+
+  /* Radii — "slightly rounded edges" */
+  --r-xs:   6px;
+  --r-sm:   9px;
+  --r-md:   12px;
+  --r-lg:   16px;
+  --r-xl:   22px;
+  --r-full: 999px;
+
+  /* Spacing scale (4px base) */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+  --sp-12: 48px; --sp-16: 64px;
+
+  /* Motion — calm, no bounce */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 120ms;
+  --dur:      200ms;
+  --dur-slow: 320ms;
+}
+
+/* ---- Semantic text roles (apply directly as classes) -------------------- */
+.t-display {
+  font-family: var(--font-display);
+  font-size: var(--fs-display); line-height: var(--lh-display);
+  font-weight: var(--fw-bold); letter-spacing: var(--tracking-tight);
+  color: var(--ink-1);
+}
+.t-h1 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1); line-height: var(--lh-h1);
+  font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight);
+  color: var(--ink-1);
+}
+.t-h2 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2); line-height: var(--lh-h2);
+  font-weight: var(--fw-semibold); letter-spacing: var(--tracking-snug);
+  color: var(--ink-1);
+}
+.t-h3 {
+  font-family: var(--font-sans);
+  font-size: var(--fs-h3); line-height: var(--lh-h3);
+  font-weight: var(--fw-semibold); letter-spacing: var(--tracking-snug);
+  color: var(--ink-1);
+}
+.t-body-lg {
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-lg); line-height: var(--lh-body-lg);
+  font-weight: var(--fw-regular); color: var(--ink-1);
+}
+.t-body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-body); line-height: var(--lh-body);
+  font-weight: var(--fw-regular); color: var(--ink-1);
+}
+.t-sm {
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm); line-height: var(--lh-sm);
+  font-weight: var(--fw-regular); color: var(--ink-2);
+}
+.t-label {
+  font-family: var(--font-sans);
+  font-size: var(--fs-label); line-height: var(--lh-label);
+  font-weight: var(--fw-semibold); letter-spacing: var(--tracking-wide);
+  text-transform: uppercase; color: var(--ink-2);
+}
+.t-caption {
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption); line-height: var(--lh-caption);
+  font-weight: var(--fw-medium); color: var(--ink-3);
+}
+/* Numeric / postcode / EPC data — monospace with tabular figures */
+.t-data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--ink-1);
+}
+/* Prices — sans with tabular figures (kept in body family for warmth) */
+.t-price {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--ink-1);
+}
+
+/* ---- Base element defaults (optional reset helpers) --------------------- */
+.hs-base {
+  background: var(--paper);
+  color: var(--ink-1);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.hs-base a { color: var(--accent); text-decoration: none; }
+.hs-base a:hover { color: var(--accent-hover); text-decoration: underline; }
+.hs-base ::selection { background: var(--accent-soft); color: var(--accent-ink); }

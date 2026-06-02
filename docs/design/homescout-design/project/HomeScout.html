@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HomeScout — Listings</title>
+  <link rel="icon" href="assets/logo-mark.svg">
+  <link rel="stylesheet" href="assets/colors_and_type.css">
+  <link rel="stylesheet" href="assets/components.css">
+  <link rel="stylesheet" href="app/styles.css">
+  <!-- Restore saved theme before paint to avoid a flash -->
+  <script>
+    try {
+      var t = localStorage.getItem("hs-theme");
+      if (t) document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  </script>
+  <!-- Lucide UMD (before Babel so window.lucide exists for <Icon>) -->
+  <script src="https://unpkg.com/lucide@0.544.0/dist/umd/lucide.min.js"></script>
+  <!-- React + Babel (pinned) -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="app/components.jsx"></script>
+  <script type="text/babel" src="app/data.jsx"></script>
+  <script type="text/babel" src="app/listings.jsx"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function useStored(key, initial) {
+      const [v, setV] = useState(() => {
+        try { return localStorage.getItem(key) || initial; } catch (e) { return initial; }
+      });
+      useEffect(() => { try { localStorage.setItem(key, v); } catch (e) {} }, [v]);
+      return [v, setV];
+    }
+
+    function App() {
+      const [theme, setTheme] = useStored("hs-theme", "light");
+      const [view, setView] = useStored("hs-view", "table");
+
+      useEffect(() => {
+        document.documentElement.setAttribute("data-theme", theme);
+      }, [theme]);
+
+      return (
+        <div className="app">
+          <header className="topbar">
+            <Logo size={30} />
+            <div className="topbar__right">
+              <span className="tagline">Found before it&rsquo;s listed</span>
+              <Button variant="ghost" size="sm" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                aria-label="Toggle theme">
+                <Icon name={theme === "dark" ? "sun" : "moon"} size={18} />
+              </Button>
+            </div>
+          </header>
+          <ListingsScreen view={{ value: view, set: setView }} />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

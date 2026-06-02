@@ -73,6 +73,22 @@ jobs:
       - name: Unit tests + coverage
         run: pnpm test:coverage
 
+  web-unit:
+    runs-on: ${{ vars.RUNNER_LABEL_DEFAULT || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.16.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Web tests mock the tRPC client + use pure helpers — type-only imports of
+      # backend-core/shared are erased by esbuild at test runtime, so no Prisma
+      # client or DB is needed (unlike api-unit).
+      - name: Web unit tests (happy-dom + testing-library)
+        run: pnpm --filter @homescout/web test
+
   api-integration:
     runs-on: ${{ vars.RUNNER_LABEL_DEFAULT || 'ubuntu-latest' }}
     services:
@@ -169,7 +185,7 @@ jobs:
         run: pnpm test:e2e
 
   ci-gate:
-    needs: [secret-scan, check, api-unit, api-integration, e2e]
+    needs: [secret-scan, check, api-unit, web-unit, api-integration, e2e]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -178,6 +194,7 @@ jobs:
           [ "${{ needs.secret-scan.result }}" = "success" ] || { echo "secret-scan failed"; exit 1; }
           [ "${{ needs.check.result }}" = "success" ] || { echo "check failed"; exit 1; }
           [ "${{ needs.api-unit.result }}" = "success" ] || { echo "api-unit failed"; exit 1; }
+          [ "${{ needs.web-unit.result }}" = "success" ] || { echo "web-unit failed"; exit 1; }
           [ "${{ needs.api-integration.result }}" = "success" ] || { echo "api-integration failed"; exit 1; }
           [ "${{ needs.e2e.result }}" = "success" ] || { echo "e2e failed"; exit 1; }
           echo "CI gate passed"

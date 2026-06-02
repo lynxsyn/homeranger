@@ -1,9 +1,14 @@
 @import "tailwindcss";
+/* HomeScout design system (claude.ai/design handoff — see docs/design/homescout-design).
+   tokens → component layer → app layout, all built on CSS variables with a
+   first-class light/dark split via [data-theme]. */
+@import "./styles/tokens.css";
+@import "./styles/components.css";
+@import "./styles/layout.css";
 
 /*
- * Screen-reader-only utility (verbatim Doxus recipe). Visually hides an element
- * while keeping it in the accessibility tree — used for the table <caption> and
- * the visually-hidden filter labels so the markup stays semantic + accessible.
+ * Screen-reader-only utility — used for table <caption>s and visually-hidden
+ * labels so the markup stays semantic + accessible.
  */
 .sr-only {
   position: absolute;
@@ -15,4 +20,44 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ---- Topbar navigation -----------------------------------------------------
+   The handoff design is a single Listings screen; homescout is multi-page
+   (Listings · Preferences · Campaign), so the topbar carries a small nav styled
+   with the design tokens. Grouped left with the logo; theme toggle stays right. */
+.topbar__left {
+  display: inline-flex;
+  align-items: center;
+  gap: 22px;
+  min-width: 0;
+}
+.app-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.app-nav a {
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--ink-2);
+  padding: 7px 12px;
+  border-radius: var(--r-sm);
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.app-nav a:hover {
+  background: var(--surface-2);
+  color: var(--ink-1);
+}
+.app-nav a.active {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+}
+@media (max-width: 520px) {
+  .app-nav a {
+    padding: 7px 9px;
+  }
 }
