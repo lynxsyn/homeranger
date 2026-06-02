@@ -19,6 +19,7 @@ import { UnrecoverableError } from "bullmq";
 import { inboundDroppedTotal } from "@homescout/backend-core/lib/queue/queue-metrics";
 import type { ResendHydrator } from "@homescout/backend-core/lib/inbound/resend-hydrator";
 import type { InboundIngestionService } from "@homescout/backend-core/services/inbound-ingestion.service";
+import type { OutreachReplyService } from "@homescout/backend-core/services/outreach-reply.service";
 import type { InboundEmailJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
 
 /** Duck-type the `retryable` flag so this works for BOTH InboundIngestionError
@@ -32,6 +33,8 @@ function isRetryable(error: unknown): boolean {
 export interface InboundHandlerDeps {
   hydrator: ResendHydrator;
   inboundIngestionService: InboundIngestionService;
+  /** M6: links a listing-bearing agent reply back to its OutreachThread. */
+  outreachReplyService?: OutreachReplyService;
 }
 
 /** Build the inbound job handler bound to its (injectable) dependencies. */
@@ -41,7 +44,28 @@ export function makeInboundHandler(deps: InboundHandlerDeps) {
   }): Promise<void> {
     try {
       const hydrated = await deps.hydrator.hydrate(job.data);
-      await deps.inboundIngestionService.ingestInboundEmail(hydrated);
+      const result =
+        await deps.inboundIngestionService.ingestInboundEmail(hydrated);
+      // M6 AC#4 — link the reply to its OutreachThread (best-effort: the
+      // listing is already persisted; a link blip must NOT trigger a retry that
+      // re-bills Claude). Skipped when the sender isn't a tracked agent.
+      if (deps.outreachReplyService) {
+        try {
+          await deps.outreachReplyService.linkReply(hydrated, result);
+        } catch (linkError) {
+          console.error(
+            JSON.stringify({
+              type: "error",
+              scope: "outreach.reply.link_failed",
+              emailId: job.data.email_id,
+              message:
+                linkError instanceof Error
+                  ? linkError.message
+                  : String(linkError),
+            }),
+          );
+        }
+      }
     } catch (error) {
       if (!isRetryable(error)) {
         // Drop the poison pill — NO secrets / PII bodies in the log, only the

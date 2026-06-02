@@ -10,3 +10,5 @@ export * from "./suppression-entry.repository.js";
 // M5 analysis aggregate.
 export * from "./photo-analysis.repository.js";
 export * from "./listing-score.repository.js";
+// M6 outreach send-governance state.
+export * from "./warmup-state.repository.js";

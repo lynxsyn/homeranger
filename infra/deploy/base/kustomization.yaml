@@ -38,6 +38,13 @@ resources:
   # the same chicken-and-egg ordering as the api/web images: build + push the
   # tag FIRST, then let Flux reconcile.
   - processor-deployment.yaml
+  # M6 brings up the leader-locked scheduler (apps/scheduler) — Redis-only, no
+  # DB. It pulls ghcr.io/lynxsyn/homescout-scheduler (built by the release.yml
+  # matrix once apps/scheduler/Dockerfile lands) under the same chicken-and-egg
+  # ordering as the api/web/processor images: build + push the tag FIRST, then
+  # let Flux reconcile. The api/web/processor pods are unaffected if the
+  # scheduler image is briefly absent.
+  - scheduler-deployment.yaml
   # Live edge: the Cloudflare Tunnel connector (app.aid-engineering.com +
   # hooks.aid-engineering.com). The tunnel + ingress config + DNS CNAMEs are
   # Terraform-managed (infra/terraform/cloudflare); this is just the in-cluster

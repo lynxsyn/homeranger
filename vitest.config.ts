@@ -96,6 +96,17 @@ export default defineConfig({
         "packages/backend-core/src/repositories/listing-score.repository.ts",
         // M5 backfill — Redis enqueue I/O (same rationale as the queue layer).
         "packages/backend-core/src/lib/queue/analyze-backfill.ts",
+        // M6 outreach send-governance repo — Prisma I/O (integration-tested),
+        // same rationale as the M2/M3/M4/M5 repository excludes above.
+        "packages/backend-core/src/repositories/warmup-state.repository.ts",
+        // M6 email transports — Resend/SMTP network I/O. The interface + the
+        // deterministic fake (email-provider.ts) are unit-covered; the real
+        // adapters are E2E/prod-proven (same rationale as r2.ts / the hydrator).
+        "packages/backend-core/src/lib/email/mailbox-adapter.ts",
+        // M6 scheduler — side-effecting bootstrap (Redis + leader-lock loop +
+        // health server). Proven by the leader-lock unit test + live. Same
+        // rationale as apps/processor/src/worker.ts + apps/api/src/main.ts.
+        "apps/scheduler/src/scheduler.ts",
       ],
       thresholds: {
         // Floor with deliberate HEADROOM, not floor(measured). Measured M3 is

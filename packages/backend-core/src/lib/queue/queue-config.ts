@@ -23,6 +23,10 @@ export const QUEUE_NAMES = {
   event: "resend:event",
   analyze: "analyze:listing",
   recompute: "analyze:recompute",
+  // M6 outbound outreach.
+  send: "outreach:send",
+  followup: "outreach:followup",
+  warmup: "warmup:recalc",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -33,6 +37,9 @@ export const JOB_TYPES = [
   QUEUE_NAMES.event,
   QUEUE_NAMES.analyze,
   QUEUE_NAMES.recompute,
+  QUEUE_NAMES.send,
+  QUEUE_NAMES.followup,
+  QUEUE_NAMES.warmup,
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
@@ -101,11 +108,33 @@ export interface AnalyzeRecomputeJobPayload {
   reason?: string;
 }
 
+/** `outreach:send` payload — cold-contact one agent (the guard re-checks). */
+export interface OutreachSendJobPayload {
+  agentId: string;
+}
+
+/** `outreach:followup` payload — send a follow-up on one awaiting_reply thread. */
+export interface OutreachFollowupJobPayload {
+  threadId: string;
+}
+
+/**
+ * `warmup:recalc` payload — the scheduler-driven daily ramp + breaker-rate
+ * reconcile. Fieldless (the single WarmupState row is the implicit subject);
+ * `reason` is optional log/trace context.
+ */
+export interface WarmupRecalcJobPayload {
+  reason?: string;
+}
+
 export interface JobPayloadByType {
   "outreach:inbound": InboundEmailJobPayload;
   "resend:event": ResendEventJobPayload;
   "analyze:listing": AnalyzeListingJobPayload;
   "analyze:recompute": AnalyzeRecomputeJobPayload;
+  "outreach:send": OutreachSendJobPayload;
+  "outreach:followup": OutreachFollowupJobPayload;
+  "warmup:recalc": WarmupRecalcJobPayload;
 }
 
 export interface RetryPolicy {
@@ -135,6 +164,21 @@ export const RETRY_POLICIES: Record<QueueName, RetryPolicy> = {
   // Recompute is idempotent (BullMQ dedupes the single jobId) + bounded; a
   // couple of retries cover a transient LLM/embedding blip.
   [QUEUE_NAMES.recompute]: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 5000 },
+  },
+  // Sends are idempotent at the provider (Idempotency-Key); exponential backoff
+  // covers transient Resend/SMTP errors + a deferred warm-up cap (retryable).
+  [QUEUE_NAMES.send]: {
+    attempts: 5,
+    backoff: { type: "exponential", delay: 10_000 },
+  },
+  [QUEUE_NAMES.followup]: {
+    attempts: 5,
+    backoff: { type: "exponential", delay: 10_000 },
+  },
+  // Recalc is idempotent + scheduler-driven; a couple of retries cover a blip.
+  [QUEUE_NAMES.warmup]: {
     attempts: 3,
     backoff: { type: "exponential", delay: 5000 },
   },

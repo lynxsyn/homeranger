@@ -181,11 +181,141 @@ export class DefaultComplianceGuard implements ComplianceGuard {
   }
 
   async assertCanSend(
-    _agent: AgentForGuard,
-    _options: AssertCanSendOptions = {},
+    agent: AgentForGuard,
+    options: AssertCanSendOptions = {},
   ): Promise<void> {
-    void complianceBlockedTotal;
-    throw new Error("M6 ComplianceGuard.assertCanSend not implemented");
+    const reserve = options.reserve ?? true;
+
+    // Gate 1 — PECR corporate-subscriber carve-out. No lawful basis to send to
+    // an individual/unknown mailbox, so this short-circuits before anything else.
+    if (agent.mailboxType !== "corporate_subscriber") {
+      this.block(agent.id, "PECR_NON_CORPORATE", {
+        retryable: false,
+        trpcCode: "FORBIDDEN",
+      });
+    }
+
+    // Gate 2 — agent opt-out.
+    if (agent.optedOut) {
+      this.block(agent.id, "OPTED_OUT", {
+        retryable: false,
+        trpcCode: "FORBIDDEN",
+      });
+    }
+
+    // Gate 3 — global suppression list (hard bounce / complaint / unsubscribe).
+    if (await this.suppressionEntryRepository.isSuppressed(agent.email)) {
+      this.block(agent.id, "SUPPRESSED", {
+        retryable: false,
+        trpcCode: "FORBIDDEN",
+      });
+    }
+
+    // Gate 4 — reputation circuit breaker (bounce/complaint rate over window).
+    await this.assertBreakerClosed(agent.id);
+
+    // Gate 5 — manual kill-switch (also reads the daily cap for gate 6).
+    const warmup = await this.warmupStateRepository.getOrCreate();
+    if (warmup.killSwitch) {
+      this.block(agent.id, "KILL_SWITCH", {
+        retryable: false,
+        trpcCode: "FORBIDDEN",
+      });
+    }
+
+    // Gate 6 — warm-up daily cap (token bucket). LAST, so a send blocked above
+    // never burns a token. reserve:true consumes (worker); false peeks (router).
+    const token = await this.consumeToken({
+      key: `outreach:warmup:${this.windowKey()}`,
+      cap: warmup.dailyCap,
+      windowSeconds: this.config.warmupWindowSeconds,
+      reserve,
+    });
+    if (!token.available) {
+      // Fail-closed: Redis unreachable — distinct from a legitimate cap hit so
+      // an outage is observable (alert on RATE_LIMIT_UNAVAILABLE, not cap).
+      this.block(agent.id, "RATE_LIMIT_UNAVAILABLE", {
+        retryable: true,
+        trpcCode: "TOO_MANY_REQUESTS",
+        retryAfterSeconds: token.retryAfterSeconds,
+      });
+    }
+    if (!token.allowed) {
+      this.block(agent.id, "WARMUP_CAP_EXCEEDED", {
+        retryable: true,
+        trpcCode: "TOO_MANY_REQUESTS",
+        retryAfterSeconds: token.retryAfterSeconds,
+      });
+    }
+  }
+
+  /** Throw a typed block — logging agentId + code ONLY (never email/PII). */
+  private block(
+    agentId: string,
+    code: ComplianceCode,
+    options: ComplianceErrorOptions,
+  ): never {
+    complianceBlockedTotal.labels({ reason: code }).inc();
+    console.warn(
+      JSON.stringify({
+        type: "warn",
+        scope: `outreach.blocked.${code}`,
+        agentId,
+        ...(options.retryAfterSeconds !== undefined
+          ? { retryAfterSeconds: options.retryAfterSeconds }
+          : {}),
+      }),
+    );
+    throw new ComplianceError(code, options);
+  }
+
+  /**
+   * Gate 4. rate = events ÷ attempted sends over the trailing window. Each gate
+   * is evaluated ONLY at/above its min-sample floor — below it the warm-up cap +
+   * kill-switch are the safety net, not a hair-trigger statistical breaker (a
+   * single bounce at n=2 is meaningless). Never divides by zero.
+   */
+  private async assertBreakerClosed(agentId: string): Promise<void> {
+    const since = new Date(
+      this.now().getTime() - this.config.windowHours * 3_600_000,
+    );
+    const sends = await this.outreachRepository.countOutboundSince(since);
+
+    if (sends >= this.config.bounceMinSample) {
+      const bounced = await this.emailEventRepository.countByTypeSince(
+        "bounced",
+        since,
+      );
+      if (bounced / sends > this.config.bounceRate) {
+        this.block(agentId, "CIRCUIT_OPEN", {
+          retryable: false,
+          trpcCode: "FORBIDDEN",
+          message: "bounce-rate circuit breaker open",
+        });
+      }
+    }
+
+    if (sends >= this.config.complaintMinSample) {
+      const complained = await this.emailEventRepository.countByTypeSince(
+        "complained",
+        since,
+      );
+      if (complained / sends > this.config.complaintRate) {
+        this.block(agentId, "CIRCUIT_OPEN", {
+          retryable: false,
+          trpcCode: "FORBIDDEN",
+          message: "complaint-rate circuit breaker open",
+        });
+      }
+    }
+  }
+
+  /** UTC date (YYYY-MM-DD) — the daily warm-up bucket key. */
+  private windowKey(): string {
+    const d = this.now();
+    const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
+    return `${d.getUTCFullYear()}-${month}-${day}`;
   }
 }
 

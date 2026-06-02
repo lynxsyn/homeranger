@@ -8,13 +8,32 @@
  *     ONE attempt (no further Claude calls) + increments the drop metric.
  *   - retryable / unknown → rethrows the ORIGINAL error so BullMQ retries.
  */
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { UnrecoverableError } from "bullmq";
 import { makeInboundHandler } from "./inbound-handler.js";
 import { inboundDroppedTotal } from "@homescout/backend-core/lib/queue/queue-metrics";
 import type { ResendHydrator } from "@homescout/backend-core/lib/inbound/resend-hydrator";
-import type { InboundIngestionService } from "@homescout/backend-core/services/inbound-ingestion.service";
+import type {
+  InboundIngestionService,
+  IngestInboundEmailResult,
+} from "@homescout/backend-core/services/inbound-ingestion.service";
+import type { OutreachReplyService } from "@homescout/backend-core/services/outreach-reply.service";
 import type { InboundEmailJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
+
+const INGEST_RESULT: IngestInboundEmailResult = {
+  listingId: "listing-1",
+  created: true,
+  matchedBy: null,
+  sourceRecordId: "sr-1",
+};
+
+function ingestionOk(): InboundIngestionService {
+  return {
+    async ingestInboundEmail(): Promise<IngestInboundEmailResult> {
+      return INGEST_RESULT;
+    },
+  };
+}
 
 function job(): { data: InboundEmailJobPayload } {
   return {
@@ -107,5 +126,30 @@ describe("makeInboundHandler — retry classification", () => {
 
     await expect(handler(job())).rejects.toBe(plain);
     await expect(handler(job())).rejects.not.toBeInstanceOf(UnrecoverableError);
+  });
+});
+
+describe("makeInboundHandler — M6 reply linking", () => {
+  it("links the reply after a successful ingest (passes hydrated + result)", async () => {
+    const linkReply = vi.fn().mockResolvedValue(undefined);
+    const handler = makeInboundHandler({
+      hydrator: okHydrator,
+      inboundIngestionService: ingestionOk(),
+      outreachReplyService: { linkReply } as unknown as OutreachReplyService,
+    });
+    await handler(job());
+    expect(linkReply).toHaveBeenCalledTimes(1);
+    expect(linkReply.mock.calls[0]![1]).toEqual(INGEST_RESULT);
+  });
+
+  it("swallows a reply-link failure (best-effort — does not fail the job)", async () => {
+    const linkReply = vi.fn().mockRejectedValue(new Error("link blip"));
+    const handler = makeInboundHandler({
+      hydrator: okHydrator,
+      inboundIngestionService: ingestionOk(),
+      outreachReplyService: { linkReply } as unknown as OutreachReplyService,
+    });
+    await expect(handler(job())).resolves.toBeUndefined();
+    expect(linkReply).toHaveBeenCalledTimes(1);
   });
 });

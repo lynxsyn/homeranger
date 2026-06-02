@@ -190,6 +190,19 @@ export class OutreachRepository {
     });
   }
 
+  /** Close every open thread for an agent (opt-out / unsubscribe). Idempotent. */
+  async closeThreadsByAgent(
+    agentId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<number> {
+    const db: PrismaLike = tx ?? prisma;
+    const { count } = await db.outreachThread.updateMany({
+      where: { agentId, status: { not: "closed" } },
+      data: { status: "closed" },
+    });
+    return count;
+  }
+
   /** Whether an inbound reply landed on this thread since a cutoff (follow-up gate). */
   async hasInboundSince(threadId: string, since: Date): Promise<boolean> {
     const hit = await prisma.outreachMessage.findFirst({

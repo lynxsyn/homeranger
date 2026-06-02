@@ -12,6 +12,16 @@ import { prisma } from "../lib/prisma.js";
 
 type PrismaLike = typeof prisma | Prisma.TransactionClient;
 
+/**
+ * Single-point email normalisation for the suppression key. Both the write
+ * (suppress) and the read (isSuppressed) normalise here, so casing can NEVER
+ * split a suppression — gate 2 (opt-out, normalised by the Agent repo) and gate
+ * 3 (suppression) always agree on the key.
+ */
+function normaliseEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 const SUPPRESSION_SELECT = Prisma.validator<Prisma.SuppressionEntrySelect>()({
   id: true,
   email: true,
@@ -44,12 +54,13 @@ export class SuppressionEntryRepository {
     tx?: Prisma.TransactionClient,
   ): Promise<SuppressionEntryRecord> {
     const db: PrismaLike = tx ?? prisma;
+    const email = normaliseEmail(input.email);
     return db.suppressionEntry.upsert({
       where: {
-        email_reason: { email: input.email, reason: input.reason },
+        email_reason: { email, reason: input.reason },
       },
       create: {
-        email: input.email,
+        email,
         reason: input.reason,
         note: input.note ?? null,
       },
@@ -62,7 +73,7 @@ export class SuppressionEntryRepository {
 
   async isSuppressed(email: string): Promise<boolean> {
     const hit = await prisma.suppressionEntry.findFirst({
-      where: { email },
+      where: { email: normaliseEmail(email) },
       select: { id: true },
     });
     return hit !== null;

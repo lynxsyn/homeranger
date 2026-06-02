@@ -1,0 +1,170 @@
+# homescout-scheduler Deployment + headless Service (M6).
+#
+# The leader-locked warmup:recalc cadence driver. Pattern from
+# processor-deployment.yaml, SIMPLIFIED:
+#   - Redis-only: the scheduler enqueues warmup:recalc + holds the Redis leader
+#     lock; it does NOT touch Postgres (the processor consumes the job + does the
+#     DB work), so there is no DATABASE_URL and no wait-for-postgres init.
+#   - Single replica today; the SET NX PX leader lock makes scaling > 1 safe
+#     (only the lease holder registers; upsertJobScheduler is idempotent on key).
+#   - No external ingress. /health on 9091 gates readiness.
+#
+# CHICKEN-AND-EGG: ghcr.io/lynxsyn/homescout-scheduler:<tag> MUST exist in GHCR
+# before Flux reconciles this pod or it ImagePullBackOffs. The release.yml matrix
+# gains `scheduler` in M6 so the tag is built+pushed at the release tag; the pod
+# goes Ready once the image exists (the api/web/processor pods are unaffected).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homescout-scheduler
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: homescout-scheduler
+    app.kubernetes.io/part-of: homescout-app
+    app.kubernetes.io/component: scheduler
+spec:
+  revisionHistoryLimit: 3
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homescout-scheduler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homescout-scheduler
+        app.kubernetes.io/part-of: homescout-app
+        app.kubernetes.io/component: scheduler
+    spec:
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+      priorityClassName: platform-critical
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Block until Redis accepts TCP (the scheduler fail-fast pings it at boot).
+        - name: wait-for-redis
+          image: busybox:1.36.1
+          command:
+            - sh
+            - -ec
+            - |
+              host="homescout-redis.homescout.svc.cluster.local"
+              port="6379"
+              attempts=150
+              i=1
+              while [ "$i" -le "$attempts" ]; do
+                if nc -z -w 2 "$host" "$port"; then
+                  echo "Redis is reachable at ${host}:${port}"
+                  exit 0
+                fi
+                echo "Waiting for Redis at ${host}:${port} (${i}/${attempts})"
+                i=$((i + 1))
+                sleep 2
+              done
+              echo "Timed out waiting for Redis at ${host}:${port}" >&2
+              exit 1
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+      containers:
+        - name: scheduler
+          image: ghcr.io/lynxsyn/homescout-scheduler:0.7.0 # {"$imagepolicy": "flux-system:homescout-scheduler"}
+          imagePullPolicy: Always
+          ports:
+            - name: health
+              containerPort: 9091
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: METRICS_PORT
+              value: "9091"
+            - name: METRICS_HOST
+              value: "0.0.0.0"
+            # BullMQ/ioredis + the leader lock connect via REDIS_URL. homescout-
+            # redis requires a password (redis.yaml --requirepass), so REDIS_URL
+            # embeds it via $(VAR) expansion (REDIS_PASSWORD declared FIRST).
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: REDIS_PASSWORD
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@homescout-redis.homescout.svc.cluster.local:6379"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            periodSeconds: 10
+            failureThreshold: 3
+---
+# Headless Service (no metrics scrape today; kept for parity + future ServiceMonitor).
+apiVersion: v1
+kind: Service
+metadata:
+  name: homescout-scheduler
+  namespace: homescout
+  labels:
+    app.kubernetes.io/name: homescout-scheduler
+    app.kubernetes.io/part-of: homescout-app
+    app.kubernetes.io/component: scheduler
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: health
+      port: 9091
+      targetPort: health
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: homescout-scheduler

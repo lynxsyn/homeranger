@@ -4,6 +4,8 @@ import {
   DefaultOutreachService,
   OutreachError,
   getOutreachConfig,
+  getOutreachService,
+  _setOutreachServiceForTesting,
 } from "./outreach.service.js";
 import { ComplianceError } from "../lib/compliance/compliance-guard.js";
 import type {
@@ -40,6 +42,7 @@ interface Harness {
   getById: ReturnType<typeof vi.fn>;
   markContacted: ReturnType<typeof vi.fn>;
   findOrCreateOpenThreadByAgent: ReturnType<typeof vi.fn>;
+  getThreadById: ReturnType<typeof vi.fn>;
   createOutboundMessage: ReturnType<typeof vi.fn>;
   applyThreadEvent: ReturnType<typeof vi.fn>;
 }
@@ -53,15 +56,17 @@ function makeHarness(opts: { agent?: AgentRecord | null } = {}): Harness {
     .fn()
     .mockResolvedValue("agent" in opts ? opts.agent : agentRecord());
   const markContacted = vi.fn().mockResolvedValue(undefined);
-  const findOrCreateOpenThreadByAgent = vi.fn().mockResolvedValue({
+  const thread = {
     id: "thread-1",
     agentId: "agent-1",
     subject: "Buyer enquiry",
-    status: "active",
-    lastMessageAt: null,
+    status: "awaiting_reply" as const,
+    lastMessageAt: new Date("2026-06-01"),
     createdAt: new Date("2026-06-01"),
     updatedAt: new Date("2026-06-01"),
-  });
+  };
+  const findOrCreateOpenThreadByAgent = vi.fn().mockResolvedValue(thread);
+  const getThreadById = vi.fn().mockResolvedValue(thread);
   const createOutboundMessage = vi
     .fn()
     .mockImplementation(async (input: { providerMessageId: string }) => ({
@@ -79,6 +84,7 @@ function makeHarness(opts: { agent?: AgentRecord | null } = {}): Harness {
     } as unknown as AgentRepository,
     outreachRepository: {
       findOrCreateOpenThreadByAgent,
+      getThreadById,
       createOutboundMessage,
       applyThreadEvent,
     } as unknown as OutreachRepository,
@@ -98,6 +104,7 @@ function makeHarness(opts: { agent?: AgentRecord | null } = {}): Harness {
     getById,
     markContacted,
     findOrCreateOpenThreadByAgent,
+    getThreadById,
     createOutboundMessage,
     applyThreadEvent,
   };
@@ -191,9 +198,65 @@ describe("OutreachService.sendOutreach", () => {
   });
 });
 
+describe("OutreachService.sendFollowup", () => {
+  it("sends on the existing thread with a per-thread idempotency key (no new thread)", async () => {
+    const h = makeHarness();
+    const result = await h.service.sendFollowup({ threadId: "thread-1" });
+
+    expect(h.findOrCreateOpenThreadByAgent).not.toHaveBeenCalled();
+    const sendArg = h.send.mock.calls[0]![0] as SendEmailInput;
+    expect(sendArg.idempotencyKey).toBe("outreach:followup:thread-1");
+    expect(h.createOutboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "thread-1" }),
+    );
+    expect(result.threadId).toBe("thread-1");
+  });
+
+  it("throws a non-retryable OutreachError when the thread is missing", async () => {
+    const h = makeHarness();
+    h.getThreadById.mockResolvedValueOnce(null);
+    await expect(
+      h.service.sendFollowup({ threadId: "missing" }),
+    ).rejects.toMatchObject({ retryable: false });
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
+  it("re-checks the guard before a follow-up send (blocked → no send)", async () => {
+    const h = makeHarness();
+    h.assertCanSend.mockRejectedValue(
+      new ComplianceError("KILL_SWITCH", {
+        retryable: false,
+        trpcCode: "FORBIDDEN",
+      }),
+    );
+    await expect(
+      h.service.sendFollowup({ threadId: "thread-1" }),
+    ).rejects.toBeInstanceOf(ComplianceError);
+    expect(h.send).not.toHaveBeenCalled();
+  });
+});
+
 describe("getOutreachConfig", () => {
   afterEach(() => vi.unstubAllEnvs());
   it("defaults the follow-up cadence to 72h", () => {
     expect(getOutreachConfig().followupCadenceHours).toBe(72);
+  });
+});
+
+describe("getOutreachService (lazy singleton)", () => {
+  afterEach(() => _setOutreachServiceForTesting(null));
+
+  it("throws when used before initialisation at worker boot", () => {
+    _setOutreachServiceForTesting(null);
+    expect(() => getOutreachService()).toThrow(/not initialised/);
+  });
+
+  it("initialises from deps and returns the same instance thereafter", () => {
+    const send = vi.fn(async () => ({ providerMessageId: "x" }));
+    const first = getOutreachService({
+      emailProvider: { send } as unknown as EmailProvider,
+      emailConfig: { from: "Homescout <hi@homescout.test>" },
+    });
+    expect(getOutreachService()).toBe(first);
   });
 });

@@ -123,7 +123,6 @@ export class DefaultOutreachService implements OutreachService {
     this.now = deps.now ?? (() => new Date());
   }
 
-  // Suppress unused-until-GREEN warnings; the body lands in the GREEN commit.
   private guardAgent(agent: AgentRecord): AgentForGuard {
     return {
       id: agent.id,
@@ -133,24 +132,114 @@ export class DefaultOutreachService implements OutreachService {
     };
   }
 
-  async sendOutreach(_input: { agentId: string }): Promise<SendOutreachResult> {
-    void this.emailProvider;
-    void this.complianceGuard;
-    void this.agentRepository;
-    void this.outreachRepository;
-    void this.emailConfig;
-    void this.config;
-    void this.draft;
-    void this.signToken;
-    void this.now;
-    void this.guardAgent;
-    void outreachSentTotal;
-    void getOutreachEmailConfig;
-    throw new Error("M6 OutreachService.sendOutreach not implemented");
+  async sendOutreach({
+    agentId,
+  }: {
+    agentId: string;
+  }): Promise<SendOutreachResult> {
+    const agent = await this.agentRepository.getById(agentId);
+    if (!agent) {
+      throw new OutreachError(`Agent ${agentId} not found`, false);
+    }
+    // Authoritative guard (consumes a warm-up token). Lets ComplianceError
+    // propagate so the worker maps retryable→retry, non-retryable→drop.
+    await this.complianceGuard.assertCanSend(this.guardAgent(agent), {
+      reserve: true,
+    });
+    // Stable per-agent key — a BullMQ retry forwards the SAME Idempotency-Key,
+    // so the provider returns the original id and the persist is idempotent.
+    return this.dispatch(agent, `outreach:send:${agent.id}`);
   }
 
-  async sendFollowup(_input: { threadId: string }): Promise<SendOutreachResult> {
-    throw new Error("M6 OutreachService.sendFollowup not implemented");
+  async sendFollowup({
+    threadId,
+  }: {
+    threadId: string;
+  }): Promise<SendOutreachResult> {
+    const thread = await this.outreachRepository.getThreadById(threadId);
+    if (!thread) {
+      throw new OutreachError(`OutreachThread ${threadId} not found`, false);
+    }
+    const agent = await this.agentRepository.getById(thread.agentId);
+    if (!agent) {
+      throw new OutreachError(`Agent ${thread.agentId} not found`, false);
+    }
+    await this.complianceGuard.assertCanSend(this.guardAgent(agent), {
+      reserve: true,
+    });
+    return this.dispatch(agent, `outreach:followup:${thread.id}`, thread);
+  }
+
+  private async dispatch(
+    agent: AgentRecord,
+    idempotencyKey: string,
+    thread?: { id: string },
+  ): Promise<SendOutreachResult> {
+    const now = this.now();
+    const resolvedThread =
+      thread ??
+      (await this.outreachRepository.findOrCreateOpenThreadByAgent({
+        agentId: agent.id,
+        subject: "Buyer enquiry — pre-market & upcoming listings",
+      }));
+
+    const token = this.signToken(agent.email);
+    const unsubscribeUrl = `${this.config.unsubscribeBaseUrl}?email=${encodeURIComponent(
+      agent.email,
+    )}&token=${token}`;
+    const draft = this.draft({
+      agencyName: agent.agencyName,
+      coveredOutcodes: agent.coveredOutcodes,
+      unsubscribeUrl,
+    });
+
+    // Send FIRST (with the idempotency key), then persist. A crash between the
+    // two is retry-safe: the same key returns the same provider id, and the
+    // OutreachMessage @@unique(providerMessageId) makes the persist idempotent.
+    const sent = await this.emailProvider.send({
+      to: agent.email,
+      from: this.emailConfig.from,
+      subject: draft.subject,
+      bodyText: draft.bodyText,
+      bodyHtml: draft.bodyHtml,
+      idempotencyKey,
+      headers: {
+        "List-Unsubscribe": `<${unsubscribeUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
+    });
+
+    const message = await this.outreachRepository.createOutboundMessage({
+      threadId: resolvedThread.id,
+      providerMessageId: sent.providerMessageId,
+      fromEmail: this.emailConfig.from,
+      toEmail: agent.email,
+      subject: draft.subject,
+      bodyText: draft.bodyText,
+      sentAt: now,
+    });
+    const status = await this.outreachRepository.applyThreadEvent({
+      threadId: resolvedThread.id,
+      event: "outbound_sent",
+      at: now,
+    });
+    await this.agentRepository.markContacted(agent.id, now);
+    outreachSentTotal.inc();
+    console.info(
+      JSON.stringify({
+        type: "info",
+        scope: "outreach.sent",
+        agentId: agent.id,
+        threadId: resolvedThread.id,
+      }),
+    );
+
+    return {
+      threadId: resolvedThread.id,
+      messageId: message.id,
+      providerMessageId: sent.providerMessageId,
+      status,
+    };
   }
 }
 

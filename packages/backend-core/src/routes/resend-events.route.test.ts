@@ -31,6 +31,9 @@ class SpyQueueClient implements QueueClient {
   registerProcessor(): void {
     throw new Error("not used");
   }
+  async upsertScheduledJob(): Promise<void> {
+    throw new Error("not used");
+  }
   async getQueueDepth(): Promise<number> {
     return 0;
   }
