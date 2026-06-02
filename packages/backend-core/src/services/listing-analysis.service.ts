@@ -32,8 +32,8 @@ import type {
 import type { PhotoSource } from "../lib/ai/photo-source.js";
 import { analysisKillSwitchTotal } from "../lib/ai/analysis-metrics.js";
 import type {
-  MatchRecomputeResult,
   PreferenceMatchService,
+  ScoreListingResult,
 } from "./preference-match.service.js";
 
 export interface AnalyzeListingResult {
@@ -43,7 +43,7 @@ export interface AnalyzeListingResult {
   photosAnalyzed: number;
   photosSkipped: number;
   embedded: boolean;
-  match: MatchRecomputeResult | null;
+  match: ScoreListingResult | null;
 }
 
 export interface ListingAnalysisService {
@@ -218,8 +218,11 @@ export class DefaultListingAnalysisService implements ListingAnalysisService {
     );
     await this.listingRepository.writeEmbedding(listingId, embedded.embedding);
 
-    // Re-match against the profile (bounded to the top-K — AC#3/#5).
-    const match = await this.preferenceMatchService.recompute();
+    // Score THIS listing against the profile (one bounded LLM re-score), so an
+    // analysed listing always gets a ListingScore — even when it falls outside
+    // the profile's top-K. The profile-wide top-K recompute is a separate,
+    // bounded job fired on profile change (preferencesRouter.update).
+    const match = await this.preferenceMatchService.scoreListing(listingId);
 
     return {
       listingId,

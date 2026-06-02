@@ -18,8 +18,8 @@
 import {
   listingRepository,
   type ListingFilter,
+  type ListingRecord,
   type ListingRepository,
-  type VectorTopKResult,
 } from "../repositories/listing.repository.js";
 import {
   searchProfileRepository,
@@ -40,8 +40,29 @@ export interface MatchRecomputeResult {
   scored: number;
 }
 
+export interface ScoreListingResult {
+  /** False when the profile is empty or the listing has no embedding yet. */
+  scored: boolean;
+}
+
 export interface PreferenceMatchService {
+  /**
+   * Profile-driven top-K re-rank (AC#3): embed the profile → vectorTopK recall →
+   * Claude re-scores ONLY the top-K → write ListingScore. The bounded path used
+   * by the profile-change recompute trigger.
+   */
   recompute(opts?: { k?: number }): Promise<MatchRecomputeResult>;
+  /**
+   * Per-listing match (AC#4 "match" step): score ONE listing against the profile
+   * with a single LLM call (so analysing a listing always yields a ListingScore,
+   * even when it falls outside the profile's top-K). Bounded to one re-score.
+   */
+  scoreListing(listingId: string): Promise<ScoreListingResult>;
+}
+
+/** Clamp a value into the [0,1] contract combinedScore/vectorScore must hold. */
+function clampUnit(value: number): number {
+  return Math.min(1, Math.max(0, value));
 }
 
 export interface PreferenceMatchConfig {
@@ -70,7 +91,7 @@ interface PreferenceMatchDeps {
 }
 
 /** Compact, deterministic free-text description of a listing for the LLM. */
-export function describeListing(listing: VectorTopKResult): string {
+export function describeListing(listing: ListingRecord): string {
   const parts: string[] = [listing.addressNormalized];
   if (listing.propertyType) parts.push(listing.propertyType.replace(/_/g, " "));
   if (listing.bedrooms !== null) parts.push(`${listing.bedrooms} bed`);
@@ -168,9 +189,10 @@ export class DefaultPreferenceMatchService implements PreferenceMatchService {
         profileText,
         listingDescription: describeListing(candidate),
       });
-      const combinedScore =
+      const combinedScore = clampUnit(
         this.config.weightVector * vectorScore +
-        this.config.weightLlm * match.llmScore;
+          this.config.weightLlm * match.llmScore,
+      );
       await this.listingScoreRepository.upsertByListingId({
         listingId: candidate.id,
         vectorScore,
@@ -186,6 +208,64 @@ export class DefaultPreferenceMatchService implements PreferenceMatchService {
       candidates: candidates.length,
       scored,
     };
+  }
+
+  async scoreListing(listingId: string): Promise<ScoreListingResult> {
+    const profile = await this.searchProfileRepository.getOrCreate();
+    const profileText = buildProfileText(profile);
+    if (profileText.trim().length === 0) {
+      // No preferences yet → nothing to score against (logged, not silent).
+      console.info(
+        JSON.stringify({
+          type: "info",
+          scope: "match.score.skipped.empty_profile",
+          listingId,
+        }),
+      );
+      return { scored: false };
+    }
+
+    const listing = await this.listingRepository.getById(listingId);
+    if (!listing) {
+      return { scored: false };
+    }
+
+    // Embed the profile fresh (it is tiny + cheap) and persist it so the
+    // profile-change recompute reuses the same vector. Then score JUST this
+    // listing by its cosine distance to the profile — one bounded LLM re-score.
+    const embedded = await this.embeddingProvider.embed(profileText, {
+      inputType: "query",
+    });
+    await this.searchProfileRepository.writePreferenceEmbedding(
+      embedded.embedding,
+    );
+
+    const distance = await this.listingRepository.vectorDistanceFor(
+      listingId,
+      embedded.embedding,
+    );
+    if (distance === null) {
+      // The listing has no embedding yet (race) → skip; a later run will score it.
+      return { scored: false };
+    }
+
+    const vectorScore = vectorScoreFromDistance(distance);
+    const match = await this.matchScorer.scoreMatch({
+      profileText,
+      listingDescription: describeListing(listing),
+    });
+    const combinedScore = clampUnit(
+      this.config.weightVector * vectorScore +
+        this.config.weightLlm * match.llmScore,
+    );
+    await this.listingScoreRepository.upsertByListingId({
+      listingId,
+      vectorScore,
+      llmScore: match.llmScore,
+      combinedScore,
+      rationale: match.rationale,
+    });
+    return { scored: true };
   }
 }
 

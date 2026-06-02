@@ -115,8 +115,12 @@ test("ingest → analyze → row-expand renders features + match score + rationa
     await expect(page.getByTestId("photo-features")).toBeVisible();
   }).toPass({ timeout: 45_000 });
 
-  // The match score reads as "Match score: N / 100".
-  await expect(page.getByTestId("match-score")).toContainText("/ 100");
+  // The match score reads as "Match score: N / 100" with N a real number in
+  // range (not "—"/NaN). Not asserting non-zero: deterministic fake vectors are
+  // near-orthogonal so a low blended score can legitimately round to 0.
+  await expect(page.getByTestId("match-score")).toHaveText(
+    /Match score: (0|[1-9][0-9]?|100) \/ 100/,
+  );
   // At least one analysed photo with a taste score is shown.
   await expect(page.getByTestId("photo-feature").first()).toContainText("Taste:");
 });

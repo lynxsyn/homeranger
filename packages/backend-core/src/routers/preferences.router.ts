@@ -18,18 +18,18 @@ import {
   searchProfileRepository,
   type SearchProfileRecord,
 } from "../repositories/search-profile.repository.js";
-import { backfillAnalyzeAll } from "../lib/queue/analyze-backfill.js";
+import { triggerProfileRecompute } from "../lib/queue/analyze-backfill.js";
 
 export type PreferencesPayload = SearchProfileRecord;
 
-// Backfill seam: the default re-enqueues analyze:listing for every listing; the
+// Backfill seam: the default enqueues a single bounded top-K recompute job; the
 // unit test swaps in a spy via `_setProfileChangeTriggerForTesting`.
-let profileChangeTrigger: () => Promise<unknown> = backfillAnalyzeAll;
+let profileChangeTrigger: () => Promise<unknown> = triggerProfileRecompute;
 
 export function _setProfileChangeTriggerForTesting(
   trigger: (() => Promise<unknown>) | null,
 ): void {
-  profileChangeTrigger = trigger ?? backfillAnalyzeAll;
+  profileChangeTrigger = trigger ?? triggerProfileRecompute;
 }
 
 export const preferencesRouter = router({

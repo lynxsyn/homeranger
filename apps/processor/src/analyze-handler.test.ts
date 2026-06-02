@@ -40,7 +40,7 @@ describe("makeAnalyzeHandler — retry classification", () => {
             photosAnalyzed: 1,
             photosSkipped: 0,
             embedded: true,
-            match: { profileEmbedded: true, candidates: 1, scored: 1 },
+            match: { scored: true },
           };
         },
       },

@@ -702,16 +702,26 @@ export class ListingRepository {
   }
 
   /**
-   * Every listing id (newest-first). Backs the M5 preferences "backfill" trigger
-   * — when the SearchProfile changes, the router re-enqueues analyze:listing for
-   * each id so scores are recomputed against the new preferences.
+   * Cosine distance (`<=>`, 0..2) between ONE listing's embedding and a query
+   * vector — the per-listing score path (PreferenceMatchService.scoreListing)
+   * uses this instead of a full `vectorTopK` recall so analysing a single
+   * listing costs one bounded comparison, not a corpus scan. Returns null when
+   * the listing has no embedding (so the caller can skip scoring it).
    */
-  async listAllIds(): Promise<string[]> {
-    const rows = await prisma.listing.findMany({
-      select: { id: true },
-      orderBy: [{ id: "desc" }],
-    });
-    return rows.map((r) => r.id);
+  async vectorDistanceFor(
+    listingId: string,
+    embedding: number[],
+  ): Promise<number | null> {
+    const queryLiteral = toVectorLiteral(embedding);
+    const rows = await prisma.$queryRaw<Array<{ distance: number | string | null }>>(
+      Prisma.sql`
+        SELECT ("embedding" <=> ${queryLiteral}::vector) AS "distance"
+        FROM "Listing"
+        WHERE "id" = ${listingId}::uuid AND "embedding" IS NOT NULL
+      `,
+    );
+    const distance = rows[0]?.distance;
+    return distance === null || distance === undefined ? null : Number(distance);
   }
 }
 

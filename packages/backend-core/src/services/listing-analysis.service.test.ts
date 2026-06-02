@@ -72,7 +72,7 @@ interface Harness {
   scorePhoto: ReturnType<typeof vi.fn>;
   embed: ReturnType<typeof vi.fn>;
   getPhotos: ReturnType<typeof vi.fn>;
-  recompute: ReturnType<typeof vi.fn>;
+  scoreListing: ReturnType<typeof vi.fn>;
   getById: ReturnType<typeof vi.fn>;
   writeEmbedding: ReturnType<typeof vi.fn>;
   findByImageHash: ReturnType<typeof vi.fn>;
@@ -103,9 +103,7 @@ function makeHarness(opts: {
     metrics: { model: "voyage-3.5", totalTokens: 0, costPence: 0, durationMs: 0 },
   });
   const getPhotos = vi.fn().mockResolvedValue(opts.photos ?? [photo("h1")]);
-  const recompute = vi
-    .fn()
-    .mockResolvedValue({ profileEmbedded: true, candidates: 1, scored: 1 });
+  const scoreListing = vi.fn().mockResolvedValue({ scored: true });
   const getById = vi
     .fn()
     .mockResolvedValue(opts.listingRecord === undefined ? listing() : opts.listingRecord);
@@ -118,7 +116,7 @@ function makeHarness(opts: {
     visionScorer: { scorePhoto, getModel: () => "claude-haiku-4-5" } as unknown as VisionScorer,
     embeddingProvider: { embed, getModel: () => "voyage-3.5", getDimensions: () => 1024 } as unknown as EmbeddingProvider,
     photoSource: { getPhotos } as unknown as PhotoSource,
-    preferenceMatchService: { recompute } as unknown as PreferenceMatchService,
+    preferenceMatchService: { scoreListing } as unknown as PreferenceMatchService,
     config: opts.config ?? CONFIG,
     listingRepository: { getById, writeEmbedding } as unknown as ListingRepository,
     photoAnalysisRepository: {
@@ -134,7 +132,7 @@ function makeHarness(opts: {
     scorePhoto,
     embed,
     getPhotos,
-    recompute,
+    scoreListing,
     getById,
     writeEmbedding,
     findByImageHash,
@@ -152,7 +150,7 @@ describe("DefaultListingAnalysisService.analyzeListing", () => {
     expect(result.photosAnalyzed).toBe(1);
     expect(result.photosSkipped).toBe(0);
     expect(result.embedded).toBe(true);
-    expect(result.match).toEqual({ profileEmbedded: true, candidates: 1, scored: 1 });
+    expect(result.match).toEqual({ scored: true });
 
     // PhotoAnalysis persisted with the vision cost + model.
     const persisted = h.upsertByImageHash.mock.calls[0]![0] as {
@@ -165,7 +163,7 @@ describe("DefaultListingAnalysisService.analyzeListing", () => {
     expect(persisted.model).toBe("claude-haiku-4-5");
 
     expect(h.writeEmbedding).toHaveBeenCalledTimes(1);
-    expect(h.recompute).toHaveBeenCalledTimes(1);
+    expect(h.scoreListing).toHaveBeenCalledWith(listing().id);
   });
 
   it("dedups by imageHash — an already-analysed photo is NOT re-scored", async () => {
@@ -182,6 +180,14 @@ describe("DefaultListingAnalysisService.analyzeListing", () => {
     // Vision called once (for the new photo only) — no re-bill of the dup.
     expect(h.scorePhoto).toHaveBeenCalledTimes(1);
     expect(h.upsertByImageHash).toHaveBeenCalledTimes(1);
+  });
+
+  it("scores every NEW photo (3 photos → 3 scoring calls)", async () => {
+    const h = makeHarness({ photos: [photo("n1"), photo("n2"), photo("n3")] });
+    const result = await h.service.analyzeListing(listing().id);
+    expect(result.photosAnalyzed).toBe(3);
+    expect(h.scorePhoto).toHaveBeenCalledTimes(3);
+    expect(h.upsertByImageHash).toHaveBeenCalledTimes(3);
   });
 
   it("tolerates a non-object stored featuresJson on a deduped photo", async () => {
@@ -203,7 +209,7 @@ describe("DefaultListingAnalysisService.analyzeListing", () => {
     expect(h.getPhotos).not.toHaveBeenCalled();
     expect(h.scorePhoto).not.toHaveBeenCalled();
     expect(h.embed).not.toHaveBeenCalled();
-    expect(h.recompute).not.toHaveBeenCalled();
+    expect(h.scoreListing).not.toHaveBeenCalled();
   });
 
   it("short-circuits when the month's spend has reached the budget", async () => {
@@ -299,7 +305,7 @@ describe("getListingAnalysisService", () => {
       visionScorer: { scorePhoto: h.scorePhoto } as never,
       embeddingProvider: { embed: h.embed } as never,
       photoSource: { getPhotos: h.getPhotos } as never,
-      preferenceMatchService: { recompute: h.recompute } as never,
+      preferenceMatchService: { scoreListing: h.scoreListing } as never,
     });
     expect(getListingAnalysisService()).toBe(initialised);
   });

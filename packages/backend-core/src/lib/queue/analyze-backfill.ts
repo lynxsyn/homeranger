@@ -1,24 +1,22 @@
 /**
- * Backfill trigger for the M5 analysis pipeline. Re-enqueues `analyze:listing`
- * for EVERY listing so scores are recomputed against the current SearchProfile
- * — the "backfill trigger" half of AC#4 (the other half being the M4 inbound
- * upsert). Called by `preferencesRouter.update` after the profile changes.
+ * Profile-change recompute trigger for the M5 analysis pipeline (the "backfill
+ * trigger" half of AC#4). When the SearchProfile changes, enqueue a SINGLE
+ * `analyze:recompute` job; the worker runs PreferenceMatchService.recompute(),
+ * which is bounded to the top-K re-score (AC#3/#5).
  *
- * Enqueue is idempotent (BullMQ dedupes on the jobId), so re-running while jobs
- * are still queued is a no-op. Redis I/O (excluded from unit coverage like the
- * rest of the queue layer); exercised by the preferences E2E path.
+ * This deliberately does NOT enqueue an analyze:listing job per listing — that
+ * would fan out one paid LLM/embedding job per row (unbounded on a large
+ * corpus). The single recompute job re-ranks the most-relevant candidates at a
+ * bounded cost, and BullMQ dedupes the fixed jobId so rapid successive profile
+ * edits collapse to one in-flight recompute. Redis I/O (excluded from unit
+ * coverage like the rest of the queue layer); exercised by the preferences path.
  */
-import { listingRepository } from "../../repositories/listing.repository.js";
-import { enqueueAnalyzeListing } from "./queue-client.js";
+import { enqueueRecompute } from "./queue-client.js";
 
-/** Enqueue analyze:listing for every listing; returns the count enqueued. */
-export async function backfillAnalyzeAll(): Promise<number> {
-  const ids = await listingRepository.listAllIds();
-  for (const id of ids) {
-    await enqueueAnalyzeListing({
-      idempotencyKey: `analyze:listing:${id}`,
-      payload: { listingId: id },
-    });
-  }
-  return ids.length;
+/** Enqueue the single bounded top-K recompute job for a profile change. */
+export async function triggerProfileRecompute(): Promise<void> {
+  await enqueueRecompute({
+    idempotencyKey: "analyze:recompute:profile",
+    payload: { reason: "profile-updated" },
+  });
 }

@@ -79,6 +79,8 @@ interface Harness {
   embed: ReturnType<typeof vi.fn>;
   scoreMatch: ReturnType<typeof vi.fn>;
   vectorTopK: ReturnType<typeof vi.fn>;
+  vectorDistanceFor: ReturnType<typeof vi.fn>;
+  getById: ReturnType<typeof vi.fn>;
   writePreferenceEmbedding: ReturnType<typeof vi.fn>;
   upsertByListingId: ReturnType<typeof vi.fn>;
 }
@@ -87,6 +89,8 @@ function makeHarness(opts: {
   candidates: VectorTopKResult[];
   llmScore?: number;
   profile?: SearchProfileRecord;
+  /** Per-listing distance for scoreListing tests; null = listing unembedded. */
+  distance?: number | null;
 }): Harness {
   const embed = vi
     .fn()
@@ -97,6 +101,12 @@ function makeHarness(opts: {
     metrics: { model: "m", inputTokens: 0, outputTokens: 0, costPence: 0, durationMs: 0 },
   });
   const vectorTopK = vi.fn().mockResolvedValue(opts.candidates);
+  const vectorDistanceFor = vi
+    .fn()
+    .mockResolvedValue(opts.distance === undefined ? 0.2 : opts.distance);
+  const getById = vi
+    .fn()
+    .mockResolvedValue(opts.candidates[0] ?? candidate("only", 0.2));
   const writePreferenceEmbedding = vi.fn().mockResolvedValue(1);
   const getOrCreate = vi.fn().mockResolvedValue(opts.profile ?? profile());
   const upsertByListingId = vi.fn().mockResolvedValue({});
@@ -105,7 +115,7 @@ function makeHarness(opts: {
     embeddingProvider: { embed, getModel: () => "m", getDimensions: () => 1024 } as unknown as EmbeddingProvider,
     matchScorer: { scoreMatch, getModel: () => "m" } as unknown as MatchScorer,
     config: CONFIG,
-    listingRepository: { vectorTopK } as unknown as ListingRepository,
+    listingRepository: { vectorTopK, vectorDistanceFor, getById } as unknown as ListingRepository,
     searchProfileRepository: {
       getOrCreate,
       writePreferenceEmbedding,
@@ -113,7 +123,16 @@ function makeHarness(opts: {
     listingScoreRepository: { upsertByListingId } as unknown as ListingScoreRepository,
   });
 
-  return { service, embed, scoreMatch, vectorTopK, writePreferenceEmbedding, upsertByListingId };
+  return {
+    service,
+    embed,
+    scoreMatch,
+    vectorTopK,
+    vectorDistanceFor,
+    getById,
+    writePreferenceEmbedding,
+    upsertByListingId,
+  };
 }
 
 describe("DefaultPreferenceMatchService.recompute", () => {
@@ -180,6 +199,56 @@ describe("DefaultPreferenceMatchService.recompute", () => {
       maxPricePence: 60_000_000,
       outcodes: ["SE1", "SE16"],
     });
+  });
+});
+
+describe("DefaultPreferenceMatchService.scoreListing", () => {
+  it("scores a single listing by its distance with ONE LLM call", async () => {
+    const h = makeHarness({ candidates: [candidate("a", 0)], distance: 0.2, llmScore: 0.5 });
+    const result = await h.service.scoreListing("a");
+
+    expect(result).toEqual({ scored: true });
+    // vectorTopK is NOT used for the per-listing path (bounded to one compare).
+    expect(h.vectorTopK).not.toHaveBeenCalled();
+    expect(h.vectorDistanceFor).toHaveBeenCalledTimes(1);
+    expect(h.scoreMatch).toHaveBeenCalledTimes(1);
+
+    const written = h.upsertByListingId.mock.calls[0]![0] as { combinedScore: number };
+    // vectorScore = 1-0.2 = 0.8; combined = 0.4*0.8 + 0.6*0.5 = 0.62.
+    expect(written.combinedScore).toBeCloseTo(0.62);
+  });
+
+  it("is a no-op for an empty profile", async () => {
+    const h = makeHarness({
+      candidates: [],
+      profile: profile({ freeTextPreferences: "  " }),
+    });
+    expect(await h.service.scoreListing("a")).toEqual({ scored: false });
+    expect(h.embed).not.toHaveBeenCalled();
+    expect(h.scoreMatch).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when the listing has no embedding yet (distance null)", async () => {
+    const h = makeHarness({ candidates: [candidate("a", 0)], distance: null });
+    expect(await h.service.scoreListing("a")).toEqual({ scored: false });
+    expect(h.scoreMatch).not.toHaveBeenCalled();
+    expect(h.upsertByListingId).not.toHaveBeenCalled();
+  });
+
+  it("clamps combinedScore to [0,1] even with misconfigured weights", async () => {
+    const h = makeHarness({ candidates: [candidate("a", 0)], distance: 0, llmScore: 1 });
+    // Force weights that sum > 1 so an unclamped blend would exceed 1.0.
+    const svc = new DefaultPreferenceMatchService({
+      embeddingProvider: { embed: h.embed, getModel: () => "m", getDimensions: () => 1024 } as never,
+      matchScorer: { scoreMatch: h.scoreMatch, getModel: () => "m" } as never,
+      config: { topK: 25, weightVector: 0.9, weightLlm: 0.9 },
+      listingRepository: { vectorDistanceFor: h.vectorDistanceFor, getById: h.getById } as never,
+      searchProfileRepository: { getOrCreate: vi.fn().mockResolvedValue(profile()), writePreferenceEmbedding: h.writePreferenceEmbedding } as never,
+      listingScoreRepository: { upsertByListingId: h.upsertByListingId } as never,
+    });
+    await svc.scoreListing("a");
+    const written = h.upsertByListingId.mock.calls.at(-1)![0] as { combinedScore: number };
+    expect(written.combinedScore).toBe(1);
   });
 });
 

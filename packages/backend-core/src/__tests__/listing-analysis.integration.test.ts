@@ -132,7 +132,8 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
       expect(score).not.toBeNull();
       expect(score!.combinedScore).toBeGreaterThanOrEqual(0);
       expect(score!.combinedScore).toBeLessThanOrEqual(1);
-      expect(score!.rationale).toBeTruthy();
+      // The FakeMatchScorer's deterministic rationale is actually persisted.
+      expect(score!.rationale).toMatch(/Fake match|scored/i);
     });
 
     it("dedups by imageHash on a second run (no second PhotoAnalysis row)", async () => {

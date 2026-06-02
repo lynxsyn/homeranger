@@ -52,6 +52,16 @@ export function PreferencesPage() {
     setTenure(data.requiredTenure ?? "");
   }, [data]);
 
+  // Auto-dismiss the save status so the confirmation/error doesn't linger
+  // indefinitely (React Query keeps mutation state until reset).
+  useEffect(() => {
+    if (!update.isSuccess && !update.isError) {
+      return;
+    }
+    const timer = setTimeout(() => update.reset(), 4000);
+    return () => clearTimeout(timer);
+  }, [update.isSuccess, update.isError, update]);
+
   function submitPreferences() {
     const parsedBeds = Number(minBeds);
     const parsedPounds = Number(maxPricePounds);

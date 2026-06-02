@@ -68,6 +68,7 @@ import { getListingAnalysisService } from "@homescout/backend-core/services/list
 import { RealResendHydrator } from "./resend-hydrator.js";
 import { makeInboundHandler } from "./inbound-handler.js";
 import { makeAnalyzeHandler } from "./analyze-handler.js";
+import { makeRecomputeHandler } from "./recompute-handler.js";
 
 const metricsPort = Number(process.env.METRICS_PORT ?? 9090);
 const metricsHost = process.env.METRICS_HOST ?? "0.0.0.0";
@@ -173,7 +174,14 @@ queueClient.registerProcessor(QUEUE_NAMES.event, async (job) => {
 queueClient.registerProcessor(
   QUEUE_NAMES.analyze,
   makeAnalyzeHandler({ listingAnalysisService }),
-  // Vision + embed + top-K re-score can exceed the 30s default lock — extend it.
+  // Vision + embed + per-listing re-score can exceed the 30s default lock.
+  { lockDuration: 180_000 },
+);
+
+queueClient.registerProcessor(
+  QUEUE_NAMES.recompute,
+  makeRecomputeHandler({ preferenceMatchService }),
+  // Top-K LLM re-score can exceed the 30s default lock — extend it.
   { lockDuration: 180_000 },
 );
 
