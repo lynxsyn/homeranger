@@ -165,6 +165,14 @@ spec:
                 secretKeyRef:
                   name: homescout-secret
                   key: R2_ENDPOINT
+            # Worker hydrates inbound emails via the Resend API (metadata-only
+            # webhook → emails.receiving.get + attachments). RealResendHydrator
+            # constructs `new Resend(RESEND_API_KEY)` at boot.
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: RESEND_API_KEY
           resources:
             requests:
               cpu: 50m
