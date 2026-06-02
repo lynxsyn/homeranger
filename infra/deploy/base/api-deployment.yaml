@@ -137,24 +137,27 @@ spec:
             # documented dev-bypass path. M4 adds the real values to the secret
             # AND flips these back to required (a missing prod secret must fail
             # loud, which a non-optional ref guarantees).
+            # The live edge populates these in homescout-secret (CF Access app
+            # AUD + team domain + the single allowed owner email), so they are
+            # now REQUIRED: a prod deploy missing the auth config must fail loud
+            # (CreateContainerConfigError) rather than silently take the
+            # dev-bypass path. Local/CI/E2E never use this manifest — they run
+            # with the trio unset (dev bypass) via env, not this secret.
             - name: CF_ACCESS_TEAM_DOMAIN
               valueFrom:
                 secretKeyRef:
                   name: homescout-secret
                   key: CF_ACCESS_TEAM_DOMAIN
-                  optional: true
             - name: CF_ACCESS_AUD
               valueFrom:
                 secretKeyRef:
                   name: homescout-secret
                   key: CF_ACCESS_AUD
-                  optional: true
             - name: ALLOWED_USER_EMAIL
               valueFrom:
                 secretKeyRef:
                   name: homescout-secret
                   key: ALLOWED_USER_EMAIL
-                  optional: true
             - name: DEV_USER_EMAIL
               valueFrom:
                 secretKeyRef:

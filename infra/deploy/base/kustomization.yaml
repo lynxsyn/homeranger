@@ -38,6 +38,13 @@ resources:
   # the same chicken-and-egg ordering as the api/web images: build + push the
   # tag FIRST, then let Flux reconcile.
   - processor-deployment.yaml
+  # Live edge: the Cloudflare Tunnel connector (app.aid-engineering.com +
+  # hooks.aid-engineering.com). The tunnel + ingress config + DNS CNAMEs are
+  # Terraform-managed (infra/terraform/cloudflare); this is just the in-cluster
+  # connector that dials out and pulls its config via TUNNEL_TOKEN. The token
+  # secret is SOPS-encrypted and decrypted in-cluster by Flux.
+  - cloudflared-secret.enc.yaml
+  - cloudflared.yaml
   # Flux image-automation (auto-bump from GHCR) stays DEFERRED — M4 ships on
   # static :0.4.0 tags. Two unmet cluster prereqs block enabling it: (1)
   # image-automation.yaml's ImageUpdateAutomation uses apiVersion v1beta1, but
