@@ -100,7 +100,7 @@ spec:
               type: RuntimeDefault
       containers:
         - name: processor
-          image: ghcr.io/lynxsyn/homescout-processor:0.10.0 # {"$imagepolicy": "flux-system:homescout-processor"}
+          image: ghcr.io/lynxsyn/homescout-processor:0.11.0 # {"$imagepolicy": "flux-system:homescout-processor"}
           imagePullPolicy: Always
           ports:
             - name: metrics
