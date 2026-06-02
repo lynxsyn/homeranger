@@ -148,6 +148,26 @@ describe("DefaultClaudeExtractionProvider.extractListing", () => {
     ).rejects.toMatchObject({ retryable: false } as Partial<ExtractionError>);
   });
 
+  it("classifies a 404 as NON-retryable (e.g. a misconfigured AI Gateway id)", async () => {
+    // A wrong CF_AI_GATEWAY_ID makes the gateway URL 404. Treating that as
+    // retryable would burn every BullMQ attempt + backoff on a permanent error.
+    const create404 = vi.fn().mockRejectedValue(
+      Object.assign(new Error("gateway not found"), { status: 404 }),
+    );
+    await expect(
+      providerWith(create404).extractListing({ bodyText: "x" }),
+    ).rejects.toMatchObject({ retryable: false } as Partial<ExtractionError>);
+  });
+
+  it("classifies a 408 request-timeout as retryable (transient 4xx carve-out)", async () => {
+    const create408 = vi.fn().mockRejectedValue(
+      Object.assign(new Error("request timeout"), { status: 408 }),
+    );
+    await expect(
+      providerWith(create408).extractListing({ bodyText: "x" }),
+    ).rejects.toMatchObject({ retryable: true } as Partial<ExtractionError>);
+  });
+
   it("treats a non-JSON response as a non-retryable parse failure", async () => {
     const create = vi.fn().mockResolvedValue(fakeMessage("not json at all"));
     await expect(
