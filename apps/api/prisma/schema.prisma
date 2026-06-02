@@ -92,6 +92,21 @@ enum MessageDirection {
   outbound
 }
 
+// OutreachThread lifecycle (M6). A guarded state machine — see
+// OutreachRepository.advanceStatus, which rejects illegal transitions:
+//   active        → awaiting_reply  (first outbound send)
+//   awaiting_reply → replied        (a listing-bearing inbound reply arrives)
+//   awaiting_reply → awaiting_reply (a follow-up send; idempotent)
+//   replied        → awaiting_reply (a follow-up after a reply)
+//   (any)          → closed         (agent opt-out / unsubscribe / suppression)
+// `closed` is terminal: no further sends or transitions out of it.
+enum OutreachThreadStatus {
+  active
+  awaiting_reply
+  replied
+  closed
+}
+
 // Whether the agent's mailbox is a paid corporate portal subscriber, an
 // individual mailbox, or not yet classified.
 enum MailboxType {
@@ -256,18 +271,21 @@ model Agent {
 // A conversation with a single agent. The thread groups inbound + outbound
 // messages and tracks the last activity for follow-up scheduling.
 model OutreachThread {
-  id            String    @id @default(uuid(7)) @db.Uuid
-  agentId       String    @db.Uuid
-  agent         Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  id            String               @id @default(uuid(7)) @db.Uuid
+  agentId       String               @db.Uuid
+  agent         Agent                @relation(fields: [agentId], references: [id], onDelete: Cascade)
   subject       String?
-  lastMessageAt DateTime? @db.Timestamptz(6)
-  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+  status        OutreachThreadStatus @default(active)
+  lastMessageAt DateTime?            @db.Timestamptz(6)
+  createdAt     DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime             @updatedAt @db.Timestamptz(6)
 
   messages OutreachMessage[]
 
   @@index([agentId])
   @@index([lastMessageAt(sort: Desc)])
+  // Follow-up scan: threads awaiting a reply, oldest activity first.
+  @@index([status, lastMessageAt(sort: Desc)])
 }
 
 // A single email in a thread. Inbound messages carry parsed SPF/DKIM verdicts
@@ -327,13 +345,17 @@ model EmailEvent {
   @@index([eventType, occurredAt(sort: Desc)])
 }
 
-// Single-row email warm-up state — ramps the per-day send cap so a new sending
-// domain builds reputation gradually rather than blasting from day one.
+// Single-row email warm-up + send-governance state — ramps the per-day send
+// cap so a new sending domain builds reputation gradually rather than blasting
+// from day one, and carries the manual kill-switch (M6 AC#6). `killSwitch=true`
+// halts ALL outbound sends immediately (ComplianceGuard gate 5), independent of
+// the cap; surfaced + toggled by the M7 dashboard.
 model WarmupState {
   id            String   @id @default(uuid(7)) @db.Uuid
   dailyCap      Int      @default(20)
   sentToday     Int      @default(0)
   windowDate    DateTime @db.Date
+  killSwitch    Boolean  @default(false)
   rampStartedAt DateTime @default(now()) @db.Timestamptz(6)
   createdAt     DateTime @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @db.Timestamptz(6)
