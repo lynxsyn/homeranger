@@ -27,13 +27,12 @@ resources:
   - postgres.yaml
   - postgres-init-roles.yaml
   - redis.yaml
-  # M3 app layer — requires the GHCR images to exist first (see note above).
-  # TODO(operator): un-comment ghcr-secret.enc.yaml AFTER creating it from
-  # ghcr-secret.example.yaml + SOPS-encrypting it (step 2 of the apply ordering).
-  # It is referenced here intentionally but left commented so `kustomize build`
-  # validates before the encrypted secret exists; the api/web pods need the
-  # ghcr-pull-secret it provides to pull images.
-  # - ghcr-secret.enc.yaml
+  # M3 app layer. Images are built + pushed to GHCR (static :0.3.0 tags) and the
+  # ghcr-pull-secret created BEFORE Flux reconciles, so the pods pull cleanly.
+  - ghcr-secret.enc.yaml
   - api-deployment.yaml
   - web-deployment.yaml
-  - image-automation.yaml
+  # Flux image-automation (auto-bump from GHCR) is deferred to M4 — M3 uses
+  # static :0.3.0 tags, avoiding the GHCR-scan + ghcr-pull-secret-flux bootstrap.
+  # The $imagepolicy markers in the Deployments are inert until then.
+  # - image-automation.yaml
