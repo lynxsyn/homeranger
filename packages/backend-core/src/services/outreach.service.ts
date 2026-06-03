@@ -31,9 +31,9 @@ import {
   type OutreachRepository,
 } from "../repositories/outreach.repository.js";
 import {
-  scoutRepository as defaultScoutRepository,
-  type ScoutRepository,
-} from "../repositories/scout.repository.js";
+  searchRepository as defaultSearchRepository,
+  type SearchRepository,
+} from "../repositories/search.repository.js";
 import {
   searchProfileRepository as defaultSearchProfileRepository,
   type SearchProfileRepository,
@@ -45,36 +45,36 @@ import {
   type OutreachEmailConfig,
 } from "../lib/email/email-provider.js";
 import { draftOutreach, type OutreachDraft } from "../lib/outreach/draft.js";
-import { draftScoutEmail } from "../lib/scouts/scout-brief.js";
+import { draftSearchEmail } from "../lib/searches/search-brief.js";
 import { resolveSender } from "@homeranger/shared";
 import { signUnsubscribeToken } from "../lib/outreach/unsubscribe-token.js";
 
 /**
- * A scout-tailored draft (subject + body) the send path substitutes for the
- * generic draft when an `outreach:send` job carries a `scoutId`. Body comes from
- * the EXISTING draftScoutEmail(scout); subject names the scout's location.
+ * A search-tailored draft (subject + body) the send path substitutes for the
+ * generic draft when an `outreach:send` job carries a `searchId`. Body comes from
+ * the EXISTING draftSearchEmail(search); subject names the search's location.
  */
-export interface ScoutDraft {
+export interface SearchDraft {
   subject: string;
   bodyText: string;
 }
 
-/** Loads a scout-tailored draft for a scoutId, or null if the scout is gone. */
-export type ScoutDraftLoader = (scoutId: string) => Promise<ScoutDraft | null>;
+/** Loads a search-tailored draft for a searchId, or null if the search is gone. */
+export type SearchDraftLoader = (searchId: string) => Promise<SearchDraft | null>;
 
 /**
- * Default scout-draft loader: read the scout via the repository and weave its
- * brief into the body via the existing pure `draftScoutEmail`. Subject names the
- * scout's location (falling back to a generic line for a blank location).
+ * Default search-draft loader: read the search via the repository and weave its
+ * brief into the body via the existing pure `draftSearchEmail`. Subject names the
+ * search's location (falling back to a generic line for a blank location).
  */
-export function makeDefaultScoutDraftLoader(
-  scoutRepository: ScoutRepository,
+export function makeDefaultSearchDraftLoader(
+  searchRepository: SearchRepository,
   searchProfileRepository: SearchProfileRepository = defaultSearchProfileRepository,
-): ScoutDraftLoader {
-  return async (scoutId: string): Promise<ScoutDraft | null> => {
+): SearchDraftLoader {
+  return async (searchId: string): Promise<SearchDraft | null> => {
     // The outreach loop is operator-driven (operator namespace = null owner).
-    const scout = await scoutRepository.getById(scoutId, null);
-    if (!scout) {
+    const search = await searchRepository.getById(searchId, null);
+    if (!search) {
       return null;
     }
     // Resolve the buyer's identity (Settings "Your details") so the sent email
@@ -82,12 +82,12 @@ export function makeDefaultScoutDraftLoader(
     // fallback sign-off name when the profile has no name yet.
     const profile = await searchProfileRepository.getOrCreate();
     const sender = resolveSender(profile, currentSenderName());
-    const location = scout.location.trim();
+    const location = search.location.trim();
     return {
       subject: location
         ? `A private buyer looking in ${location}`
         : "A private buyer looking in your area",
-      bodyText: draftScoutEmail(scout, sender),
+      bodyText: draftSearchEmail(search, sender),
     };
   };
 }
@@ -100,30 +100,30 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * Render a scout-tailored draft into the {subject, bodyText, bodyHtml} the
+ * Render a search-tailored draft into the {subject, bodyText, bodyHtml} the
  * provider sends, re-appending the SAME RFC 8058 one-click unsubscribe footer
- * draftOutreach uses so a scout send stays one-click-unsubscribable. bodyHtml is
+ * draftOutreach uses so a search send stays one-click-unsubscribable. bodyHtml is
  * a paragraph-per-line port of the plain text (the body is trusted, structured
- * scout-brief output — escaped defensively).
+ * search-brief output — escaped defensively).
  */
-function renderScoutDraft(
-  scoutDraft: ScoutDraft,
+function renderSearchDraft(
+  searchDraft: SearchDraft,
   unsubscribeUrl: string,
 ): OutreachDraft {
   const bodyText = [
-    scoutDraft.bodyText,
+    searchDraft.bodyText,
     "",
     "—",
     `To stop receiving these emails, unsubscribe here: ${unsubscribeUrl}`,
   ].join("\n");
-  const htmlBody = scoutDraft.bodyText
+  const htmlBody = searchDraft.bodyText
     .split("\n")
     .map((line) => (line === "" ? "<br/>" : `<p>${escapeHtml(line)}</p>`))
     .join("");
   const bodyHtml = `${htmlBody}<hr/><p style="font-size:12px;color:#888">To stop receiving these emails, <a href="${escapeHtml(
     unsubscribeUrl,
   )}">unsubscribe here</a>.</p>`;
-  return { subject: scoutDraft.subject, bodyText, bodyHtml };
+  return { subject: searchDraft.subject, bodyText, bodyHtml };
 }
 
 /** Typed, transport-free service error. `retryable` drives the worker's retry. */
@@ -146,12 +146,12 @@ export interface SendOutreachResult {
 export interface OutreachService {
   /**
    * Cold-contact an agent (initial send). Throws ComplianceError if blocked.
-   * `scoutId` (PR3, optional): when present the email body is drafted from that
-   * scout's brief (draftScoutEmail) instead of the generic first-contact draft.
+   * `searchId` (PR3, optional): when present the email body is drafted from that
+   * search's brief (draftSearchEmail) instead of the generic first-contact draft.
    */
   sendOutreach(input: {
     agentId: string;
-    scoutId?: string;
+    searchId?: string;
   }): Promise<SendOutreachResult>;
   /** Send a follow-up on an existing awaiting_reply thread. */
   sendFollowup(input: { threadId: string }): Promise<SendOutreachResult>;
@@ -188,12 +188,12 @@ export interface OutreachDependencies {
   complianceGuard?: ComplianceGuard;
   agentRepository?: AgentRepository;
   outreachRepository?: OutreachRepository;
-  scoutRepository?: ScoutRepository;
+  searchRepository?: SearchRepository;
   emailConfig?: OutreachEmailConfig;
   config?: OutreachConfig;
   draft?: (input: Parameters<typeof draftOutreach>[0]) => OutreachDraft;
-  /** Loads a scout-tailored draft for an `outreach:send` carrying a scoutId. */
-  scoutDraft?: ScoutDraftLoader;
+  /** Loads a search-tailored draft for an `outreach:send` carrying a searchId. */
+  searchDraft?: SearchDraftLoader;
   signToken?: (email: string) => string;
   now?: () => Date;
 }
@@ -208,7 +208,7 @@ export class DefaultOutreachService implements OutreachService {
   private readonly draft: (
     input: Parameters<typeof draftOutreach>[0],
   ) => OutreachDraft;
-  private readonly scoutDraft: ScoutDraftLoader;
+  private readonly searchDraft: SearchDraftLoader;
   private readonly signToken: (email: string) => string;
   private readonly now: () => Date;
 
@@ -224,12 +224,12 @@ export class DefaultOutreachService implements OutreachService {
     this.emailConfigOverride = deps.emailConfig;
     this.config = deps.config ?? getOutreachConfig();
     this.draft = deps.draft ?? draftOutreach;
-    // Default loader reads the scout via the (default or injected) repository and
-    // weaves its brief into the body via the pure draftScoutEmail.
-    this.scoutDraft =
-      deps.scoutDraft ??
-      makeDefaultScoutDraftLoader(
-        deps.scoutRepository ?? defaultScoutRepository,
+    // Default loader reads the search via the (default or injected) repository and
+    // weaves its brief into the body via the pure draftSearchEmail.
+    this.searchDraft =
+      deps.searchDraft ??
+      makeDefaultSearchDraftLoader(
+        deps.searchRepository ?? defaultSearchRepository,
       );
     this.signToken = deps.signToken ?? ((email) => signUnsubscribeToken(email));
     this.now = deps.now ?? (() => new Date());
@@ -252,10 +252,10 @@ export class DefaultOutreachService implements OutreachService {
 
   async sendOutreach({
     agentId,
-    scoutId,
+    searchId,
   }: {
     agentId: string;
-    scoutId?: string;
+    searchId?: string;
   }): Promise<SendOutreachResult> {
     const agent = await this.agentRepository.getById(agentId);
     if (!agent) {
@@ -263,22 +263,22 @@ export class DefaultOutreachService implements OutreachService {
     }
     // Authoritative guard (consumes a warm-up token). Lets ComplianceError
     // propagate so the worker maps retryable→retry, non-retryable→drop. The guard
-    // runs BEFORE any scout-draft load, so a blocked send never touches the scout.
+    // runs BEFORE any search-draft load, so a blocked send never touches the search.
     await this.complianceGuard.assertCanSend(this.guardAgent(agent), {
       reserve: true,
     });
-    // When the job carries a scoutId, weave that scout's brief into the body
-    // (the subject/body the operator reviewed). A missing scout falls back to the
+    // When the job carries a searchId, weave that search's brief into the body
+    // (the subject/body the operator reviewed). A missing search falls back to the
     // generic draft — the send is still guarded + compliant, just not tailored.
-    const scoutDraft = scoutId ? await this.scoutDraft(scoutId) : null;
+    const searchDraft = searchId ? await this.searchDraft(searchId) : null;
     // Stable key forwarded as the provider Idempotency-Key — a BullMQ retry
     // re-sends the SAME key (provider returns the original id, persist is
-    // idempotent). Scope it to (scout, agent) for a scout send so it can't
+    // idempotent). Scope it to (search, agent) for a search send so it can't
     // collide with a generic send to the same agent and deliver the wrong body.
-    const dispatchKey = scoutId
-      ? `outreach:send:scout:${scoutId}:${agent.id}`
+    const dispatchKey = searchId
+      ? `outreach:send:search:${searchId}:${agent.id}`
       : `outreach:send:${agent.id}`;
-    return this.dispatch(agent, dispatchKey, undefined, scoutDraft);
+    return this.dispatch(agent, dispatchKey, undefined, searchDraft);
   }
 
   async sendFollowup({
@@ -311,7 +311,7 @@ export class DefaultOutreachService implements OutreachService {
     agent: AgentRecord,
     idempotencyKey: string,
     thread?: { id: string },
-    scoutDraft?: ScoutDraft | null,
+    searchDraft?: SearchDraft | null,
   ): Promise<SendOutreachResult> {
     const now = this.now();
     const emailConfig = this.resolveEmailConfig();
@@ -332,10 +332,10 @@ export class DefaultOutreachService implements OutreachService {
       coveredOutcodes: agent.coveredOutcodes,
       unsubscribeUrl,
     });
-    // A scout-launched send substitutes the operator-reviewed scout subject/body,
+    // A search-launched send substitutes the operator-reviewed search subject/body,
     // re-appending the SAME unsubscribe footer so the one-click contract holds.
-    const draft = scoutDraft
-      ? renderScoutDraft(scoutDraft, unsubscribeUrl)
+    const draft = searchDraft
+      ? renderSearchDraft(searchDraft, unsubscribeUrl)
       : genericDraft;
 
     // Send FIRST (with the idempotency key), then persist. A crash between the

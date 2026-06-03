@@ -4,7 +4,7 @@
  * so the table has NO search filters: just the seeded homes, sortable, in a
  * table or card view, with each row linking back to the agent's source page.
  *
- * Scouts PR2 refresh:
+ * Searches PR2 refresh:
  *   - listing STATUS is gone from the UI (no Status column, no StatusBadge, no
  *     "pre-market" count). The count line reads "<n> homes from your agents".
  *   - every row + card carries an InterestButton bookmark; bookmarking reveals a

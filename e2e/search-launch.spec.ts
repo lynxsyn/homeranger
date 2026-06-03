@@ -1,17 +1,17 @@
 /**
- * Scout LAUNCH loop E2E (M8 PR3) — discover → review → approve → guarded send,
+ * Search LAUNCH loop E2E (M8 PR3) — discover → review → approve → guarded send,
  * proven end-to-end against REAL infra (api + pgvector + redis + the BullMQ
  * worker), deterministic + network-free:
  *
- *   - DISCOVERY_FAKE=1 — `scout.launch` enqueues `discover:agents` for the
- *     scout's outcodes; the FakeAgentDiscoveryProvider mints stable
+ *   - DISCOVERY_FAKE=1 — `search.launch` enqueues `discover:agents` for the
+ *     search's outcodes; the FakeAgentDiscoveryProvider mints stable
  *     business-domain agents (classified `corporate_subscriber`), so the
  *     ComplianceGuard PECR gate lets a send through. No Firecrawl/scrape/spend.
  *   - OUTREACH_FAKE=1 — the approved send dispatches via the fake email provider
  *     (stable providerMessageId), so an outbound OutreachMessage row lands.
  *
- * Two arms, isolated by a UNIQUE synthetic outcode per scout (parsed verbatim by
- * resolveScoutOutcodes), so the discovered agents + every assertion + cleanup
+ * Two arms, isolated by a UNIQUE synthetic outcode per search (parsed verbatim by
+ * resolveSearchOutcodes), so the discovered agents + every assertion + cleanup
  * key off `coveredOutcodes @> {<outcode>}`:
  *   1. Golden path — Launch opens the modal (auto-discovers + auto-reviews); the
  *      eligible agents are pre-checked; Approve & send → an OUTBOUND
@@ -20,9 +20,9 @@
  *      EVERY agent ineligible (gate 5), so "Approve & send" is disabled and NO
  *      OutreachMessage can be written. afterEach restores the switch OFF.
  *
- * Auth: dev-bypass (CF_ACCESS_* unset). The scout is created via tRPC-over-HTTP
+ * Auth: dev-bypass (CF_ACCESS_* unset). The search is created via tRPC-over-HTTP
  * (superjson `{ json }`, like outreach-guard.spec); the LAUNCH loop is driven
- * through the real /scouts UI. Cleanup uses a raw pg Client.
+ * through the real /searches UI. Cleanup uses a raw pg Client.
  */
 import { expect, test } from "@playwright/test";
 import { Client } from "pg";
@@ -49,23 +49,23 @@ async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
 }
 
 /** tRPC v11 over HTTP, superjson transformer → inputs wrap as `{ json }`. */
-function createScout(
+function createSearch(
   request: import("@playwright/test").APIRequestContext,
   input: Record<string, unknown>,
 ) {
-  return request.post(`${API_BASE}/trpc/scouts.create`, {
+  return request.post(`${API_BASE}/trpc/searches.create`, {
     headers: { "content-type": "application/json" },
     data: { json: input },
     failOnStatusCode: false,
   });
 }
 
-function scoutNameFrom(body: unknown): string {
+function searchNameFrom(body: unknown): string {
   const name = (
     body as { result?: { data?: { json?: { name?: string } } } }
   )?.result?.data?.json?.name;
   if (!name) {
-    throw new Error(`scouts.create returned no scout: ${JSON.stringify(body)}`);
+    throw new Error(`searches.create returned no search: ${JSON.stringify(body)}`);
   }
   return name;
 }
@@ -142,21 +142,21 @@ test.afterEach(async () => {
 
 test.afterAll(async () => {
   await withClient(async (client) => {
-    await client.query(`DELETE FROM "Scout" WHERE "name" LIKE 'E2E PR3%'`);
+    await client.query(`DELETE FROM "Search" WHERE "name" LIKE 'E2E PR3%'`);
   });
 });
 
-test("scout launch golden path: launch → discover → review → approve → guarded send persists an OutreachMessage", async ({
+test("search launch golden path: launch → discover → review → approve → guarded send persists an OutreachMessage", async ({
   page,
   request,
 }) => {
   const OUTCODE = "ZZ7";
-  const SCOUT_NAME = `E2E PR3 Launch ${RUN_ID}`;
+  const SEARCH_NAME = `E2E PR3 Launch ${RUN_ID}`;
   await cleanupForOutcode(OUTCODE);
   await setKillSwitch(false);
 
-  const res = await createScout(request, {
-    name: SCOUT_NAME,
+  const res = await createSearch(request, {
+    name: SEARCH_NAME,
     location: `Test patch — ${OUTCODE}`,
     types: ["Terraced"],
     condition: [],
@@ -168,17 +168,17 @@ test("scout launch golden path: launch → discover → review → approve → g
     status: "active",
   });
   expect(res.status()).toBe(200);
-  expect(scoutNameFrom(await res.json())).toBe(SCOUT_NAME);
+  expect(searchNameFrom(await res.json())).toBe(SEARCH_NAME);
 
-  await page.goto("/scouts");
+  await page.goto("/searches");
   await expect(page.getByRole("heading", { name: "Searches" })).toBeVisible();
   const card = page.locator(
-    `[data-testid="scout-card"][data-scout-name="${SCOUT_NAME}"]`,
+    `[data-testid="search-card"][data-search-name="${SEARCH_NAME}"]`,
   );
   await expect(card).toHaveCount(1);
 
   // Launch → opens the modal, which auto-fires discovery then auto-reviews.
-  await card.getByTestId("scout-launch").evaluate((el) => (el as HTMLElement).click());
+  await card.getByTestId("search-launch").evaluate((el) => (el as HTMLElement).click());
   await expect(page.getByTestId("launch-modal")).toBeVisible();
 
   // Discovery is async; wait until the fake provider's agents land in the patch.
@@ -213,11 +213,11 @@ test("kill-switch halts the launch loop: every agent is ineligible and Approve i
   request,
 }) => {
   const OUTCODE = "ZZ8";
-  const SCOUT_NAME = `E2E PR3 Killswitch ${RUN_ID}`;
+  const SEARCH_NAME = `E2E PR3 Killswitch ${RUN_ID}`;
   await cleanupForOutcode(OUTCODE);
 
-  const res = await createScout(request, {
-    name: SCOUT_NAME,
+  const res = await createSearch(request, {
+    name: SEARCH_NAME,
     location: `Test patch — ${OUTCODE}`,
     types: ["Terraced"],
     condition: [],
@@ -230,9 +230,9 @@ test("kill-switch halts the launch loop: every agent is ineligible and Approve i
   });
   expect(res.status()).toBe(200);
 
-  await page.goto("/scouts");
+  await page.goto("/searches");
   const card = page.locator(
-    `[data-testid="scout-card"][data-scout-name="${SCOUT_NAME}"]`,
+    `[data-testid="search-card"][data-search-name="${SEARCH_NAME}"]`,
   );
   await expect(card).toHaveCount(1);
 
@@ -242,7 +242,7 @@ test("kill-switch halts the launch loop: every agent is ineligible and Approve i
   await expect(killSwitch).toHaveAttribute("data-enabled", "true");
 
   // Launch + wait for discovery.
-  await card.getByTestId("scout-launch").evaluate((el) => (el as HTMLElement).click());
+  await card.getByTestId("search-launch").evaluate((el) => (el as HTMLElement).click());
   await expect(page.getByTestId("launch-modal")).toBeVisible();
   await expect
     .poll(() => countAgentsForOutcode(OUTCODE), { timeout: 25_000 })

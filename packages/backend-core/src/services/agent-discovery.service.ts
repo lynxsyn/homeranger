@@ -90,9 +90,9 @@ export interface AgentDiscoveryResult {
 export interface AgentDiscoveryService {
   discoverRegion(regionName: string): Promise<AgentDiscoveryResult>;
   /**
-   * Discover by an EXPLICIT outcode set (PR3 scout-launch path) — the same
+   * Discover by an EXPLICIT outcode set (PR3 search-launch path) — the same
    * provider→classify→dedup→skip-suppressed→upsert pipeline as discoverRegion,
-   * but skipping the region→outcode resolution. `regionLabel` (the scout's
+   * but skipping the region→outcode resolution. `regionLabel` (the search's
    * place name, e.g. "Conwy County") drives the provider's web-search query —
    * a search for the raw outcodes finds nothing. Blank/empty ⇒ a no-op result.
    */
@@ -140,7 +140,7 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
     outcodes: string[],
     regionLabel?: string,
   ): Promise<AgentDiscoveryResult> {
-    // Normalise + dedup the explicit outcode set (a scout supplies already-
+    // Normalise + dedup the explicit outcode set (a search supplies already-
     // resolved, upper-cased codes, but stay defensive against blanks/dupes).
     const seen = new Set<string>();
     const targets: string[] = [];
@@ -162,7 +162,7 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
       return { discovered: 0, upserted: 0, skipped: 0 };
     }
     // The provider takes `region` for its query CONTEXT — the web-search string.
-    // Prefer the scout's human place-name label (e.g. "Conwy County"): a search
+    // Prefer the search's human place-name label (e.g. "Conwy County"): a search
     // for the raw outcodes ("LL30, LL31, LL32") returns nothing. Fall back to the
     // joined outcodes only when no label is supplied. Either way `outcodes` is
     // what gets stamped onto the discovered agents' coveredOutcodes.

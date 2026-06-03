@@ -1,14 +1,14 @@
 /**
- * ScoutsPage — the HomeRanger Scouts screen. A faithful port of the
- * claude.ai/design handoff (scout-design/project/app/campaigns.jsx), renamed
- * campaign → scout throughout, wired to real tRPC (`trpc.scouts.*`) instead of
+ * SearchesPage — the HomeRanger Searches screen. A faithful port of the
+ * claude.ai/design handoff (search-design/project/app/campaigns.jsx), renamed
+ * campaign → search throughout, wired to real tRPC (`trpc.searches.*`) instead of
  * localStorage.
  *
- * Each scout is a standing brief the email agent works from: where to look,
+ * Each search is a standing brief the email agent works from: where to look,
  * what kind of home, budget, condition/land/sale rules, and a free-text taste
  * description that shapes the outreach emails. The editor shows a LIVE preview
- * of that email via the client-side `draftScoutEmail` mirror (the deterministic
- * twin of backend-core's `draftScoutEmail`). Resuming a scout is instant;
+ * of that email via the client-side `draftSearchEmail` mirror (the deterministic
+ * twin of backend-core's `draftSearchEmail`). Resuming a search is instant;
  * pausing opens a relationship-safe confirm first.
  *
  * apps/web is moduleResolution=bundler → relative imports carry NO `.js`.
@@ -18,20 +18,20 @@ import type { ReactNode } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@homeranger/backend-core";
 import {
-  SCOUT_PROPERTY_TYPES,
-  SCOUT_CONDITIONS,
-  SCOUT_LAND_OPTIONS,
-  SCOUT_SALE_METHODS,
+  SEARCH_PROPERTY_TYPES,
+  SEARCH_CONDITIONS,
+  SEARCH_LAND_OPTIONS,
+  SEARCH_SALE_METHODS,
   resolveSender,
   signatureBlock,
   urgencyLine,
 } from "@homeranger/shared";
 import type {
-  ScoutStatus,
-  ScoutPropertyType,
-  ScoutCondition,
-  ScoutLandOption,
-  ScoutSaleMethod,
+  SearchStatus,
+  SearchPropertyType,
+  SearchCondition,
+  SearchLandOption,
+  SearchSaleMethod,
   ResolvedSender,
 } from "@homeranger/shared";
 import { trpc } from "../lib/trpc";
@@ -39,33 +39,33 @@ import { Icon } from "../components/Icon";
 import { Button, Chip } from "../components/ui";
 import { relativeTime } from "../lib/format";
 
-type Scout = inferRouterOutputs<AppRouter>["scouts"]["list"][number];
+type Search = inferRouterOutputs<AppRouter>["searches"]["list"][number];
 
-/** What ScoutsPage needs to push the listings view into a scout's filter. */
-export interface ScoutFilter {
+/** What SearchesPage needs to push the listings view into a search's filter. */
+export interface SearchFilter {
   name: string;
   outcodes: string[];
-  status: ScoutStatus;
+  status: SearchStatus;
 }
 
 /* ---- Editor form ---------------------------------------------------------- */
 /** The editor's working copy. Prices/beds are pounds/strings here (DOM inputs);
  *  they convert to `maxPricePence` (pence) + `minBedrooms` (int|null) on save. */
-interface ScoutForm {
+interface SearchForm {
   id: string | null;
   name: string;
   location: string;
-  types: ScoutPropertyType[];
-  condition: ScoutCondition[];
-  land: ScoutLandOption[];
-  saleMethods: ScoutSaleMethod[];
+  types: SearchPropertyType[];
+  condition: SearchCondition[];
+  land: SearchLandOption[];
+  saleMethods: SearchSaleMethod[];
   minBeds: string; // free text → number | null
   maxPrice: string; // whole POUNDS → maxPricePence on save
   keywords: string;
-  status: ScoutStatus;
+  status: SearchStatus;
 }
 
-const BLANK: ScoutForm = {
+const BLANK: SearchForm = {
   id: null,
   name: "",
   location: "",
@@ -80,29 +80,29 @@ const BLANK: ScoutForm = {
 };
 
 /**
- * Seed the editor form from an existing scout row (pence → pounds). The DB
+ * Seed the editor form from an existing search row (pence → pounds). The DB
  * stores the option fields as `text[]`, so the row exposes them as `string[]`;
- * they are validated against the closed SCOUT_* sets on every create/update, so
+ * they are validated against the closed SEARCH_* sets on every create/update, so
  * narrowing them back to the enum unions here is safe.
  */
-function formFromScout(scout: Scout): ScoutForm {
+function formFromSearch(search: Search): SearchForm {
   return {
-    id: scout.id,
-    name: scout.name,
-    location: scout.location,
-    types: [...scout.types] as ScoutPropertyType[],
-    condition: [...scout.condition] as ScoutCondition[],
-    land: [...scout.land] as ScoutLandOption[],
-    saleMethods: [...scout.saleMethods] as ScoutSaleMethod[],
-    minBeds: scout.minBedrooms == null ? "" : String(scout.minBedrooms),
+    id: search.id,
+    name: search.name,
+    location: search.location,
+    types: [...search.types] as SearchPropertyType[],
+    condition: [...search.condition] as SearchCondition[],
+    land: [...search.land] as SearchLandOption[],
+    saleMethods: [...search.saleMethods] as SearchSaleMethod[],
+    minBeds: search.minBedrooms == null ? "" : String(search.minBedrooms),
     maxPrice:
-      scout.maxPricePence == null ? "" : String(Math.round(scout.maxPricePence / 100)),
-    keywords: scout.keywords,
-    status: scout.status,
+      search.maxPricePence == null ? "" : String(Math.round(search.maxPricePence / 100)),
+    keywords: search.keywords,
+    status: search.status,
   };
 }
 
-/* ---- Email draft (client mirror of backend-core's draftScoutEmail) -------- */
+/* ---- Email draft (client mirror of backend-core's draftSearchEmail) -------- */
 const GBP_FULL = new Intl.NumberFormat("en-GB", {
   style: "currency",
   currency: "GBP",
@@ -118,13 +118,13 @@ function gbpShort(pounds: number | null): string | null {
 }
 
 /**
- * Deterministic client-side twin of backend-core's `draftScoutEmail` — keeps
+ * Deterministic client-side twin of backend-core's `draftSearchEmail` — keeps
  * the editor preview in lock-step with the email the agent actually sends.
  * Takes the editor form (pounds) + the resolved buyer/sender identity, so the
  * preview updates as you type and reflects your Settings sign-off + urgency.
  */
-function draftScoutEmail(form: ScoutForm, sender?: ResolvedSender | null): string {
-  // Mirror backend-core's draftScoutEmail exactly: trim the location, and only
+function draftSearchEmail(form: SearchForm, sender?: ResolvedSender | null): string {
+  // Mirror backend-core's draftSearchEmail exactly: trim the location, and only
   // count a positive integer min-beds (a "0" or blank shows no beds clause).
   const loc = (form.location || "your area").split(/[,—–-]/)[0].trim();
   const locationPhrase = form.location.trim() || loc;
@@ -199,7 +199,7 @@ function draftScoutEmail(form: ScoutForm, sender?: ResolvedSender | null): strin
 /**
  * The system-wide outreach kill-switch (M6 `WarmupState.killSwitch`, the 5th
  * compliance gate). When ON, no approved send leaves the building regardless of
- * per-scout state — a single, prominent panic stop. Reads
+ * per-search state — a single, prominent panic stop. Reads
  * `outreach.killSwitch.get` and flips it via `outreach.killSwitch.toggle`.
  */
 function KillSwitch() {
@@ -244,17 +244,17 @@ function KillSwitch() {
   );
 }
 
-/* ---- Per-scout stats strip ----------------------------------------------- */
+/* ---- Per-search stats strip ----------------------------------------------- */
 /**
- * The live counters for one scout — homes found in its patch and how many
+ * The live counters for one search — homes found in its patch and how many
  * agents in the patch have already been contacted. Lazy per-card query
- * (`scouts.stats`) so the list view stays one cheap `scouts.list` call until a
+ * (`searches.stats`) so the list view stays one cheap `searches.list` call until a
  * card is on screen.
  */
-function ScoutStats({ scoutId }: { scoutId: string }) {
-  const { data, isLoading } = trpc.scouts.stats.useQuery({ id: scoutId });
+function SearchStats({ searchId }: { searchId: string }) {
+  const { data, isLoading } = trpc.searches.stats.useQuery({ id: searchId });
   return (
-    <span className="sc-stats" data-testid="scout-stats">
+    <span className="sc-stats" data-testid="search-stats">
       <span className="sc-stat">
         <Icon name="home" size={13} />
         <b>{isLoading || !data ? "–" : data.homesFound}</b> homes
@@ -270,7 +270,7 @@ function ScoutStats({ scoutId }: { scoutId: string }) {
 
 /* ---- Status pill (click to pause / resume) ------------------------------- */
 interface StatusPillProps {
-  status: ScoutStatus;
+  status: SearchStatus;
   onToggle: () => void;
 }
 
@@ -279,7 +279,7 @@ function StatusPill({ status, onToggle }: StatusPillProps) {
   return (
     <button
       type="button"
-      data-testid="scout-status-pill"
+      data-testid="search-status-pill"
       className={`statuspill ${active ? "is-active" : "is-paused"}`}
       onClick={(e) => {
         e.stopPropagation();
@@ -293,39 +293,39 @@ function StatusPill({ status, onToggle }: StatusPillProps) {
   );
 }
 
-/* ---- Scout card ----------------------------------------------------------- */
-interface ScoutCardProps {
-  scout: Scout;
-  onOpen: (scout: Scout) => void;
-  onToggle: (scout: Scout) => void;
-  onViewHomes: (scout: Scout) => void;
+/* ---- Search card ----------------------------------------------------------- */
+interface SearchCardProps {
+  search: Search;
+  onOpen: (search: Search) => void;
+  onToggle: (search: Search) => void;
+  onViewHomes: (search: Search) => void;
   /** Operator-only — undefined for non-operators (the Launch control is hidden). */
-  onLaunch?: (scout: Scout) => void;
+  onLaunch?: (search: Search) => void;
 }
 
-function ScoutCard({ scout, onOpen, onToggle, onViewHomes, onLaunch }: ScoutCardProps) {
+function SearchCard({ search, onOpen, onToggle, onViewHomes, onLaunch }: SearchCardProps) {
   const maxPricePounds =
-    scout.maxPricePence == null ? null : Math.round(scout.maxPricePence / 100);
-  // We can link through to the scout's patch whenever it resolved any outcodes;
-  // the actual home count lives on the filtered Listings view (no per-scout
+    search.maxPricePence == null ? null : Math.round(search.maxPricePence / 100);
+  // We can link through to the search's patch whenever it resolved any outcodes;
+  // the actual home count lives on the filtered Listings view (no per-search
   // counter ships in this PR).
-  const canViewHomes = scout.outcodes.length > 0;
+  const canViewHomes = search.outcodes.length > 0;
   return (
     <div
-      className={`hs-card hs-card--interactive scout-card${scout.status === "paused" ? " is-paused" : ""}`}
-      data-testid="scout-card"
-      data-scout-name={scout.name}
-      onClick={() => onOpen(scout)}
+      className={`hs-card hs-card--interactive search-card${search.status === "paused" ? " is-paused" : ""}`}
+      data-testid="search-card"
+      data-search-name={search.name}
+      onClick={() => onOpen(search)}
     >
       <div className="sc-main">
         <div className="sc-head">
-          <h3 className="sc-name">{scout.name}</h3>
+          <h3 className="sc-name">{search.name}</h3>
           <div className="sc-controls">
             {onLaunch && (
               <button
                 type="button"
                 className="sc-launch"
-                data-testid="scout-launch"
+                data-testid="search-launch"
                 disabled={!canViewHomes}
                 title={
                   canViewHomes
@@ -334,53 +334,53 @@ function ScoutCard({ scout, onOpen, onToggle, onViewHomes, onLaunch }: ScoutCard
                 }
                 onClick={(e) => {
                   e.stopPropagation();
-                  onLaunch(scout);
+                  onLaunch(search);
                 }}
               >
                 <Icon name="rocket" size={14} /> Launch
               </button>
             )}
-            <StatusPill status={scout.status} onToggle={() => onToggle(scout)} />
+            <StatusPill status={search.status} onToggle={() => onToggle(search)} />
             <span className="sc-edit" aria-hidden="true">
               <Icon name="sliders-horizontal" size={16} />
             </span>
           </div>
         </div>
         <div className="sc-chips">
-          {scout.location && <Chip icon="map-pin">{scout.location}</Chip>}
-          {scout.types.map((t) => (
+          {search.location && <Chip icon="map-pin">{search.location}</Chip>}
+          {search.types.map((t) => (
             <Chip key={t} icon="home">
               {t}
             </Chip>
           ))}
-          {scout.minBedrooms != null && (
-            <Chip icon="bed-double">{scout.minBedrooms}+ beds</Chip>
+          {search.minBedrooms != null && (
+            <Chip icon="bed-double">{search.minBedrooms}+ beds</Chip>
           )}
           {maxPricePounds != null && <Chip>{gbpShort(maxPricePounds)} max</Chip>}
-          {scout.condition
+          {search.condition
             .filter((x) => x === "Full renovation" || x === "Restoration project")
             .map((x) => (
               <Chip key={x} accent>
                 {x}
               </Chip>
             ))}
-          {scout.saleMethods.includes("Auction") && (
-            <span className="listing-tag" data-testid="scout-auction-tag">
+          {search.saleMethods.includes("Auction") && (
+            <span className="listing-tag" data-testid="search-auction-tag">
               Auction
             </span>
           )}
         </div>
-        {scout.keywords && <p className="sc-keywords">{scout.keywords}</p>}
+        {search.keywords && <p className="sc-keywords">{search.keywords}</p>}
       </div>
       <div className="sc-foot">
         {canViewHomes ? (
           <button
             type="button"
             className="sc-link"
-            data-testid="scout-homes-link"
+            data-testid="search-homes-link"
             onClick={(e) => {
               e.stopPropagation();
-              onViewHomes(scout);
+              onViewHomes(search);
             }}
           >
             <Icon name="home" size={14} /> View homes found
@@ -391,9 +391,9 @@ function ScoutCard({ scout, onOpen, onToggle, onViewHomes, onLaunch }: ScoutCard
             <Icon name="home" size={14} /> No patch yet
           </span>
         )}
-        {canViewHomes && <ScoutStats scoutId={scout.id} />}
+        {canViewHomes && <SearchStats searchId={search.id} />}
         <span className="sc-spacer" />
-        <span className="sc-seen">Last activity {relativeTime(scout.updatedAt)}</span>
+        <span className="sc-seen">Last activity {relativeTime(search.updatedAt)}</span>
       </div>
     </div>
   );
@@ -436,10 +436,10 @@ function ChipSelect({ label, options, selected, onToggle, hint }: ChipSelectProp
 
 /* ---- Location type-ahead -------------------------------------------------- */
 /**
- * The scout "Where" field, backed by the bundled UK location index via
+ * The search "Where" field, backed by the bundled UK location index via
  * `trpc.locations.suggest`. As the operator types a county / town / region /
  * postcode, suggestions appear (debounced); picking one stores its canonical
- * label as the location — the server then resolves that to the scout's outcodes.
+ * label as the location — the server then resolves that to the search's outcodes.
  * The hint on each row shows the catchment size, so it's clear how wide a net a
  * choice casts before saving. Keyboard: ↑/↓ to move, Enter to pick, Esc to close
  * (Esc is swallowed so it doesn't also close the editor modal).
@@ -496,7 +496,7 @@ function LocationTypeahead({
         <Icon name="search" size={16} />
         <input
           className="hs-input"
-          data-testid="scout-location"
+          data-testid="search-location"
           placeholder="Hampstead, NW3 · or Snowdonia, Gwynedd"
           value={value}
           role="combobox"
@@ -543,7 +543,7 @@ function LocationTypeahead({
       {showList && (
         <ul
           className="hs-typeahead__list"
-          data-testid="scout-location-suggestions"
+          data-testid="search-location-suggestions"
           id={listId}
           role="listbox"
         >
@@ -558,7 +558,7 @@ function LocationTypeahead({
                 type="button"
                 tabIndex={-1}
                 className={`hs-typeahead__opt${i === active ? " is-active" : ""}`}
-                data-testid="scout-location-suggestion"
+                data-testid="search-location-suggestion"
                 data-kind={s.kind}
                 data-outcodes={s.outcodes.length}
                 onMouseEnter={() => setActive(i)}
@@ -579,17 +579,17 @@ function LocationTypeahead({
 }
 
 /* ---- Editor modal --------------------------------------------------------- */
-interface ScoutEditorProps {
-  initial: ScoutForm;
+interface SearchEditorProps {
+  initial: SearchForm;
   isNew: boolean;
   saving: boolean;
   deleting: boolean;
-  onSave: (form: ScoutForm) => void;
+  onSave: (form: SearchForm) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
 }
 
-function ScoutEditor({
+function SearchEditor({
   initial,
   isNew,
   saving,
@@ -597,8 +597,8 @@ function ScoutEditor({
   onSave,
   onDelete,
   onClose,
-}: ScoutEditorProps) {
-  const [form, setForm] = useState<ScoutForm>(initial);
+}: SearchEditorProps) {
+  const [form, setForm] = useState<SearchForm>(initial);
   // Resolve the sign-off identity exactly like the backend: the buyer's profile
   // (Settings "Your details") wins, with the RESEND_FROM display name as the
   // fallback name — so the preview signs off + paces just like the sent email.
@@ -623,10 +623,10 @@ function ScoutEditor({
     };
   }, [onClose]);
 
-  function set<K extends keyof ScoutForm>(key: K, value: ScoutForm[K]) {
+  function set<K extends keyof SearchForm>(key: K, value: SearchForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
-  // The chip-select options come straight from the closed SCOUT_* enum arrays,
+  // The chip-select options come straight from the closed SEARCH_* enum arrays,
   // so a toggled `value` is always a valid member of the field's union — cast
   // through `string[]` to keep the toggle logic field-agnostic.
   function toggleArr(field: "types" | "condition" | "land" | "saleMethods", value: string) {
@@ -635,7 +635,7 @@ function ScoutEditor({
       const next = cur.includes(value)
         ? cur.filter((x) => x !== value)
         : [...cur, value];
-      return { ...f, [field]: next } as ScoutForm;
+      return { ...f, [field]: next } as SearchForm;
     });
   }
 
@@ -649,7 +649,7 @@ function ScoutEditor({
         role="dialog"
         aria-modal="true"
         aria-label={isNew ? "New search" : "Edit search"}
-        data-testid="scout-editor"
+        data-testid="search-editor"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="modal__head">
@@ -675,7 +675,7 @@ function ScoutEditor({
             <input
               ref={nameRef}
               className="hs-input"
-              data-testid="scout-name"
+              data-testid="search-name"
               placeholder="e.g. Snowdonia — detached with a view"
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
@@ -696,14 +696,14 @@ function ScoutEditor({
 
           <ChipSelect
             label="Property type"
-            options={SCOUT_PROPERTY_TYPES}
+            options={SEARCH_PROPERTY_TYPES}
             selected={form.types}
             onToggle={(v) => toggleArr("types", v)}
           />
 
           <ChipSelect
             label="Condition"
-            options={SCOUT_CONDITIONS}
+            options={SEARCH_CONDITIONS}
             selected={form.condition}
             onToggle={(v) => toggleArr("condition", v)}
             hint="How much of a project you’ll take on — agents describe condition in their emails."
@@ -711,7 +711,7 @@ function ScoutEditor({
 
           <ChipSelect
             label="Land & development"
-            options={SCOUT_LAND_OPTIONS}
+            options={SEARCH_LAND_OPTIONS}
             selected={form.land}
             onToggle={(v) => toggleArr("land", v)}
             hint="Leave off to skip bare land. Pick what makes a plot worth sending — a building to convert, or room to build with planning."
@@ -719,7 +719,7 @@ function ScoutEditor({
 
           <ChipSelect
             label="Sale method"
-            options={SCOUT_SALE_METHODS}
+            options={SEARCH_SALE_METHODS}
             selected={form.saleMethods}
             onToggle={(v) => toggleArr("saleMethods", v)}
             hint="Auction lots suit dilapidated and restoration buys — include them to hear about lots early."
@@ -730,7 +730,7 @@ function ScoutEditor({
               <span>Min bedrooms</span>
               <input
                 className="hs-input"
-                data-testid="scout-min-beds"
+                data-testid="search-min-beds"
                 type="number"
                 min="0"
                 placeholder="Any"
@@ -742,7 +742,7 @@ function ScoutEditor({
               <span>Max price (£)</span>
               <input
                 className="hs-input"
-                data-testid="scout-max-price"
+                data-testid="search-max-price"
                 type="number"
                 min="0"
                 step="5000"
@@ -757,7 +757,7 @@ function ScoutEditor({
             <span>What you&rsquo;re looking for</span>
             <textarea
               className="hs-textarea"
-              data-testid="scout-keywords"
+              data-testid="search-keywords"
               rows={4}
               placeholder="Describe your taste in plain words — features, mood, must-haves and deal-breakers."
               value={form.keywords}
@@ -773,7 +773,7 @@ function ScoutEditor({
             <button
               type="button"
               className="preview__toggle"
-              data-testid="scout-preview-toggle"
+              data-testid="search-preview-toggle"
               onClick={() => setShowPreview((s) => !s)}
             >
               <Icon name={showPreview ? "chevron-down" : "mail"} size={15} />
@@ -782,8 +782,8 @@ function ScoutEditor({
                 : "Preview the email agents will receive"}
             </button>
             {showPreview && (
-              <pre className="preview__body" data-testid="scout-email-preview">
-                {draftScoutEmail(form, resolvedSender)}
+              <pre className="preview__body" data-testid="search-email-preview">
+                {draftSearchEmail(form, resolvedSender)}
               </pre>
             )}
           </div>
@@ -794,7 +794,7 @@ function ScoutEditor({
             <button
               type="button"
               className="hs-btn hs-btn--ghost danger-text"
-              data-testid="scout-delete"
+              data-testid="search-delete"
               disabled={busy}
               onClick={() => onDelete(form.id as string)}
             >
@@ -809,7 +809,7 @@ function ScoutEditor({
             </Button>
             <Button
               variant="primary"
-              data-testid="scout-save"
+              data-testid="search-save"
               disabled={!valid || busy}
               onClick={() => onSave(form)}
             >
@@ -824,13 +824,13 @@ function ScoutEditor({
 
 /* ---- Pause confirmation --------------------------------------------------- */
 interface ConfirmPauseProps {
-  scout: Scout;
+  search: Search;
   pausing: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }
 
-function ConfirmPause({ scout, pausing, onCancel, onConfirm }: ConfirmPauseProps) {
+function ConfirmPause({ search, pausing, onCancel, onConfirm }: ConfirmPauseProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -852,7 +852,7 @@ function ConfirmPause({ scout, pausing, onCancel, onConfirm }: ConfirmPauseProps
         role="dialog"
         aria-modal="true"
         aria-label="Pause search"
-        data-testid="scout-pause-confirm"
+        data-testid="search-pause-confirm"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="confirm-body">
@@ -862,7 +862,7 @@ function ConfirmPause({ scout, pausing, onCancel, onConfirm }: ConfirmPauseProps
           <h2 className="confirm-title">Pause this search?</h2>
           <p className="confirm-text">
             HomeRanger will stop reaching out to new agents and stop pulling in new
-            listings for <b>{scout.name}</b>. No message is sent to anyone — your
+            listings for <b>{search.name}</b>. No message is sent to anyone — your
             existing conversations stay open and warm, and you can resume any time.
           </p>
         </div>
@@ -873,7 +873,7 @@ function ConfirmPause({ scout, pausing, onCancel, onConfirm }: ConfirmPauseProps
           <Button
             variant="primary"
             icon="pause"
-            data-testid="scout-pause-confirm-btn"
+            data-testid="search-pause-confirm-btn"
             disabled={pausing}
             onClick={onConfirm}
           >
@@ -887,28 +887,28 @@ function ConfirmPause({ scout, pausing, onCancel, onConfirm }: ConfirmPauseProps
 
 /* ---- Launch loop modal ---------------------------------------------------- */
 /**
- * The Scout Launch loop, operator-driven and send-safe end to end:
+ * The Search Launch loop, operator-driven and send-safe end to end:
  *
- *   1. LAUNCH   — `scouts.launch` enqueues agent discovery across the scout's
+ *   1. LAUNCH   — `searches.launch` enqueues agent discovery across the search's
  *                 outcodes (M7). Returns the outcodes it's working.
- *   2. REVIEW   — `scouts.reviewDrafts` returns the woven scout email + every
+ *   2. REVIEW   — `searches.reviewDrafts` returns the woven search email + every
  *                 agent in the patch, each pre-checked by ComplianceGuard
  *                 (`eligible` + a `reason` code when blocked).
  *   3. APPROVE  — the operator ticks the eligible agents and confirms;
- *                 `scouts.approveSends` enqueues the guarded M6 send for each.
+ *                 `searches.approveSends` enqueues the guarded M6 send for each.
  *
  * No email is ever sent autonomously: a send only fires after the operator
  * approves AND the worker's ComplianceGuard passes (corporate-only, not opted
  * out, not suppressed, breaker closed, kill-switch off, warm-up cap free).
  */
 interface LaunchModalProps {
-  scout: Scout;
+  search: Search;
   onClose: () => void;
 }
 
-type ReviewAgent = inferRouterOutputs<AppRouter>["scouts"]["reviewDrafts"]["agents"][number];
+type ReviewAgent = inferRouterOutputs<AppRouter>["searches"]["reviewDrafts"]["agents"][number];
 
-function LaunchModal({ scout, onClose }: LaunchModalProps) {
+function LaunchModal({ search, onClose }: LaunchModalProps) {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [sentCount, setSentCount] = useState<number | null>(null);
 
@@ -928,9 +928,9 @@ function LaunchModal({ scout, onClose }: LaunchModalProps) {
 
   // Kick discovery, then pull the drafts + pre-checked agents. reviewDrafts only
   // runs once launch has resolved so the patch reflects the just-found agents.
-  const launch = trpc.scouts.launch.useMutation();
-  const review = trpc.scouts.reviewDrafts.useQuery(
-    { id: scout.id },
+  const launch = trpc.searches.launch.useMutation();
+  const review = trpc.searches.reviewDrafts.useQuery(
+    { id: search.id },
     {
       // Runs on open (independent of the launch mutation's resolution) so the
       // woven draft shows immediately; discovery is async (worker-consumed), so
@@ -939,7 +939,7 @@ function LaunchModal({ scout, onClose }: LaunchModalProps) {
         query.state.data && query.state.data.agents.length === 0 ? 1500 : false,
     },
   );
-  const approve = trpc.scouts.approveSends.useMutation({
+  const approve = trpc.searches.approveSends.useMutation({
     onSuccess: (res) => setSentCount(res.enqueued),
   });
 
@@ -950,9 +950,9 @@ function LaunchModal({ scout, onClose }: LaunchModalProps) {
   useEffect(() => {
     if (!launchedRef.current) {
       launchedRef.current = true;
-      launchMutate({ id: scout.id });
+      launchMutate({ id: search.id });
     }
-  }, [launchMutate, scout.id]);
+  }, [launchMutate, search.id]);
 
   // Default-select every eligible agent the moment the review lands, so the
   // common case (approve everyone the guard cleared) is one click.
@@ -996,7 +996,7 @@ function LaunchModal({ scout, onClose }: LaunchModalProps) {
         className="modal modal--launch"
         role="dialog"
         aria-modal="true"
-        aria-label={`Launch ${scout.name}`}
+        aria-label={`Launch ${search.name}`}
         data-testid="launch-modal"
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -1005,7 +1005,7 @@ function LaunchModal({ scout, onClose }: LaunchModalProps) {
             <span className="eyebrow">
               <Icon name="rocket" size={13} /> Launch search
             </span>
-            <h2 className="modal__title">{scout.name}</h2>
+            <h2 className="modal__title">{search.name}</h2>
           </div>
           <button
             type="button"
@@ -1038,13 +1038,13 @@ function LaunchModal({ scout, onClose }: LaunchModalProps) {
             {loading && (
               <div className="launch-busy" data-testid="launch-busy">
                 <Icon name="loader" size={18} className="spin" />
-                Finding estate agents across {scout.outcodes.join(", ") || "this patch"}…
+                Finding estate agents across {search.outcodes.join(", ") || "this patch"}…
               </div>
             )}
 
             {launchFailed && (
               <div className="launch-error" role="alert">
-                {launch.error?.message ?? "Couldn’t launch this scout."}
+                {launch.error?.message ?? "Couldn’t launch this search."}
               </div>
             )}
 
@@ -1105,7 +1105,7 @@ function LaunchModal({ scout, onClose }: LaunchModalProps) {
                 !review.data || checkedCount === 0 || approve.isPending
               }
               onClick={() =>
-                approve.mutate({ id: scout.id, agentIds: [...checked] })
+                approve.mutate({ id: search.id, agentIds: [...checked] })
               }
             >
               {approve.isPending
@@ -1164,16 +1164,16 @@ function AgentRow({ agent, checked, onToggle }: AgentRowProps) {
 /* ---- Screen --------------------------------------------------------------- */
 type EditingState =
   | { kind: "new" }
-  | { kind: "edit"; scout: Scout }
+  | { kind: "edit"; search: Search }
   | null;
 
-export interface ScoutsPageProps {
-  onViewHomes: (filter: ScoutFilter) => void;
+export interface SearchesPageProps {
+  onViewHomes: (filter: SearchFilter) => void;
 }
 
-export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
+export function SearchesPage({ onViewHomes }: SearchesPageProps) {
   const utils = trpc.useUtils();
-  const { data, isLoading, isError, refetch } = trpc.scouts.list.useQuery();
+  const { data, isLoading, isError, refetch } = trpc.searches.list.useQuery();
   // The launch → discover → guarded-send outreach loop is operator-only (it
   // cold-emails on the shared sending domain under one warmup budget). Hide its
   // controls for non-operators; the backend also enforces this (FORBIDDEN).
@@ -1181,58 +1181,58 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
   const isOperator = me?.isOperator ?? false;
 
   const [editing, setEditing] = useState<EditingState>(null);
-  const [pausing, setPausing] = useState<Scout | null>(null);
-  const [launching, setLaunching] = useState<Scout | null>(null);
+  const [pausing, setPausing] = useState<Search | null>(null);
+  const [launching, setLaunching] = useState<Search | null>(null);
 
   const invalidate = () => {
-    void utils.scouts.list.invalidate();
+    void utils.searches.list.invalidate();
   };
 
-  const create = trpc.scouts.create.useMutation({
+  const create = trpc.searches.create.useMutation({
     onSuccess: () => {
       invalidate();
       setEditing(null);
     },
   });
-  const update = trpc.scouts.update.useMutation({
+  const update = trpc.searches.update.useMutation({
     onSuccess: () => {
       invalidate();
       setEditing(null);
     },
   });
-  const remove = trpc.scouts.delete.useMutation({
+  const remove = trpc.searches.delete.useMutation({
     onSuccess: () => {
       invalidate();
       setEditing(null);
     },
   });
-  const setStatus = trpc.scouts.setStatus.useMutation({
+  const setStatus = trpc.searches.setStatus.useMutation({
     onSuccess: () => {
       invalidate();
       setPausing(null);
     },
   });
 
-  const scouts = data ?? [];
+  const searches = data ?? [];
   const activeCount = useMemo(
-    () => scouts.filter((s) => s.status === "active").length,
-    [scouts],
+    () => searches.filter((s) => s.status === "active").length,
+    [searches],
   );
 
-  function viewHomes(scout: Scout) {
-    onViewHomes({ name: scout.name, outcodes: scout.outcodes, status: scout.status });
+  function viewHomes(search: Search) {
+    onViewHomes({ name: search.name, outcodes: search.outcodes, status: search.status });
   }
 
   // Resuming is instant; pausing asks first so there's no doubt about contact.
-  function requestToggle(scout: Scout) {
-    if (scout.status === "active") {
-      setPausing(scout);
+  function requestToggle(search: Search) {
+    if (search.status === "active") {
+      setPausing(search);
     } else {
-      setStatus.mutate({ id: scout.id, status: "active" });
+      setStatus.mutate({ id: search.id, status: "active" });
     }
   }
 
-  function save(form: ScoutForm) {
+  function save(form: SearchForm) {
     // 0 (or blank/invalid) means "no minimum" — store null so the card, the
     // email draft, and the wire all agree (no "0+ beds" chip).
     const minBedsNum = Number(form.minBeds);
@@ -1281,7 +1281,7 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
           <Button
             variant="primary"
             icon="search"
-            data-testid="new-scout"
+            data-testid="new-search"
             onClick={() => setEditing({ kind: "new" })}
           >
             New search
@@ -1309,14 +1309,14 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
       ) : (
         <>
           <div className="controls">
-            <span className="count" data-testid="scouts-count">
-              <b>{scouts.length}</b> searches · <b className="green">{activeCount}</b>{" "}
+            <span className="count" data-testid="searches-count">
+              <b>{searches.length}</b> searches · <b className="green">{activeCount}</b>{" "}
               active
             </span>
           </div>
 
-          {scouts.length === 0 ? (
-            <div className="empty" data-testid="scouts-empty">
+          {searches.length === 0 ? (
+            <div className="empty" data-testid="searches-empty">
               <div className="empty-mark">
                 <Icon name="search" size={26} />
               </div>
@@ -1330,12 +1330,12 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
               </Button>
             </div>
           ) : (
-            <div className="scout-list">
-              {scouts.map((scout) => (
-                <ScoutCard
-                  key={scout.id}
-                  scout={scout}
-                  onOpen={(s) => setEditing({ kind: "edit", scout: s })}
+            <div className="search-list">
+              {searches.map((search) => (
+                <SearchCard
+                  key={search.id}
+                  search={search}
+                  onOpen={(s) => setEditing({ kind: "edit", search: s })}
                   onToggle={requestToggle}
                   onViewHomes={viewHomes}
                   onLaunch={isOperator ? setLaunching : undefined}
@@ -1347,8 +1347,8 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
       )}
 
       {editing && (
-        <ScoutEditor
-          initial={editing.kind === "edit" ? formFromScout(editing.scout) : BLANK}
+        <SearchEditor
+          initial={editing.kind === "edit" ? formFromSearch(editing.search) : BLANK}
           isNew={editing.kind === "new"}
           saving={saving}
           deleting={remove.isPending}
@@ -1360,7 +1360,7 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
 
       {pausing && (
         <ConfirmPause
-          scout={pausing}
+          search={pausing}
           pausing={setStatus.isPending}
           onCancel={() => setPausing(null)}
           onConfirm={() => setStatus.mutate({ id: pausing.id, status: "paused" })}
@@ -1368,7 +1368,7 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
       )}
 
       {launching && (
-        <LaunchModal scout={launching} onClose={() => setLaunching(null)} />
+        <LaunchModal search={launching} onClose={() => setLaunching(null)} />
       )}
     </main>
   );

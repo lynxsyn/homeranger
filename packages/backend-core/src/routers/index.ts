@@ -10,7 +10,7 @@ import { authRouter } from "./auth.router.js";
 import { listingsRouter } from "./listings.router.js";
 import { preferencesRouter } from "./preferences.router.js";
 import { outreachRouter } from "./outreach.router.js";
-import { scoutsRouter } from "./scouts.router.js";
+import { searchesRouter } from "./searches.router.js";
 import { locationsRouter } from "./locations.router.js";
 
 export const appRouter = router({
@@ -24,7 +24,7 @@ export const appRouter = router({
   listings: listingsRouter,
   preferences: preferencesRouter,
   outreach: outreachRouter,
-  scouts: scoutsRouter,
+  searches: searchesRouter,
   locations: locationsRouter,
 });
 

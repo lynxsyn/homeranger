@@ -1,12 +1,12 @@
 /**
- * Scout input contracts shared FE/BE (M8). A scout is a saved buyer brief that
+ * Search input contracts shared FE/BE (M8). A search is a saved buyer brief that
  * drives off-market outreach: the option fields hold the design's DISPLAY
- * LABELS verbatim (validated against the closed sets in `./scout-enums.js`) and
+ * LABELS verbatim (validated against the closed sets in `./search-enums.js`) and
  * feed straight into the drafted email. Prices are integer pence
  * (`aide/rules/backend.md`: never floating point).
  *
  * NOTE: there is NO `outcodes` field on the wire — outcodes are resolved
- * SERVER-SIDE from `location` (Stream B's `resolveScoutOutcodes`). The client
+ * SERVER-SIDE from `location` (Stream B's `resolveSearchOutcodes`). The client
  * only ever supplies the free-text location.
  *
  * Mirrors the `.strict()` style of `./preferences.ts` + `./listing-query.ts`.
@@ -14,92 +14,92 @@
  */
 import { z } from "zod";
 import {
-  ScoutConditionEnum,
-  ScoutLandOptionEnum,
-  ScoutPropertyTypeEnum,
-  ScoutSaleMethodEnum,
-  ScoutStatusEnum,
-} from "./scout-enums.js";
+  SearchConditionEnum,
+  SearchLandOptionEnum,
+  SearchPropertyTypeEnum,
+  SearchSaleMethodEnum,
+  SearchStatusEnum,
+} from "./search-enums.js";
 
 /**
- * Create a scout. `location` is free text (outcodes are resolved server-side);
+ * Create a search. `location` is free text (outcodes are resolved server-side);
  * the option arrays carry display labels and default empty except
  * `saleMethods` which defaults to `["Private treaty"]`. `status` defaults to
  * `"active"`. Prices are integer pence and nullable (omit / null = no cap).
  */
-export const scoutCreateInputSchema = z
+export const searchCreateInputSchema = z
   .object({
     name: z.string().trim().min(1).max(200),
     location: z.string().trim().max(200).default(""),
-    types: z.array(ScoutPropertyTypeEnum).max(20).default([]),
-    condition: z.array(ScoutConditionEnum).max(10).default([]),
-    land: z.array(ScoutLandOptionEnum).max(10).default([]),
+    types: z.array(SearchPropertyTypeEnum).max(20).default([]),
+    condition: z.array(SearchConditionEnum).max(10).default([]),
+    land: z.array(SearchLandOptionEnum).max(10).default([]),
     saleMethods: z
-      .array(ScoutSaleMethodEnum)
+      .array(SearchSaleMethodEnum)
       .max(10)
       .default(["Private treaty"]),
     minBedrooms: z.number().int().min(0).max(50).nullable().optional(),
     maxPricePence: z.number().int().nonnegative().nullable().optional(),
     keywords: z.string().max(2000).default(""),
-    status: ScoutStatusEnum.default("active"),
+    status: SearchStatusEnum.default("active"),
   })
   .strict();
-export type ScoutCreateInput = z.infer<typeof scoutCreateInputSchema>;
+export type SearchCreateInput = z.infer<typeof searchCreateInputSchema>;
 
 /**
  * Full-replace update: the same fields as create plus the row `id`. The router
  * overwrites every column (no partial patch), so all defaults apply identically
  * and `outcodes` are re-resolved from the (possibly changed) `location`.
  */
-export const scoutUpdateInputSchema = z
+export const searchUpdateInputSchema = z
   .object({
     id: z.uuid(),
     name: z.string().trim().min(1).max(200),
     location: z.string().trim().max(200).default(""),
-    types: z.array(ScoutPropertyTypeEnum).max(20).default([]),
-    condition: z.array(ScoutConditionEnum).max(10).default([]),
-    land: z.array(ScoutLandOptionEnum).max(10).default([]),
+    types: z.array(SearchPropertyTypeEnum).max(20).default([]),
+    condition: z.array(SearchConditionEnum).max(10).default([]),
+    land: z.array(SearchLandOptionEnum).max(10).default([]),
     saleMethods: z
-      .array(ScoutSaleMethodEnum)
+      .array(SearchSaleMethodEnum)
       .max(10)
       .default(["Private treaty"]),
     minBedrooms: z.number().int().min(0).max(50).nullable().optional(),
     maxPricePence: z.number().int().nonnegative().nullable().optional(),
     keywords: z.string().max(2000).default(""),
-    status: ScoutStatusEnum.default("active"),
+    status: SearchStatusEnum.default("active"),
   })
   .strict();
-export type ScoutUpdateInput = z.infer<typeof scoutUpdateInputSchema>;
+export type SearchUpdateInput = z.infer<typeof searchUpdateInputSchema>;
 
-/** Pause/resume a scout without touching its brief. */
-export const scoutSetStatusInputSchema = z
+/** Pause/resume a search without touching its brief. */
+export const searchSetStatusInputSchema = z
   .object({
     id: z.uuid(),
-    status: ScoutStatusEnum,
+    status: SearchStatusEnum,
   })
   .strict();
-export type ScoutSetStatusInput = z.infer<typeof scoutSetStatusInputSchema>;
+export type SearchSetStatusInput = z.infer<typeof searchSetStatusInputSchema>;
 
-/** Address a single scout by id (getById / delete). */
-export const scoutByIdInputSchema = z
+/** Address a single search by id (getById / delete). */
+export const searchByIdInputSchema = z
   .object({
     id: z.uuid(),
   })
   .strict();
-export type ScoutByIdInput = z.infer<typeof scoutByIdInputSchema>;
+export type SearchByIdInput = z.infer<typeof searchByIdInputSchema>;
 
 /**
- * Approve outreach sends for a launched scout (PR3): the scout `id` plus the
+ * Approve outreach sends for a launched search (PR3): the search `id` plus the
  * operator-selected agent ids to contact. `agentIds` is capped at 200 to bound a
  * single approval burst (the warm-up cap still gates the actual send rate). An
  * empty list is allowed (a no-op approval enqueues nothing).
  */
-export const scoutApproveSendsInputSchema = z
+export const searchApproveSendsInputSchema = z
   .object({
     id: z.uuid(),
     agentIds: z.array(z.uuid()).max(200),
   })
   .strict();
-export type ScoutApproveSendsInput = z.infer<
-  typeof scoutApproveSendsInputSchema
+export type SearchApproveSendsInput = z.infer<
+  typeof searchApproveSendsInputSchema
 >;

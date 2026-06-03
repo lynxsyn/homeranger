@@ -141,10 +141,10 @@ enum EmailEventType {
   failed
 }
 
-// Scout lifecycle. `active` scouts reach out + pull in homes; `paused` quietly
+// Search lifecycle. `active` searches reach out + pull in homes; `paused` quietly
 // stops both with NO "we've stopped" message (relationship-safe). No terminal
-// state — a scout toggles freely between the two.
-enum ScoutStatus {
+// state — a search toggles freely between the two.
+enum SearchStatus {
   active
   paused
 }
@@ -392,21 +392,21 @@ model WarmupState {
   updatedAt     DateTime @updatedAt @db.Timestamptz(6)
 }
 
-// A "scout" — a standing brief the operator runs to work an area. It carries
+// A "search" — a standing brief the operator runs to work an area. It carries
 // WHERE to look (free-text `location` → resolved `outcodes`), WHAT kind of home
 // (`types`/`condition`/`land`/`saleMethods` + beds/price), and the free-text
 // `keywords` taste that shapes the first outreach email. These settings are
-// scaffolding for a strong first email, NOT rigid filters. A scout relates to
+// scaffolding for a strong first email, NOT rigid filters. A search relates to
 // listings purely by OUTCODE — the "homes found" link-through filters Listings
 // to `outcodes`; agent/thread linkage + launch arrive in a later milestone.
 // Multi-row, unlike the single-row SearchProfile (which this supersedes in the
 // UI). The string-array option fields hold the design's display labels (e.g.
 // "Restoration project", "Auction"), validated against the shared option sets at
 // the wire boundary.
-model Scout {
+model Search {
   id            String      @id @default(uuid(7)) @db.Uuid
-  // Owner key. NULL = the operator's scouts (the legacy single-user rows); a
-  // non-operator authenticated user's scouts carry their Supabase user id.
+  // Owner key. NULL = the operator's searches (the legacy single-user rows); a
+  // non-operator authenticated user's searches carry their Supabase user id.
   userId        String?     @db.Uuid
   name          String
   location      String      @default("")
@@ -418,7 +418,7 @@ model Scout {
   minBedrooms   Int?
   maxPricePence Int?
   keywords      String      @default("")
-  status        ScoutStatus @default(active)
+  status        SearchStatus @default(active)
   createdAt     DateTime    @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime    @updatedAt @db.Timestamptz(6)
 
@@ -431,7 +431,7 @@ model Scout {
 // listings "Interest" feature. The Listing catalogue itself is GLOBAL + shared
 // (de-duplicated across all users); SavedListing is the per-owner overlay that
 // records which homes a given user has kept. `userId` follows the same nullable
-// owner-key convention as Scout/SearchProfile (NULL = operator). Uniqueness of
+// owner-key convention as Search/SearchProfile (NULL = operator). Uniqueness of
 // (owner, listing) is enforced by a COALESCE-based unique index created in the
 // raw migration (Prisma cannot express a NULL-safe expression index), so the
 // operator's NULL-namespaced saves are also deduped per listing.

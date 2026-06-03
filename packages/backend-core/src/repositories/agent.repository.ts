@@ -114,7 +114,7 @@ export class AgentRepository {
 
   /**
    * Count agents covering at least one of the given outcodes — the "agents in
-   * the scout's patch" stat (PR3 scoutsRouter.stats). When `contactedOnly` is
+   * the search's patch" stat (PR3 searchesRouter.stats). When `contactedOnly` is
    * set, restricts to agents already contacted (`lastContactedAt != null`).
    * Opted-out agents are EXCLUDED (mirrors `list`'s default), so the patch count
    * reflects who is actually reachable. An empty outcode set returns 0.

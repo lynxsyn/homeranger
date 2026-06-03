@@ -118,13 +118,13 @@ export interface AnalyzeRecomputeJobPayload {
 /**
  * `outreach:send` payload — cold-contact one agent (the guard re-checks).
  *
- * `scoutId` (PR3, optional) ties the send to a launched scout: when present the
- * worker drafts the email BODY from that scout's brief (draftScoutEmail) instead
+ * `searchId` (PR3, optional) ties the send to a launched search: when present the
+ * worker drafts the email BODY from that search's brief (draftSearchEmail) instead
  * of the generic draft. Absent ⇒ the existing generic first-contact email.
  */
 export interface OutreachSendJobPayload {
   agentId: string;
-  scoutId?: string;
+  searchId?: string;
 }
 
 /** `outreach:followup` payload — send a follow-up on one awaiting_reply thread. */
@@ -156,8 +156,8 @@ export interface WarmupRecalcJobPayload {
  *
  * Two targeting modes (the handler branches on `outcodes`):
  *   - `outcodes` (PR3, optional): discover by an EXPLICIT outcode set, skipping
- *     the region→outcode resolution. A launched scout enqueues its own resolved
- *     `scout.outcodes` here.
+ *     the region→outcode resolution. A launched search enqueues its own resolved
+ *     `search.outcodes` here.
  *   - `regionName` (M7): discover by a curated region name (resolved to outcodes
  *     server-side). Still used by region-driven discovery.
  */

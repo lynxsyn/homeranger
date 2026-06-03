@@ -1,15 +1,15 @@
 /**
  * UK location resolution + autocomplete — the bundled, offline, deterministic
- * engine behind scout locations. Replaces the hand-curated North-Wales seed
+ * engine behind search locations. Replaces the hand-curated North-Wales seed
  * (the old uk-regions.ts) with a UK-wide index of every GB outcode and its admin
  * areas, sourced once from ONS/OS open data via postcodes.io (see
  * scripts/build-uk-outcodes.mts + data/uk-outcodes.data.ts).
  *
  * Two jobs:
  *   - suggestLocations(query): type-ahead suggestions as the operator types a
- *     scout location — counties, unitaries/districts, regions (country), postcode
+ *     search location — counties, unitaries/districts, regions (country), postcode
  *     areas & districts, towns/communities.
- *   - resolveLocationToOutcodes(location): the outcodes a scout targets, derived
+ *   - resolveLocationToOutcodes(location): the outcodes a search targets, derived
  *     from its (typed or picked) free-text location. Any of the above inputs
  *     resolve to the right outcodes — typing "Conwy" returns every outcode in the
  *     Conwy unitary, "LL3" the LL3x districts, "Wales" the whole country.
@@ -46,9 +46,9 @@ export type LocationMatchKind =
   | "country" // England | Scotland | Wales | Northern Ireland
   | "place"; // civil parish / community / town
 
-/** A type-ahead suggestion for the scout location field. */
+/** A type-ahead suggestion for the search location field. */
 export interface LocationSuggestion {
-  /** The label shown + stored as the scout location (also the discovery query). */
+  /** The label shown + stored as the search location (also the discovery query). */
   label: string;
   kind: LocationMatchKind;
   /** The outcodes this resolves to (sorted, deduped). */
@@ -289,7 +289,7 @@ export function resolveLocationToOutcodes(location: string): string[] {
 }
 
 /**
- * Type-ahead suggestions for a scout location query. Postcode-shaped queries
+ * Type-ahead suggestions for a search location query. Postcode-shaped queries
  * surface matching outcodes + the area; name queries surface counties /
  * districts / countries / towns, ranked exact → prefix → substring, then by kind
  * (broad admin areas before towns). One suggestion per distinct name (its

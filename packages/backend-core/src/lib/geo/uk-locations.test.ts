@@ -1,6 +1,6 @@
 /**
  * Unit tests for the bundled UK location engine (uk-locations.ts) — the offline
- * county/district/region/postcode → outcode index behind scout locations + the
+ * county/district/region/postcode → outcode index behind search locations + the
  * location type-ahead. Pure logic over the committed index, so it is unit-proven
  * here (NOT coverage-excluded). The generated data module itself is excluded.
  */

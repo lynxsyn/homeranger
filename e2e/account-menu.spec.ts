@@ -1,6 +1,6 @@
 /**
  * Account menu + Settings E2E — the avatar dropdown navigation, the
- * Scouts→Searches rename, and the "Your details" profile flowing end-to-end
+ * Searches→Searches rename, and the "Your details" profile flowing end-to-end
  * into the outreach draft, against real infra (api + pgvector via the Playwright
  * webServer, dev-bypass auth).
  *
@@ -8,7 +8,7 @@
  *   1. The top bar is just the logo + avatar; the dropdown carries Listings,
  *      Searches, Settings, and the Theme toggle, and navigates between them.
  *   2. The campaign concept reads "Searches" everywhere user-facing (heading +
- *      New search), while the route stays /scouts (internal).
+ *      New search), while the route stays /searches (internal).
  *   3. Saving the buyer's details persists (survives reload) and the saved
  *      identity signs + paces the live outreach email preview — proving the
  *      Settings → preferences.get → draft wiring end-to-end through the real API.
@@ -49,15 +49,15 @@ test("account dropdown navigates between Listings, Searches and Settings", async
   await page.getByTestId("account-avatar").click();
   const menu = page.getByTestId("account-menu");
   await expect(menu.getByTestId("nav-listings")).toHaveText("Listings");
-  await expect(menu.getByTestId("nav-scouts")).toHaveText("Searches");
+  await expect(menu.getByTestId("nav-searches")).toHaveText("Searches");
   await expect(menu.getByTestId("nav-settings")).toHaveText("Settings");
   await expect(menu.getByTestId("theme-toggle")).toContainText("Theme");
 
-  // Searches → /scouts route, "Searches" heading (rename is user-facing only).
-  await menu.getByTestId("nav-scouts").click();
-  await expect(page).toHaveURL(/\/scouts/);
+  // Searches → /searches route, "Searches" heading (rename is user-facing only).
+  await menu.getByTestId("nav-searches").click();
+  await expect(page).toHaveURL(/\/searches/);
   await expect(page.getByRole("heading", { name: "Searches" })).toBeVisible();
-  await expect(page.getByTestId("new-scout")).toHaveText(/New search/);
+  await expect(page.getByTestId("new-search")).toHaveText(/New search/);
 
   // Settings → /settings, "Your details".
   await page.getByTestId("account-avatar").click();
@@ -99,16 +99,16 @@ test("settings details persist and sign + pace the outreach draft", async ({
   await expect(page.getByTestId("settings-phone")).toHaveValue("07700 900123");
 
   // 3. End-to-end: the saved identity signs + paces the search email preview.
-  await page.goto("/scouts");
-  await page.getByTestId("new-scout").click();
-  const editor = page.getByTestId("scout-editor");
+  await page.goto("/searches");
+  await page.getByTestId("new-search").click();
+  const editor = page.getByTestId("search-editor");
   await expect(editor).toBeVisible();
   // el.click() invokes the React onClick without pixel hit-testing (the editor
   // body scrolls and the toggle is its last child).
   await page
-    .getByTestId("scout-preview-toggle")
+    .getByTestId("search-preview-toggle")
     .evaluate((el) => (el as HTMLElement).click());
-  const preview = page.getByTestId("scout-email-preview");
+  const preview = page.getByTestId("search-email-preview");
   await expect(preview).toContainText("Many thanks,");
   await expect(preview).toContainText("Jane Whitfield");
   await expect(preview).toContainText("07700 900123");

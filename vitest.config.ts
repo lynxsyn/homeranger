@@ -116,11 +116,11 @@ export default defineConfig({
         // fake + the classification/upsert service are unit-covered; the real
         // adapter is operator-proven (same rationale as the Resend/r2 adapters).
         "packages/backend-core/src/lib/discovery/firecrawl-agent-discovery.provider.ts",
-        // M8 scout repo — Prisma I/O (CRUD), exercised by the scout integration
+        // M8 search repo — Prisma I/O (CRUD), exercised by the search integration
         // test, not unit. Same rationale as the M2–M7 repository excludes above.
-        // Its pure helpers (resolveScoutOutcodes / draftScoutEmail in
-        // lib/scouts/scout-brief.ts) are unit-covered and NOT excluded.
-        "packages/backend-core/src/repositories/scout.repository.ts",
+        // Its pure helpers (resolveSearchOutcodes / draftSearchEmail in
+        // lib/searches/search-brief.ts) are unit-covered and NOT excluded.
+        "packages/backend-core/src/repositories/search.repository.ts",
         // Multi-user saved-listings overlay — Prisma I/O (save/unsave/list),
         // exercised by the saved-listing integration test, not unit. Same
         // rationale as the M2–M8 repository excludes above.

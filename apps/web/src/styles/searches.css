@@ -1,6 +1,6 @@
-/* HomeRanger — Scouts screen styles. Ported from the claude.ai/design handoff
-   (scout-design/project/app/styles.css), renaming every `campaign` class to
-   `scout` per product. Only the classes NOT already in the shipped design
+/* HomeRanger — Searches screen styles. Ported from the claude.ai/design handoff
+   (search-design/project/app/styles.css), renaming every `campaign` class to
+   `search` per product. Only the classes NOT already in the shipped design
    system (tokens.css / components.css / layout.css) live here — `.page-head`,
    `.controls`, `.empty`, `.hs-card`, `.hs-chip`, `.hs-btn`, etc. are reused.
 
@@ -31,8 +31,8 @@
   }
 }
 
-/* ---- Scout filter banner (Listings filtered to one scout) --------------- */
-.scout-filter {
+/* ---- Search filter banner (Listings filtered to one search) --------------- */
+.search-filter {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -43,7 +43,7 @@
   padding: 14px 18px;
   margin-bottom: 18px;
 }
-.scout-filter .sf-left {
+.search-filter .sf-left {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -107,11 +107,11 @@
   background: var(--surface-3);
   color: var(--ink-2);
 }
-.scout-filter .hs-btn {
+.search-filter .hs-btn {
   flex-shrink: 0;
 }
 @media (max-width: 560px) {
-  .scout-filter {
+  .search-filter {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -135,20 +135,20 @@
 }
 
 /* ========================================================================== */
-/*  SCOUTS (saved-search briefs)                                              */
+/*  SEARCHES (saved-search briefs)                                              */
 /* ========================================================================== */
-.scout-list {
+.search-list {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
-.scout-card {
+.search-card {
   padding: 20px 22px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
-.scout-card.is-paused {
+.search-card.is-paused {
   opacity: 0.82;
 }
 .sc-main {
@@ -188,7 +188,7 @@
     background var(--dur-fast) var(--ease),
     color var(--dur-fast) var(--ease);
 }
-.scout-card:hover .sc-edit {
+.search-card:hover .sc-edit {
   background: var(--surface-2);
   color: var(--ink-1);
 }
@@ -567,7 +567,7 @@
   word-break: break-word;
 }
 
-/* ---- Empty state (scouts) ----------------------------------------------- */
+/* ---- Empty state (searches) ----------------------------------------------- */
 .empty-mark {
   display: grid;
   place-items: center;
@@ -583,10 +583,10 @@
 }
 
 /* ========================================================================== */
-/*  LAUNCH LOOP (PR3) — kill-switch, per-scout stats, launch button + modal   */
+/*  LAUNCH LOOP (PR3) — kill-switch, per-search stats, launch button + modal   */
 /* ========================================================================== */
 
-/* ---- Page-head actions row (kill-switch + New scout) -------------------- */
+/* ---- Page-head actions row (kill-switch + New search) -------------------- */
 .page-head__actions {
   display: flex;
   align-items: center;
@@ -724,7 +724,7 @@
   color: var(--ink-3);
 }
 
-/* ---- Per-scout stats strip (card footer) -------------------------------- */
+/* ---- Per-search stats strip (card footer) -------------------------------- */
 .sc-stats {
   display: inline-flex;
   align-items: center;

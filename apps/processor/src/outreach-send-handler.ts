@@ -20,14 +20,14 @@ export function makeOutreachSendHandler(deps: OutreachSendHandlerDeps) {
     try {
       await deps.outreachService.sendOutreach({
         agentId: job.data.agentId,
-        // Tie the send to a launched scout so the body is drafted from its brief.
-        ...(job.data.scoutId ? { scoutId: job.data.scoutId } : {}),
+        // Tie the send to a launched search so the body is drafted from its brief.
+        ...(job.data.searchId ? { searchId: job.data.searchId } : {}),
       });
     } catch (error) {
       throw toWorkerError(error, {
         scope: "outreach.send.failed",
         agentId: job.data.agentId,
-        ...(job.data.scoutId ? { scoutId: job.data.scoutId } : {}),
+        ...(job.data.searchId ? { searchId: job.data.searchId } : {}),
       });
     }
   };

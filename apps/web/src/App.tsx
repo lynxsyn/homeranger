@@ -3,10 +3,10 @@
  * the routed content, all inside the `.app` max-width container.
  *
  * Navigation + the theme toggle live in the avatar dropdown (UserMenu): the bar
- * is just the logo and the avatar. `/listings` is the listings table; `/scouts`
+ * is just the logo and the avatar. `/listings` is the listings table; `/searches`
  * is the saved-search manager (labelled "Searches" in the menu — the route stays
  * internal); `/settings` is the operator's "Your details"; `/` redirects to
- * listings. A search's "View homes" link sets `scoutFilter` and navigates to
+ * listings. A search's "View homes" link sets `searchFilter` and navigates to
  * `/listings`; any menu navigation (or the logo) clears the filter so manual
  * navigation always shows the full list.
  *
@@ -19,10 +19,10 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { ListingsPage } from "./pages/ListingsPage";
-import { ScoutsPage } from "./pages/ScoutsPage";
+import { SearchesPage } from "./pages/SearchesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SignInPage } from "./pages/SignInPage";
-import type { ScoutFilter } from "./pages/ScoutsPage";
+import type { SearchFilter } from "./pages/SearchesPage";
 import { Logo } from "./components/ui";
 import { UserMenu } from "./components/UserMenu";
 import { useStored } from "./lib/useStored";
@@ -50,7 +50,7 @@ function AuthedApp() {
   const { signOut } = useAuth();
   // A search's "View homes" pushes its outcodes into the Listings view; any menu
   // navigation (or clicking the logo) clears it.
-  const [scoutFilter, setScoutFilter] = useState<ScoutFilter | null>(null);
+  const [searchFilter, setSearchFilter] = useState<SearchFilter | null>(null);
   const [theme, setTheme] = useStored<"light" | "dark">("hs-theme", "light", [
     "light",
     "dark",
@@ -63,15 +63,15 @@ function AuthedApp() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  // Menu navigation always shows the full set: clear any active scout filter,
+  // Menu navigation always shows the full set: clear any active search filter,
   // then route.
   function goTo(to: string) {
-    setScoutFilter(null);
+    setSearchFilter(null);
     navigate(to);
   }
 
-  function viewScoutHomes(filter: ScoutFilter) {
-    setScoutFilter(filter);
+  function viewSearchHomes(filter: SearchFilter) {
+    setSearchFilter(filter);
     navigate("/listings");
   }
 
@@ -103,14 +103,14 @@ function AuthedApp() {
           path="/listings"
           element={
             <ListingsPage
-              scoutFilter={scoutFilter}
-              onClearScoutFilter={() => setScoutFilter(null)}
+              searchFilter={searchFilter}
+              onClearSearchFilter={() => setSearchFilter(null)}
             />
           }
         />
         <Route
-          path="/scouts"
-          element={<ScoutsPage onViewHomes={viewScoutHomes} />}
+          path="/searches"
+          element={<SearchesPage onViewHomes={viewSearchHomes} />}
         />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>

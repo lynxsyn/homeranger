@@ -12,7 +12,7 @@
  *
  * `label`/`note` drive the Settings UI only. `line`, `signatureBlock`, and
  * `urgencyLine` are EMAIL COPY and the SINGLE SOURCE OF TRUTH shared by the
- * backend draft (scout-brief.ts) and its client twin (ScoutsPage) so the
+ * backend draft (search-brief.ts) and its client twin (SearchesPage) so the
  * preview and the sent email never drift.
  */
 import { z } from "zod";

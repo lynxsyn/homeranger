@@ -1,14 +1,14 @@
 /**
- * Pure scout-brief helpers (M8) — UNIT-COVERED (not coverage-excluded):
+ * Pure search-brief helpers (M8) — UNIT-COVERED (not coverage-excluded):
  *
- *   - resolveScoutOutcodes(location): the outcodes a scout targets, derived
+ *   - resolveSearchOutcodes(location): the outcodes a search targets, derived
  *     SERVER-SIDE from its free-text `location`. Delegates to the bundled UK
  *     location index (lib/geo/uk-locations.ts): the union of explicit
  *     postcodes/outcodes in the text and any county / unitary / district /
- *     country / town named in it. Deduped, sorted. The scout form has NO
+ *     country / town named in it. Deduped, sorted. The search form has NO
  *     outcodes field — this is the only place they come from.
  *
- *   - draftScoutEmail(scout): a faithful port of the design's `draftEmail`
+ *   - draftSearchEmail(search): a faithful port of the design's `draftEmail`
  *     (project/app/campaigns.jsx) — the templated first-contact email that
  *     reflects the brief live. Pure, deterministic, and graceful when the brief
  *     is empty. `maxPricePence` is PENCE here (the wire/storage unit); the design
@@ -22,7 +22,7 @@ import {
 import { resolveLocationToOutcodes } from "../geo/uk-locations.js";
 
 /**
- * Resolve a scout's free-text `location` to the set of outcodes it targets.
+ * Resolve a search's free-text `location` to the set of outcodes it targets.
  * Delegates to the bundled UK location index (lib/geo/uk-locations.ts): the
  * union of explicit postcodes/outcodes in the text and any county / unitary /
  * district / country / town / postcode-area named in it (the whole string AND
@@ -30,12 +30,12 @@ import { resolveLocationToOutcodes } from "../geo/uk-locations.js";
  * yields `[]` — the caller treats "no outcodes" as "nothing to target", never
  * an error. UK-wide via the index, not the old North-Wales curated seed.
  */
-export function resolveScoutOutcodes(location: string): string[] {
+export function resolveSearchOutcodes(location: string): string[] {
   return resolveLocationToOutcodes(location);
 }
 
-/** The fields draftScoutEmail reads off a scout row (a structural subset). */
-export interface ScoutBriefInput {
+/** The fields draftSearchEmail reads off a search row (a structural subset). */
+export interface SearchBriefInput {
   location: string;
   types: string[];
   condition: string[];
@@ -69,50 +69,50 @@ function joinTypes(types: string[]): string {
 
 /**
  * Faithful port of the design's `draftEmail` (project/app/campaigns.jsx). Builds
- * the first-contact email a scout would send: greeting, the "I'm a private buyer
+ * the first-contact email a search would send: greeting, the "I'm a private buyer
  * searching in {location} for a {beds}{types}{, up to £price}" line, an optional
  * taste line from `keywords`, an optional project-appetite + land + auction
  * paragraph (only the lines the brief opts into), and the closing. Pure,
  * deterministic, and graceful when the brief is empty.
  */
-export function draftScoutEmail(
-  scout: ScoutBriefInput,
+export function draftSearchEmail(
+  search: SearchBriefInput,
   sender?: ResolvedSender | null,
 ): string {
   // `loc` is the first comma/dash-delimited segment; the design uses it as the
   // fallback location when the full string is blank.
-  const loc = (scout.location || "your area").split(/[,—–-]/)[0]!.trim();
-  const locationPhrase = scout.location.trim() || loc;
+  const loc = (search.location || "your area").split(/[,—–-]/)[0]!.trim();
+  const locationPhrase = search.location.trim() || loc;
 
-  const types = joinTypes(scout.types);
-  const beds = scout.minBedrooms ? `${scout.minBedrooms}+ bedroom ` : "";
+  const types = joinTypes(search.types);
+  const beds = search.minBedrooms ? `${search.minBedrooms}+ bedroom ` : "";
   // A non-positive cap is treated as "no cap" — never email an agent "up to £0".
   const price =
-    scout.maxPricePence != null && scout.maxPricePence > 0
-      ? `, up to ${formatGbpFromPence(scout.maxPricePence)}`
+    search.maxPricePence != null && search.maxPricePence > 0
+      ? `, up to ${formatGbpFromPence(search.maxPricePence)}`
       : "";
-  const taste = scout.keywords.trim();
+  const taste = search.keywords.trim();
 
   // Project-appetite line, only for a renovation/restoration brief.
   let conditionLine = "";
   if (
-    scout.condition.includes("Restoration project") ||
-    scout.condition.includes("Full renovation")
+    search.condition.includes("Restoration project") ||
+    search.condition.includes("Full renovation")
   ) {
     conditionLine =
       "I'm glad to take on a renovation or full restoration — condition isn't a barrier. ";
-  } else if (scout.condition.includes("Some updating")) {
+  } else if (search.condition.includes("Some updating")) {
     conditionLine = "Some updating is fine. ";
   }
 
   // Land line, only on the terms chosen.
   let landLine = "";
-  if (scout.land.length > 0) {
+  if (search.land.length > 0) {
     const parts: string[] = [];
-    if (scout.land.includes("Land with a building to convert")) {
+    if (search.land.includes("Land with a building to convert")) {
       parts.push("land with a building to convert, such as a farmhouse or barn");
     }
-    if (scout.land.includes("Buildable land or planning potential")) {
+    if (search.land.includes("Buildable land or planning potential")) {
       parts.push("a plot with planning permission or genuine potential");
     }
     if (parts.length > 0) {
@@ -120,7 +120,7 @@ export function draftScoutEmail(
     }
   }
 
-  const auctionLine = scout.saleMethods.includes("Auction")
+  const auctionLine = search.saleMethods.includes("Auction")
     ? "I follow the auction lots too, so do flag anything coming under the hammer. "
     : "";
 
