@@ -1,28 +1,18 @@
-# homeranger CI — M2 core: secret-scan + typecheck/lint + api-unit (coverage) +
-# api-integration (pgvector service container -> prisma migrate deploy ->
-# test:integration). Grows per milestone: M3 adds E2E, M2+ adds the per-app
-# image build (release.yml). Action SHAs pinned (mirrors Doxus).
+# homeranger CI — full coverage on every pull request and every push to main:
+# secret-scan + typecheck/lint (check) + api-unit (coverage) + web-unit +
+# api-integration (real pgvector) + e2e (Playwright). Action SHAs pinned.
+#
+# The repo is PUBLIC, so GitHub-hosted Actions minutes are unmetered — there is
+# no reason to skip jobs by path or trim the matrix on push. Every job runs on
+# every event; the ci-gate job aggregates them into one required-checkable
+# status. Flux image-tag commits still bypass CI via their own [skip ci]
+# trailer (a commit-message skip, independent of these triggers).
 name: CI
 
-# Hosted-runner-minute economics (private repo on GitHub Free = 2,000 min/mo):
-#   - paths-ignore skips the whole run for infra/docs-only changes. The frequent
-#     ops(deploy|flux|secrets|dns) commits touch only infra/** and don't need the
-#     app test matrix.
-#   - Heavy jobs (unit/integration/e2e) are gated to pull_request below. Pushes
-#     to main (direct ops commits + post-PR-merge squashes) get only the smoke
-#     subset (secret-scan + check). See the api-unit job for the rationale.
 on:
   pull_request:
-    paths-ignore:
-      - 'infra/**'
-      - 'docs/**'
-      - '**.md'
   push:
     branches: [main]
-    paths-ignore:
-      - 'infra/**'
-      - 'docs/**'
-      - '**.md'
 
 permissions:
   contents: read
@@ -70,12 +60,6 @@ jobs:
         run: pnpm lint
 
   api-unit:
-    # PR-only (smoke-trim): the heavy jobs run on pull_request, where they gate
-    # the merge. Direct pushes to main — ops/deploy/config commits and the
-    # post-merge squash — get only the smoke subset (secret-scan + check), since
-    # the PR run already validated this exact tree. This is the largest recurring
-    # hosted-runner-minute saving. ci-gate treats the skip as a pass.
-    if: github.event_name == 'pull_request'
     runs-on: ${{ vars.RUNNER_LABEL_DEFAULT || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -95,7 +79,6 @@ jobs:
         run: pnpm test:coverage
 
   web-unit:
-    if: github.event_name == 'pull_request' # PR-only — see api-unit
     runs-on: ${{ vars.RUNNER_LABEL_DEFAULT || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -112,7 +95,6 @@ jobs:
         run: pnpm --filter @homeranger/web test
 
   api-integration:
-    if: github.event_name == 'pull_request' # PR-only — see api-unit
     runs-on: ${{ vars.RUNNER_LABEL_DEFAULT || 'ubuntu-latest' }}
     services:
       postgres:
@@ -151,7 +133,6 @@ jobs:
         run: pnpm test:integration
 
   e2e:
-    if: github.event_name == 'pull_request' # PR-only — see api-unit
     runs-on: ${{ vars.RUNNER_LABEL_DEFAULT || 'ubuntu-latest' }}
     services:
       postgres:
@@ -171,8 +152,8 @@ jobs:
       # (pnpm --filter @homeranger/processor e2e:worker on :9090) — which
       # fail-fast-pings Redis at boot (worker.ts) and exits if it is missing.
       # Without this service the worker dies, port 9090 never opens, the worker
-      # webServer startup times out, the e2e job fails, and ci-gate deadlocks the
-      # merge. Mirrors the postgres service block above.
+      # webServer startup times out, and the e2e job fails. Mirrors the postgres
+      # service block above.
       redis:
         image: redis:7-alpine
         ports:
@@ -209,19 +190,17 @@ jobs:
         run: pnpm test:e2e
 
   ci-gate:
+    # Single aggregate status: every job runs on every event now, so all six
+    # must succeed. Stays as the one check to require in branch protection.
     needs: [secret-scan, check, api-unit, web-unit, api-integration, e2e]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Aggregate
         run: |
-          # Smoke jobs run on every event and must pass.
-          [ "${{ needs.secret-scan.result }}" = "success" ] || { echo "secret-scan failed (${{ needs.secret-scan.result }})"; exit 1; }
-          [ "${{ needs.check.result }}" = "success" ]       || { echo "check failed (${{ needs.check.result }})"; exit 1; }
-          # Heavy jobs run on pull_request only; on push-to-main they are skipped
-          # by design (the PR already validated this tree). Accept success OR
-          # skipped — but never failure or cancelled.
-          assert_ok() { case "$2" in success|skipped) ;; *) echo "$1 failed ($2)"; exit 1 ;; esac; }
+          assert_ok() { [ "$2" = "success" ] || { echo "$1 failed ($2)"; exit 1; }; }
+          assert_ok secret-scan     "${{ needs.secret-scan.result }}"
+          assert_ok check           "${{ needs.check.result }}"
           assert_ok api-unit        "${{ needs.api-unit.result }}"
           assert_ok web-unit        "${{ needs.web-unit.result }}"
           assert_ok api-integration "${{ needs.api-integration.result }}"
