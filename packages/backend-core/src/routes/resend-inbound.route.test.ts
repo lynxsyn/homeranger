@@ -54,7 +54,7 @@ function makeInboundBody(emailId = "email_abc"): string {
     data: {
       email_id: emailId,
       from: "agent@example.com",
-      to: ["inbox@homescout.app"],
+      to: ["inbox@homeranger.app"],
       subject: "New listing: 7 Test Road SW1A 1AA",
       attachments: [],
     },

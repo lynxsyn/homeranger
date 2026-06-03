@@ -1,6 +1,6 @@
-/* HomeScout — interest bookmarks + per-agency follow-ups. A faithful port of
+/* HomeRanger — interest bookmarks + per-agency follow-ups. A faithful port of
    the 2nd claude.ai/design handoff's INTEREST + FOLLOW-UP block
-   (docs/design/homescout-design/project/app/styles.css). The follow-up modal
+   (docs/design/homeranger-design/project/app/styles.css). The follow-up modal
    reuses the existing modal/eyebrow/confirm/preview classes from scouts.css +
    tokens.css; this layer adds only the interest-specific classes. */
 

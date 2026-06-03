@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { UnrecoverableError } from "bullmq";
-import { ComplianceError } from "@homescout/backend-core/lib/compliance/compliance-guard";
-import type { OutreachService } from "@homescout/backend-core/services/outreach.service";
-import type { WarmupService } from "@homescout/backend-core/services/warmup.service";
+import { ComplianceError } from "@homeranger/backend-core/lib/compliance/compliance-guard";
+import type { OutreachService } from "@homeranger/backend-core/services/outreach.service";
+import type { WarmupService } from "@homeranger/backend-core/services/warmup.service";
 import { makeOutreachSendHandler } from "./outreach-send-handler.js";
 import { makeOutreachFollowupHandler } from "./outreach-followup-handler.js";
 import { makeWarmupRecalcHandler } from "./warmup-recalc-handler.js";

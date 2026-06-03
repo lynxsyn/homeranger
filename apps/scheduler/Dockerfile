@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# homescout scheduler image (M6) — the leader-locked warmup:recalc cadence
+# homeranger scheduler image (M6) — the leader-locked warmup:recalc cadence
 # driver. Mirrors apps/processor/Dockerfile (multi-stage pnpm build, prisma
 # generate for the @prisma/client the backend-core repos import,
 # src/*.ts -> dist/*.js exports rewrite) but builds + runs apps/scheduler.
@@ -10,7 +10,7 @@
 FROM node:24.15.0-alpine AS base
 RUN corepack enable && corepack prepare pnpm@10.34.1 --activate
 WORKDIR /app
-ARG DATABASE_URL=postgresql://ci:ci@localhost:5432/homescout_ci
+ARG DATABASE_URL=postgresql://ci:ci@localhost:5432/homeranger_ci
 ENV DATABASE_URL=$DATABASE_URL
 
 FROM base AS deps

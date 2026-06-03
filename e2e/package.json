@@ -1,6 +1,6 @@
 {
   "comment": "Scopes the e2e/ directory to ESM so tsx parses named exports from the shared fixture module (imported by apps/api/prisma/seed.ts). Not a workspace package — pnpm-workspace.yaml only globs apps/* + packages/*.",
-  "name": "homescout-e2e",
+  "name": "homeranger-e2e",
   "private": true,
   "type": "module"
 }

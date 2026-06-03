@@ -1,5 +1,5 @@
 /**
- * appRouter — the single tRPC router tree for homescout.
+ * appRouter — the single tRPC router tree for homeranger.
  *
  * ROOT-level structure (Doxus convention): `router({ listings, health })`.
  * `AppRouter` is the type the SPA infers over via `inferRouterOutputs`. New
@@ -15,7 +15,7 @@ import { locationsRouter } from "./locations.router.js";
 export const appRouter = router({
   /** Unauthenticated liveness probe usable through the tRPC client. */
   health: publicProcedure.query(() => ({
-    service: "homescout-api" as const,
+    service: "homeranger-api" as const,
     status: "ok" as const,
   })),
 

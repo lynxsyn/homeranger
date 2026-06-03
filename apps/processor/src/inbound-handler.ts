@@ -11,16 +11,16 @@
  * Claude 3×. We honour the flag here:
  *   - NON-retryable → throw `UnrecoverableError` so BullMQ moves the job
  *     straight to `failed` WITHOUT consuming the remaining attempts and without
- *     re-hitting Claude; log it + increment `homescout_inbound_dropped_total`.
+ *     re-hitting Claude; log it + increment `homeranger_inbound_dropped_total`.
  *   - retryable (or an unknown/untyped error → treated as retryable, the
  *     conservative transient-safe default) → rethrow so the backoff retries run.
  */
 import { UnrecoverableError } from "bullmq";
-import { inboundDroppedTotal } from "@homescout/backend-core/lib/queue/queue-metrics";
-import type { ResendHydrator } from "@homescout/backend-core/lib/inbound/resend-hydrator";
-import type { InboundIngestionService } from "@homescout/backend-core/services/inbound-ingestion.service";
-import type { OutreachReplyService } from "@homescout/backend-core/services/outreach-reply.service";
-import type { InboundEmailJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
+import { inboundDroppedTotal } from "@homeranger/backend-core/lib/queue/queue-metrics";
+import type { ResendHydrator } from "@homeranger/backend-core/lib/inbound/resend-hydrator";
+import type { InboundIngestionService } from "@homeranger/backend-core/services/inbound-ingestion.service";
+import type { OutreachReplyService } from "@homeranger/backend-core/services/outreach-reply.service";
+import type { InboundEmailJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
 
 /** Duck-type the `retryable` flag so this works for BOTH InboundIngestionError
  *  (service) and ExtractionError (provider) without importing either class.

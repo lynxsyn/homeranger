@@ -5,8 +5,8 @@
 import { describe, expect, it } from "vitest";
 import { UnrecoverableError } from "bullmq";
 import { makeRecomputeHandler } from "./recompute-handler.js";
-import { analysisDroppedTotal } from "@homescout/backend-core/lib/ai/analysis-metrics";
-import type { PreferenceMatchService } from "@homescout/backend-core/services/preference-match.service";
+import { analysisDroppedTotal } from "@homeranger/backend-core/lib/ai/analysis-metrics";
+import type { PreferenceMatchService } from "@homeranger/backend-core/services/preference-match.service";
 
 function recomputeThrowing(error: unknown): PreferenceMatchService {
   return {

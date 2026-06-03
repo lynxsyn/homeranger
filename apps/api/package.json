@@ -1,5 +1,5 @@
 {
-  "name": "@homescout/api",
+  "name": "@homeranger/api",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -17,8 +17,8 @@
     "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@homescout/backend-core": "workspace:*",
-    "@homescout/shared": "workspace:*",
+    "@homeranger/backend-core": "workspace:*",
+    "@homeranger/shared": "workspace:*",
     "@fastify/cors": "11.2.0",
     "@fastify/formbody": "8.0.2",
     "@prisma/client": "7.8.0",

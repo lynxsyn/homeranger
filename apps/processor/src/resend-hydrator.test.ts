@@ -7,9 +7,9 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RealResendHydrator } from "./resend-hydrator.js";
-import { MAX_ATTACHMENTS_PER_EMAIL } from "@homescout/backend-core/lib/ai/listing-extraction.adapter";
-import type { R2Storage } from "@homescout/backend-core/lib/storage/r2";
-import type { InboundEmailJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
+import { MAX_ATTACHMENTS_PER_EMAIL } from "@homeranger/backend-core/lib/ai/listing-extraction.adapter";
+import type { R2Storage } from "@homeranger/backend-core/lib/storage/r2";
+import type { InboundEmailJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
 import type { Resend } from "resend";
 
 function fakeResend(attachmentCount: number): Resend {
@@ -25,7 +25,7 @@ function fakeResend(attachmentCount: number): Resend {
           return {
             data: {
               created_at: new Date().toISOString(),
-              to: ["inbox@homescout.app"],
+              to: ["inbox@homeranger.app"],
               from: "agent@example.com",
               subject: "s",
               text: "body",
@@ -61,7 +61,7 @@ function meta(): InboundEmailJobPayload {
   return {
     email_id: "email-caps-1",
     from: "agent@example.com",
-    to: ["inbox@homescout.app"],
+    to: ["inbox@homeranger.app"],
     attachments: [],
   };
 }

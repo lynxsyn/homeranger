@@ -30,7 +30,7 @@ _[tool: read_file]_
 
 _[tool: questions_v2]_
 
-This is a well-scoped simplification of the existing HomeScout Listings screen — strip out the advanced filtering and present a single, calm table you skim and click out from. A few decisions will shape it, so let me ask before building.
+This is a well-scoped simplification of the existing HomeRanger Listings screen — strip out the advanced filtering and present a single, calm table you skim and click out from. A few decisions will shape it, so let me ask before building.
 
 ## User
 
@@ -143,7 +143,7 @@ _[tool: done]_
 
 _[tool: fork_verifier_agent]_
 
-Done. **HomeScout.html** is a clean, responsive listings app built on your design system.
+Done. **HomeRanger.html** is a clean, responsive listings app built on your design system.
 
 **What it does**
 - **Sortable table** — Home (with postcode · type), Price, Beds/baths, the conic match-score ring, Status, Agent, and Seen. Click any column header to sort, or use the **Sort** dropdown; both stay in sync.

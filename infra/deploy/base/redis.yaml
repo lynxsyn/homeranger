@@ -2,11 +2,11 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: redis-data-lh
-  namespace: homescout
+  namespace: homeranger
   labels:
-    app: homescout-redis
-    app.kubernetes.io/name: homescout-redis
-    app.kubernetes.io/part-of: homescout-app
+    app: homeranger-redis
+    app.kubernetes.io/name: homeranger-redis
+    app.kubernetes.io/part-of: homeranger-app
 spec:
   accessModes:
     - ReadWriteOnce
@@ -18,14 +18,14 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: homescout-redis
-  namespace: homescout
+  name: homeranger-redis
+  namespace: homeranger
   annotations:
     kustomize.toolkit.fluxcd.io/force: enabled
   labels:
-    app: homescout-redis
-    app.kubernetes.io/name: homescout-redis
-    app.kubernetes.io/part-of: homescout-app
+    app: homeranger-redis
+    app.kubernetes.io/name: homeranger-redis
+    app.kubernetes.io/part-of: homeranger-app
 spec:
   revisionHistoryLimit: 3
   replicas: 1
@@ -33,12 +33,12 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: homescout-redis
+      app: homeranger-redis
   template:
     metadata:
       labels:
-        app: homescout-redis
-        app.kubernetes.io/name: homescout-redis
+        app: homeranger-redis
+        app.kubernetes.io/name: homeranger-redis
     spec:
       automountServiceAccountToken: false
       priorityClassName: platform-critical
@@ -57,7 +57,7 @@ spec:
           whenUnsatisfiable: DoNotSchedule
           labelSelector:
             matchLabels:
-              app.kubernetes.io/name: homescout-redis
+              app.kubernetes.io/name: homeranger-redis
       securityContext:
         fsGroup: 999
         seccompProfile:
@@ -79,7 +79,7 @@ spec:
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: homescout-secret
+                  name: homeranger-secret
                   key: REDIS_PASSWORD
           securityContext:
             runAsNonRoot: true
@@ -116,15 +116,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: homescout-redis
-  namespace: homescout
+  name: homeranger-redis
+  namespace: homeranger
   labels:
-    app: homescout-redis
-    app.kubernetes.io/name: homescout-redis
+    app: homeranger-redis
+    app.kubernetes.io/name: homeranger-redis
 spec:
   type: ClusterIP
   ports:
     - port: 6379
       targetPort: 6379
   selector:
-    app: homescout-redis
+    app: homeranger-redis

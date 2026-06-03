@@ -2,7 +2,7 @@
  * Database test helper — provides a Prisma client (driver-adapter / @prisma/adapter-pg)
  * for integration tests. Requires a pgvector Postgres running via
  * `pnpm dev:services` (docker-compose.dev.yaml) and migrations applied via
- * `pnpm --filter @homescout/api prisma:deploy`.
+ * `pnpm --filter @homeranger/api prisma:deploy`.
  *
  * Mirrors doxus-web/packages/backend-core/src/test/db-helper.ts.
  */

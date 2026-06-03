@@ -1,5 +1,5 @@
 /**
- * ScoutsPage — the HomeScout Scouts screen. A faithful port of the
+ * ScoutsPage — the HomeRanger Scouts screen. A faithful port of the
  * claude.ai/design handoff (scout-design/project/app/campaigns.jsx), renamed
  * campaign → scout throughout, wired to real tRPC (`trpc.scouts.*`) instead of
  * localStorage.
@@ -16,20 +16,20 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@homescout/backend-core";
+import type { AppRouter } from "@homeranger/backend-core";
 import {
   SCOUT_PROPERTY_TYPES,
   SCOUT_CONDITIONS,
   SCOUT_LAND_OPTIONS,
   SCOUT_SALE_METHODS,
-} from "@homescout/shared";
+} from "@homeranger/shared";
 import type {
   ScoutStatus,
   ScoutPropertyType,
   ScoutCondition,
   ScoutLandOption,
   ScoutSaleMethod,
-} from "@homescout/shared";
+} from "@homeranger/shared";
 import { trpc } from "../lib/trpc";
 import { Icon } from "../components/Icon";
 import { Button, Chip } from "../components/ui";
@@ -839,7 +839,7 @@ function ConfirmPause({ scout, pausing, onCancel, onConfirm }: ConfirmPauseProps
           </div>
           <h2 className="confirm-title">Pause this scout?</h2>
           <p className="confirm-text">
-            HomeScout will stop reaching out to new agents and stop pulling in new
+            HomeRanger will stop reaching out to new agents and stop pulling in new
             listings for <b>{scout.name}</b>. No message is sent to anyone — your
             existing conversations stay open and warm, and you can resume any time.
           </p>

@@ -1,6 +1,6 @@
 /**
  * Enum drift guard (M2 LOCKED decision #3): the shared zod enums in
- * `@homescout/shared` and the generated Prisma enums in `@prisma/client` cannot
+ * `@homeranger/shared` and the generated Prisma enums in `@prisma/client` cannot
  * physically import each other (shared is browser-bundled, free of Prisma), so
  * this unit test is the single-source-of-truth enforcement. It asserts that
  * `Object.values(PrismaEnum)` deep-equals the shared `z.enum(...).options` for
@@ -33,7 +33,7 @@ import {
   ScoutStatusEnum,
   SuppressionReasonEnum,
   TenureEnum,
-} from "@homescout/shared";
+} from "@homeranger/shared";
 
 describe("Prisma <-> shared enum drift", () => {
   it.each([

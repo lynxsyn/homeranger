@@ -30,7 +30,7 @@ export interface R2Config {
   endpoint: string;
   accessKeyId: string;
   secretAccessKey: string;
-  /** Bucket for inbound attachments (default homescout-attachments). */
+  /** Bucket for inbound attachments (default homeranger-attachments). */
   bucket: string;
 }
 
@@ -91,7 +91,7 @@ export function getR2Config(): R2Config {
     endpoint: requireEnv("R2_ENDPOINT", "R2_ENDPOINT", "R2_S3_ENDPOINT"),
     accessKeyId: requireEnv("R2_ACCESS_KEY_ID", "R2_ACCESS_KEY_ID"),
     secretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY", "R2_SECRET_ACCESS_KEY"),
-    bucket: firstEnv("R2_BUCKET", "R2_BUCKET_NAME") ?? "homescout-attachments",
+    bucket: firstEnv("R2_BUCKET", "R2_BUCKET_NAME") ?? "homeranger-attachments",
   };
 }
 

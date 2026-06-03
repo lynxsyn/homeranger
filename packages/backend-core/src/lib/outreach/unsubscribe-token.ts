@@ -23,7 +23,7 @@ function resolveSecret(explicit?: string): string {
     throw new Error("UNSUBSCRIBE_TOKEN_SECRET is required in production");
   }
   // Dev/CI fallback — never used in prod (the guard above throws there).
-  return "homescout-dev-unsubscribe-secret";
+  return "homeranger-dev-unsubscribe-secret";
 }
 
 export function normaliseEmail(email: string): string {

@@ -1,12 +1,12 @@
 /**
- * BullMQ client for the homescout queues. Both runtimes use it:
+ * BullMQ client for the homeranger queues. Both runtimes use it:
  *   - apps/api (webhook routes) construct one to ENQUEUE only (no processor).
  *   - apps/processor constructs one to CONSUME (registers processors).
  *
  * Adapted from doxus-web packages/backend-core/.../queue-client.ts, simplified:
- *   - A small per-name Queue/Worker map (homescout has three queues).
- *   - No Sentry wrapQueue / wrapBullMQProcessor (homescout has no Sentry).
- *   - No scheduled-job registration (homescout has no recurring jobs in M4).
+ *   - A small per-name Queue/Worker map (homeranger has three queues).
+ *   - No Sentry wrapQueue / wrapBullMQProcessor (homeranger has no Sentry).
+ *   - No scheduled-job registration (homeranger has no recurring jobs in M4).
  *
  * The lazy singleton (`getQueueClient`) is created on first enqueue/register so
  * importing a route module in a unit test does NOT require a live Redis; tests

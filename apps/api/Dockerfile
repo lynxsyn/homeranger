@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1.7
-# homescout API image. Mirrors doxus-web/apps/control-plane-api/Dockerfile
+# homeranger API image. Mirrors doxus-web/apps/control-plane-api/Dockerfile
 # (multi-stage, pnpm, prisma generate twice, rewrite shared/backend-core
 # package exports from src/*.ts → dist/*.js so the runtime resolves built JS),
 # minus Sentry/instrumentation and the processor/scheduler stages (those apps
-# are empty skeletons in homescout — add their build+copy lines when they gain
+# are empty skeletons in homeranger — add their build+copy lines when they gain
 # code). Build context is the monorepo root (release.yml passes `context: .`).
 FROM node:24.15.0-alpine AS base
 RUN corepack enable && corepack prepare pnpm@10.34.1 --activate
 WORKDIR /app
-ARG DATABASE_URL=postgresql://ci:ci@localhost:5432/homescout_ci
+ARG DATABASE_URL=postgresql://ci:ci@localhost:5432/homeranger_ci
 ENV DATABASE_URL=$DATABASE_URL
 
 # Install ALL deps. --ignore-scripts blocks postinstall worms inside the image;

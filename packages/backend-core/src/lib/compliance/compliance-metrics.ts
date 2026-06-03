@@ -15,10 +15,10 @@ export const complianceMetricsRegistry = new Registry();
 /** Every send the guard blocked, by gate code (fixed low-cardinality label). */
 export const complianceBlockedTotal: Counter<"reason"> =
   (complianceMetricsRegistry.getSingleMetric(
-    "homescout_compliance_blocked_total",
+    "homeranger_compliance_blocked_total",
   ) as Counter<"reason"> | undefined) ??
   new Counter({
-    name: "homescout_compliance_blocked_total",
+    name: "homeranger_compliance_blocked_total",
     help: "Outreach sends blocked by the ComplianceGuard, labelled by gate code",
     labelNames: ["reason"],
     registers: [complianceMetricsRegistry],
@@ -27,10 +27,10 @@ export const complianceBlockedTotal: Counter<"reason"> =
 /** Outbound emails actually dispatched (post-guard, post-provider). */
 export const outreachSentTotal: Counter<string> =
   (complianceMetricsRegistry.getSingleMetric(
-    "homescout_outreach_sent_total",
+    "homeranger_outreach_sent_total",
   ) as Counter<string> | undefined) ??
   new Counter({
-    name: "homescout_outreach_sent_total",
+    name: "homeranger_outreach_sent_total",
     help: "Outbound outreach emails dispatched through the EmailProvider",
     registers: [complianceMetricsRegistry],
   });

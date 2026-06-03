@@ -1,5 +1,5 @@
 /* global React */
-// HomeScout — shared primitives. Exported to window for cross-file use.
+// HomeRanger — shared primitives. Exported to window for cross-file use.
 const { useRef, useLayoutEffect } = React;
 
 /* ---- Icon: faithful Lucide injection (keeps the <svg> React-owned) ------- */
@@ -47,7 +47,7 @@ function Logo({ size = 30, showWord = true, light = false }) {
         src="assets/logo-mark.svg"
         width={size}
         height={size}
-        alt="HomeScout"
+        alt="HomeRanger"
         style={{ display: "block" }}
       />
       {showWord && (

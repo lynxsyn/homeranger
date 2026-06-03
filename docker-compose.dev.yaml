@@ -7,24 +7,24 @@
 services:
   postgres:
     image: pgvector/pgvector:pg17
-    container_name: homescout-db
+    container_name: homeranger-db
     environment:
-      POSTGRES_DB: homescout
-      POSTGRES_USER: homescout
-      POSTGRES_PASSWORD: homescout
+      POSTGRES_DB: homeranger
+      POSTGRES_USER: homeranger
+      POSTGRES_PASSWORD: homeranger
     ports:
       - "5434:5432"
     volumes:
-      - homescout-pgdata:/var/lib/postgresql/data
+      - homeranger-pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "homescout"]
+      test: ["CMD", "pg_isready", "-U", "homeranger"]
       interval: 5s
       timeout: 3s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: homescout-redis
+    container_name: homeranger-redis
     ports:
       - "6379:6379"
     healthcheck:
@@ -34,4 +34,4 @@ services:
       retries: 5
 
 volumes:
-  homescout-pgdata:
+  homeranger-pgdata:

@@ -7,7 +7,7 @@
  *
  * Single-row: there is no unique constraint forcing one row, so getOrCreate
  * lazily inserts the canonical row on first read (oldest-by-createdAt wins if a
- * race ever produced two). Mirrors homescout repository conventions exactly
+ * race ever produced two). Mirrors homeranger repository conventions exactly
  * (validator-select + optional-tx + singleton + _setForTesting).
  */
 import { Prisma } from "@prisma/client";

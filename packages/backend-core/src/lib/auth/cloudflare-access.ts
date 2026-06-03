@@ -1,5 +1,5 @@
 /**
- * Cloudflare Access JWT verifier — single-user homescout.
+ * Cloudflare Access JWT verifier — single-user homeranger.
  *
  * Mirrors the Doxus verifier (doxus-web .../lib/cf-access.ts) verbatim in shape:
  * jose 4.15.9 `createRemoteJWKSet` + `jwtVerify`, an injectable `keyGetter` so
@@ -7,7 +7,7 @@
  * expected-vs-infra error split (a verification failure resolves to "no
  * identity" → the procedure throws UNAUTHORIZED; an infra error rethrows).
  *
- * homescout differences vs Doxus:
+ * homeranger differences vs Doxus:
  *   - Single allowed user (`ALLOWED_USER_EMAIL`), no tenant/role lookup. The
  *     verified `email` claim must match `ALLOWED_USER_EMAIL` (case-insensitive)
  *     or the identity is rejected.
@@ -27,7 +27,7 @@ export interface CfAccessIdentity {
 }
 
 /** Default dev identity when no Cloudflare Access is configured. */
-export const DEFAULT_DEV_USER_EMAIL = "dev@homescout.local";
+export const DEFAULT_DEV_USER_EMAIL = "dev@homeranger.local";
 
 /** Lower-cased request header Cloudflare injects on every proxied request. */
 export const CF_ACCESS_JWT_HEADER = "cf-access-jwt-assertion";

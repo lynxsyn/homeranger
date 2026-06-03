@@ -1,18 +1,18 @@
-# homescout-web Deployment + Service. nginx static SPA on 8080 (matches the
+# homeranger-web Deployment + Service. nginx static SPA on 8080 (matches the
 # Dockerfile EXPOSE, the Service port, and tunnel.tf's web ingress target).
 # Read-only rootfs with emptyDir mounts for nginx's writable cache/run/tmp dirs;
 # runs as the nginx-alpine uid (101).
 #
 # CHICKEN-AND-EGG: the image must exist in GHCR before Flux deploys this pod.
-# Build + push ghcr.io/lynxsyn/homescout-web:<tag> FIRST.
+# Build + push ghcr.io/lynxsyn/homeranger-web:<tag> FIRST.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: homescout-web
-  namespace: homescout
+  name: homeranger-web
+  namespace: homeranger
   labels:
-    app.kubernetes.io/name: homescout-web
-    app.kubernetes.io/part-of: homescout-app
+    app.kubernetes.io/name: homeranger-web
+    app.kubernetes.io/part-of: homeranger-app
 spec:
   revisionHistoryLimit: 3
   replicas: 1
@@ -23,12 +23,12 @@ spec:
       maxSurge: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: homescout-web
+      app.kubernetes.io/name: homeranger-web
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: homescout-web
-        app.kubernetes.io/part-of: homescout-app
+        app.kubernetes.io/name: homeranger-web
+        app.kubernetes.io/part-of: homeranger-app
     spec:
       automountServiceAccountToken: false
       priorityClassName: platform-critical
@@ -42,7 +42,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: web
-          image: ghcr.io/lynxsyn/homescout-web:0.13.0 # {"$imagepolicy": "flux-system:homescout-web"}
+          image: ghcr.io/lynxsyn/homeranger-web:0.13.0 # {"$imagepolicy": "flux-system:homeranger-web"}
           imagePullPolicy: Always
           ports:
             - name: http
@@ -88,14 +88,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: homescout-web
-  namespace: homescout
+  name: homeranger-web
+  namespace: homeranger
   labels:
-    app.kubernetes.io/name: homescout-web
-    app.kubernetes.io/part-of: homescout-app
+    app.kubernetes.io/name: homeranger-web
+    app.kubernetes.io/part-of: homeranger-app
 spec:
   selector:
-    app.kubernetes.io/name: homescout-web
+    app.kubernetes.io/name: homeranger-web
   ports:
     - name: http
       port: 8080

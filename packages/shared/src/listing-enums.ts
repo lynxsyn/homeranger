@@ -7,7 +7,7 @@
  * `admin.ts` const-object mirrors). The Prisma schema declares the SAME
  * top-level PascalCase enums with the SAME snake_case values, so the two stay
  * in lockstep by convention. We deliberately do NOT `z.nativeEnum(PrismaEnum)`
- * here because `@homescout/shared` is consumed by `apps/web` (the browser
+ * here because `@homeranger/shared` is consumed by `apps/web` (the browser
  * bundle) and MUST stay free of any `@prisma/client` import. Backend code that
  * wants to bridge a Prisma enum to a zod schema uses `z.nativeEnum(...)` in
  * `packages/backend-core` (the `onboarding.router.ts` precedent); the shared
@@ -20,7 +20,7 @@
 import { z } from "zod";
 
 // ── Listing lifecycle status ───────────────────────────────────────────
-// Mirrors Prisma `enum ListingStatus`. Values per docs/plans/homescout-plan.md.
+// Mirrors Prisma `enum ListingStatus`. Values per docs/plans/homeranger-plan.md.
 export const ListingStatusEnum = z.enum([
   "pre_market",
   "live",

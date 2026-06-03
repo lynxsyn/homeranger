@@ -6,12 +6,12 @@
  * (`maxRetriesPerRequest: null`, `enableReadyCheck: false`) — without those two
  * BullMQ throws at Worker construction.
  *
- * homescout difference vs Doxus: the cluster secret carries only
- * `REDIS_PASSWORD` (not a full URL) and the redis Service is `homescout-redis`.
+ * homeranger difference vs Doxus: the cluster secret carries only
+ * `REDIS_PASSWORD` (not a full URL) and the redis Service is `homeranger-redis`.
  * So we prefer an explicit `REDIS_URL` when set (local dev / CI docker-compose /
  * the processor Deployment env), else build the URL from
  * REDIS_HOST / REDIS_PORT / REDIS_PASSWORD. Both the api and processor
- * Deployments inject the connection details from homescout-secret.
+ * Deployments inject the connection details from homeranger-secret.
  */
 import { Redis, type RedisOptions } from "ioredis";
 

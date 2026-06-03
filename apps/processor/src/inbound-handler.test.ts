@@ -11,14 +11,14 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { UnrecoverableError } from "bullmq";
 import { makeInboundHandler } from "./inbound-handler.js";
-import { inboundDroppedTotal } from "@homescout/backend-core/lib/queue/queue-metrics";
-import type { ResendHydrator } from "@homescout/backend-core/lib/inbound/resend-hydrator";
+import { inboundDroppedTotal } from "@homeranger/backend-core/lib/queue/queue-metrics";
+import type { ResendHydrator } from "@homeranger/backend-core/lib/inbound/resend-hydrator";
 import type {
   InboundIngestionService,
   IngestInboundEmailResult,
-} from "@homescout/backend-core/services/inbound-ingestion.service";
-import type { OutreachReplyService } from "@homescout/backend-core/services/outreach-reply.service";
-import type { InboundEmailJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
+} from "@homeranger/backend-core/services/inbound-ingestion.service";
+import type { OutreachReplyService } from "@homeranger/backend-core/services/outreach-reply.service";
+import type { InboundEmailJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
 
 const INGEST_RESULT: IngestInboundEmailResult = {
   listingId: "listing-1",
@@ -40,7 +40,7 @@ function job(): { data: InboundEmailJobPayload } {
     data: {
       email_id: "email-poison-1",
       from: "agent@example.com",
-      to: ["inbox@homescout.app"],
+      to: ["inbox@homeranger.app"],
       attachments: [],
     },
   };
@@ -52,7 +52,7 @@ const okHydrator = {
     return {
       messageId: "email-poison-1",
       receivedAt: new Date(),
-      recipientEmail: "inbox@homescout.app",
+      recipientEmail: "inbox@homeranger.app",
       senderEmail: "agent@example.com",
       senderName: null,
       subject: null,

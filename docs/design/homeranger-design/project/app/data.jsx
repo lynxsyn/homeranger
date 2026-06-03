@@ -1,4 +1,4 @@
-/* HomeScout — listings ingested from estate-agent emails, AI-extracted +
+/* HomeRanger — listings ingested from estate-agent emails, AI-extracted +
    scored against your taste. Prices are plain pounds for display.
    `ageHours` is a numeric sort key behind the human "lastSeen" label. */
 const LISTINGS = [

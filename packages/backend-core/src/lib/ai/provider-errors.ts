@@ -1,5 +1,5 @@
 /**
- * Shared retryable-vs-terminal error classification for the homescout AI
+ * Shared retryable-vs-terminal error classification for the homeranger AI
  * providers (Claude extraction, Claude vision, Voyage embedding, Claude match
  * re-score). Extracted from `claude-extraction.provider.ts` so EVERY provider
  * classifies HTTP failures identically and the BullMQ retry decision (honoured

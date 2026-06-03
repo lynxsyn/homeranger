@@ -4,7 +4,7 @@ import {
   LISTING_STATUSES,
   PROPERTY_TYPES,
   TENURES,
-} from "@homescout/shared";
+} from "@homeranger/shared";
 import { Counter, Histogram, Registry } from "prom-client";
 import { anthropicGatewayClientOptions } from "./ai-gateway.js";
 import {
@@ -28,14 +28,14 @@ import {
  *   - `stripCodeFence` + `JSON.parse` defence in case the model wraps JSON in a
  *     ``` fence despite the schema.
  *
- * Homescout-specific divergences from Doxus:
+ * HomeRanger-specific divergences from Doxus:
  *   - Domain is a single `extractListing` call returning UK listing fields +
  *     `listingUrl`, not Doxus's generic field/line-item extractor.
  *   - Attachments are passed as Claude NATIVE content blocks — `type: "document"`
  *     (Base64PDFSource) for PDFs and `type: "image"` (Base64ImageSource) for
  *     images — instead of Doxus's pre-OCR'd text. Callers pre-extract oversized
  *     PDFs to text via `unpdf` and pass that as a text block (see worker).
- *   - No Sentry / `withProviderSpan`: homescout has no observability span layer
+ *   - No Sentry / `withProviderSpan`: homeranger has no observability span layer
  *     yet, so metrics live in a self-contained Registry exported for /metrics.
  *   - DI pattern (backend.md): interface + `DefaultClaudeExtractionProvider` +
  *     `deps.client ?? defaultClient` + singleton, no direct Prisma. The
@@ -71,8 +71,8 @@ export interface ListingExtractionInput {
 /**
  * Extracted listing fields. Every field is nullable: agent emails are messy and
  * the model MUST emit `null` rather than hallucinate. Enums mirror the Prisma /
- * `@homescout/shared` value tuples exactly. `pricePence` is an integer in pence
- * (homescout money convention); the model is told to convert "£450,000" ->
+ * `@homeranger/shared` value tuples exactly. `pricePence` is an integer in pence
+ * (homeranger money convention); the model is told to convert "£450,000" ->
  * 45000000.
  */
 export interface ExtractedListing {
@@ -95,7 +95,7 @@ export interface ExtractionMetrics {
   model: string;
   inputTokens: number;
   outputTokens: number;
-  /** Approx cost in integer pence (homescout money convention). */
+  /** Approx cost in integer pence (homeranger money convention). */
   costPence: number;
   durationMs: number;
 }
@@ -173,7 +173,7 @@ export function createAnthropicClient(config: ClaudeExtractionConfig): Anthropic
 // ── Metrics ────────────────────────────────────────────────────────────────
 
 /**
- * Self-contained registry (homescout has no shared queue-metrics registry yet,
+ * Self-contained registry (homeranger has no shared queue-metrics registry yet,
  * unlike Doxus). `apps/processor` scrapes this for /metrics; when a shared
  * registry lands, swap `extractionMetricsRegistry` for the shared one. The
  * `getSingleMetric ?? new` guard makes the module import-safe under HMR / repeat
@@ -210,7 +210,7 @@ const anthropicRequestDurationSeconds: Histogram<"model" | "status"> =
  * The `output_config.format.schema`. `additionalProperties: false` + all keys
  * required (nullable via `["string", "null"]`) forces the model to emit every
  * field, using `null` where the email is silent. Enums are the canonical
- * snake_case tuples from `@homescout/shared`, so the result drops straight into
+ * snake_case tuples from `@homeranger/shared`, so the result drops straight into
  * a Prisma upsert without remapping.
  */
 export const LISTING_EXTRACTION_SCHEMA = {

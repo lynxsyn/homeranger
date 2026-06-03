@@ -10,7 +10,7 @@ supersedes: none
 
 ## Context
 
-homescout's primary (and, per the data-source decision, **only**) live source is autonomous-but-guarded cold B2B outreach to UK estate agents, plus ingestion of their replies (free text + PDF/image attachments) and reaction to bounce/complaint events for an automated circuit breaker. This requires a provider that does **send + inbound-parse webhook + bounce/complaint webhooks**, behind a thin swappable interface.
+homeranger's primary (and, per the data-source decision, **only**) live source is autonomous-but-guarded cold B2B outreach to UK estate agents, plus ingestion of their replies (free text + PDF/image attachments) and reaction to bounce/complaint events for an automated circuit breaker. This requires a provider that does **send + inbound-parse webhook + bounce/complaint webhooks**, behind a thin swappable interface.
 
 The workspace commodity gate (`aide/rules/commodity-gate.md`) makes **UK/EEA data residency (storage AND processing of account data, metadata, logs) the hard criterion #1**. A US-resident vendor fails it unless every processing path is contractually bound to an EEA region.
 
@@ -42,7 +42,7 @@ Two findings shaped the decision:
 
 ## Anthropic usage note (recorded here to avoid a future mistake)
 
-The runtime `@anthropic-ai/sdk` calls (email field extraction, Haiku vision taste-scoring, top-K LLM re-rank) require a **metered `ANTHROPIC_API_KEY`** from the Anthropic Console. The **Max subscription authorizes interactive use only** (Claude.ai / Claude Code) and **cannot back the deployed homescout service** — its OAuth tokens are interactive-scoped and using a personal subscription to power a separate service violates the usage terms. Anthropic offers **no embeddings endpoint**; the vector layer uses Voyage (see the embedding decision).
+The runtime `@anthropic-ai/sdk` calls (email field extraction, Haiku vision taste-scoring, top-K LLM re-rank) require a **metered `ANTHROPIC_API_KEY`** from the Anthropic Console. The **Max subscription authorizes interactive use only** (Claude.ai / Claude Code) and **cannot back the deployed homeranger service** — its OAuth tokens are interactive-scoped and using a personal subscription to power a separate service violates the usage terms. Anthropic offers **no embeddings endpoint**; the vector layer uses Voyage (see the embedding decision).
 
 ## DNS records required (own dedicated zone — see M1)
 
@@ -51,7 +51,7 @@ The runtime `@anthropic-ai/sdk` calls (email field extraction, Haiku vision tast
 - **SPF**: TXT including Resend's sending hosts.
 - **DMARC**: TXT, `p=none` during warmup → tighten to `p=quarantine`.
 
-Records go in homescout's own Terraform (`infra/terraform/cloudflare/`), mirroring the shape of `doxus-infra/terraform/cloudflare/dns.tf`.
+Records go in homeranger's own Terraform (`infra/terraform/cloudflare/`), mirroring the shape of `doxus-infra/terraform/cloudflare/dns.tf`.
 
 ## Consequences
 

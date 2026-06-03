@@ -30,7 +30,7 @@ import { Client } from "pg";
 const API_BASE = process.env.E2E_API_BASE_URL ?? "http://localhost:3000";
 const DB_URL =
   process.env.DATABASE_URL ??
-  "postgresql://homescout:homescout@localhost:5434/homescout";
+  "postgresql://homeranger:homeranger@localhost:5434/homeranger";
 
 const RUN_ID = Date.now().toString(36);
 

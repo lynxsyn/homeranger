@@ -59,7 +59,7 @@ function makeRow(overrides: Partial<ListingRecord> = {}): ListingRecord {
 }
 
 /** Caller authenticated as the dev user. */
-const authedCaller = appRouter.createCaller({ user: { email: "dev@homescout.local" } });
+const authedCaller = appRouter.createCaller({ user: { email: "dev@homeranger.local" } });
 
 afterEach(() => {
   _setListingRepositoryForTesting(null);

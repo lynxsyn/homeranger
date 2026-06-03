@@ -1,5 +1,5 @@
 /**
- * tRPC root for @homescout/backend-core (ROOT-level, Doxus convention).
+ * tRPC root for @homeranger/backend-core (ROOT-level, Doxus convention).
  *
  * Mirrors doxus-web .../trpc.ts: `initTRPC.context<Context>().create({
  * transformer: superjson })` then export `router`, `publicProcedure`,
@@ -7,7 +7,7 @@
  * set the SAME `transformer: superjson` on its link or Date/BigInt round-trips
  * silently corrupt.
  *
- * homescout simplifications vs Doxus: no Sentry middleware wrapper, no
+ * homeranger simplifications vs Doxus: no Sentry middleware wrapper, no
  * tenant/role procedures (single user, no tenant scoping per M3 AC#1).
  */
 import { initTRPC, TRPCError } from "@trpc/server";

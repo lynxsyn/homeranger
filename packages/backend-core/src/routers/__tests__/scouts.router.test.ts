@@ -75,7 +75,7 @@ function makeScout(overrides: Partial<ScoutRecord> = {}): ScoutRecord {
 }
 
 const authedCaller = appRouter.createCaller({
-  user: { email: "dev@homescout.local" },
+  user: { email: "dev@homeranger.local" },
 });
 
 afterEach(() => {

@@ -3,7 +3,7 @@
  *
  * Contract (mirrors doxus-web/.../setup-integration.ts):
  *   - Migrations are NOT run here — that is the caller's job
- *     (`pnpm --filter @homescout/api prisma:deploy` locally / the CI step).
+ *     (`pnpm --filter @homeranger/api prisma:deploy` locally / the CI step).
  *   - This setup only resolves DATABASE_URL, verifies pgvector connectivity,
  *     and confirms the `vector` extension + the Listing.embedding column exist
  *     so specs fail fast with a clear message instead of a cryptic SQL error.
@@ -13,9 +13,9 @@
  */
 import { getTestPrisma, disconnectTestPrisma } from "./db-helper.js";
 
-// Matches the live hs-pgvector-dev container (host port 5434, db `homescout`).
+// Matches the live hs-pgvector-dev container (host port 5434, db `homeranger`).
 const DEFAULT_DATABASE_URL =
-  "postgresql://homescout:homescout@localhost:5434/homescout";
+  "postgresql://homeranger:homeranger@localhost:5434/homeranger";
 
 export default async function setup() {
   if (!process.env.DATABASE_URL || process.env.DATABASE_URL === "") {
@@ -31,7 +31,7 @@ export default async function setup() {
     throw new Error(
       `Integration test setup failed: cannot connect to PostgreSQL at ` +
         `${process.env.DATABASE_URL}. Run: pnpm dev:services && ` +
-        `pnpm --filter @homescout/api prisma:deploy`,
+        `pnpm --filter @homeranger/api prisma:deploy`,
       { cause: err },
     );
   }
@@ -44,7 +44,7 @@ export default async function setup() {
     throw new Error(
       "Integration test setup failed: the `vector` extension is not installed. " +
         "The raw pgvector migration must run before integration tests: " +
-        "pnpm --filter @homescout/api prisma:deploy",
+        "pnpm --filter @homeranger/api prisma:deploy",
     );
   }
 
@@ -58,7 +58,7 @@ export default async function setup() {
     throw new Error(
       "Integration test setup failed: Listing.embedding column missing. " +
         "Ensure the raw pgvector migration applied: " +
-        "pnpm --filter @homescout/api prisma:deploy",
+        "pnpm --filter @homeranger/api prisma:deploy",
     );
   }
 

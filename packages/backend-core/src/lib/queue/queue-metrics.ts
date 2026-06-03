@@ -1,7 +1,7 @@
 /**
- * Prometheus metrics for the homescout queue layer. The processor's /metrics
- * endpoint scrapes this registry. A self-contained Registry (homescout has no
- * shared metrics registry) with a single gauge `homescout_queue_depth` labelled
+ * Prometheus metrics for the homeranger queue layer. The processor's /metrics
+ * endpoint scrapes this registry. A self-contained Registry (homeranger has no
+ * shared metrics registry) with a single gauge `homeranger_queue_depth` labelled
  * by queue. The `getSingleMetric ?? new` guard makes the module import-safe
  * under HMR / repeated test imports (Doxus pattern).
  */
@@ -12,12 +12,12 @@ import type { QueueClient } from "./queue-client.js";
 export const queueMetricsRegistry = new Registry();
 
 const queueDepthGauge: Gauge<"queue"> =
-  (queueMetricsRegistry.getSingleMetric("homescout_queue_depth") as
+  (queueMetricsRegistry.getSingleMetric("homeranger_queue_depth") as
     | Gauge<"queue">
     | undefined) ??
   new Gauge({
-    name: "homescout_queue_depth",
-    help: "Number of waiting + active jobs per homescout queue",
+    name: "homeranger_queue_depth",
+    help: "Number of waiting + active jobs per homeranger queue",
     labelNames: ["queue"],
     registers: [queueMetricsRegistry],
   });
@@ -28,11 +28,11 @@ const queueDepthGauge: Gauge<"queue"> =
  * counter is the only signal they happened — scraped via the processor /metrics.
  */
 export const inboundDroppedTotal: Counter<string> =
-  (queueMetricsRegistry.getSingleMetric("homescout_inbound_dropped_total") as
+  (queueMetricsRegistry.getSingleMetric("homeranger_inbound_dropped_total") as
     | Counter<string>
     | undefined) ??
   new Counter({
-    name: "homescout_inbound_dropped_total",
+    name: "homeranger_inbound_dropped_total",
     help: "Inbound emails dropped as non-retryable (poison pill)",
     registers: [queueMetricsRegistry],
   });
@@ -45,10 +45,10 @@ export const inboundDroppedTotal: Counter<string> =
  */
 export const jobTerminalFailuresTotal: Counter<"queue"> =
   (queueMetricsRegistry.getSingleMetric(
-    "homescout_job_terminal_failures_total",
+    "homeranger_job_terminal_failures_total",
   ) as Counter<"queue"> | undefined) ??
   new Counter({
-    name: "homescout_job_terminal_failures_total",
+    name: "homeranger_job_terminal_failures_total",
     help: "Jobs that exhausted their retries (terminal failure) per queue",
     labelNames: ["queue"],
     registers: [queueMetricsRegistry],

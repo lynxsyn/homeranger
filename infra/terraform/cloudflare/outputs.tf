@@ -1,11 +1,11 @@
 output "zone_id" {
   value       = var.zone_id
-  description = "aid-engineering.com zone ID (existing zone, passed through from tfvars)"
+  description = "homeranger.app zone ID (existing zone, passed through from tfvars)"
 }
 
 output "tunnel_id" {
-  value       = cloudflare_zero_trust_tunnel_cloudflared.homescout.id
-  description = "Cloudflare Tunnel ID for app.aid-engineering.com"
+  value       = cloudflare_zero_trust_tunnel_cloudflared.homeranger.id
+  description = "Cloudflare Tunnel ID for app.homeranger.app"
 }
 
 # Retrieve the tunnel connector token via:

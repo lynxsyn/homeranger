@@ -18,7 +18,7 @@
  *          the data survives the prod image build; a sibling .json would not be
  *          copied to dist and would CrashLoop at runtime.
  *
- * Run:  pnpm --filter @homescout/backend-core exec tsx scripts/build-uk-outcodes.mts
+ * Run:  pnpm --filter @homeranger/backend-core exec tsx scripts/build-uk-outcodes.mts
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

@@ -1,5 +1,5 @@
 /**
- * Listings-table E2E — the 2nd HomeScout design (claude.ai/design handoff) on
+ * Listings-table E2E — the 2nd HomeRanger design (claude.ai/design handoff) on
  * the real read path. The product loop is discover → outreach → ingest → list,
  * so the table has NO search filters: just the seeded homes, sortable, in a
  * table or card view, with each row linking back to the agent's source page.

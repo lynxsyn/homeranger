@@ -50,7 +50,7 @@ export function draftOutreach(input: OutreachDraftInput): OutreachDraft {
     "If you have anything that might fit, a quick reply with the details (or a link) would be very welcome. Happy to move quickly for the right property.",
     "",
     "Many thanks,",
-    "Homescout (on behalf of the buyer)",
+    "HomeRanger (on behalf of the buyer)",
   ];
   const bodyText = input.unsubscribeUrl
     ? [

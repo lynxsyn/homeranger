@@ -1,11 +1,11 @@
-# homescout base kustomization.
+# homeranger base kustomization.
 #
 # M1 shipped the data layer (namespace + isolation + secret + postgres + redis).
 # M3 adds the api + web Deployments, the GHCR pull secret, and Flux image
 # automation.
 #
 # CHICKEN-AND-EGG (read before reconciling): the api/web Deployments reference
-# ghcr.io/lynxsyn/homescout-{api,web} images that MUST exist in GHCR before Flux
+# ghcr.io/lynxsyn/homeranger-{api,web} images that MUST exist in GHCR before Flux
 # deploys the pods, or they ImagePullBackOff. The orchestrator's apply ordering
 # is: (1) build + push both images at the release tag, (2) create + SOPS-encrypt
 # ghcr-secret.enc.yaml, (3) THEN let Flux reconcile this kustomization. The
@@ -14,7 +14,7 @@
 # Flux simply waits on the images, and the pods go Ready once they exist).
 #
 # secret.enc.yaml + ghcr-secret.enc.yaml are SOPS-encrypted; Flux decrypts them
-# in-cluster via the Kustomization's decryption.secretRef (sops-age-homescout).
+# in-cluster via the Kustomization's decryption.secretRef (sops-age-homeranger).
 # For the imperative pre-merge bootstrap, decrypt locally:
 #   `sops -d secret.enc.yaml | kubectl apply -f -`.
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -33,20 +33,20 @@ resources:
   - api-deployment.yaml
   - web-deployment.yaml
   # M4 brings up the BullMQ worker (apps/processor) as a consume-only
-  # Deployment. It pulls ghcr.io/lynxsyn/homescout-processor (built by the
+  # Deployment. It pulls ghcr.io/lynxsyn/homeranger-processor (built by the
   # release.yml matrix once apps/processor/Dockerfile lands) and is gated by
   # the same chicken-and-egg ordering as the api/web images: build + push the
   # tag FIRST, then let Flux reconcile.
   - processor-deployment.yaml
   # M6 brings up the leader-locked scheduler (apps/scheduler) — Redis-only, no
-  # DB. It pulls ghcr.io/lynxsyn/homescout-scheduler (built by the release.yml
+  # DB. It pulls ghcr.io/lynxsyn/homeranger-scheduler (built by the release.yml
   # matrix once apps/scheduler/Dockerfile lands) under the same chicken-and-egg
   # ordering as the api/web/processor images: build + push the tag FIRST, then
   # let Flux reconcile. The api/web/processor pods are unaffected if the
   # scheduler image is briefly absent.
   - scheduler-deployment.yaml
-  # Live edge: the Cloudflare Tunnel connector (app.aid-engineering.com +
-  # hooks.aid-engineering.com). The tunnel + ingress config + DNS CNAMEs are
+  # Live edge: the Cloudflare Tunnel connector (app.homeranger.app +
+  # hooks.homeranger.app). The tunnel + ingress config + DNS CNAMEs are
   # Terraform-managed (infra/terraform/cloudflare); this is just the in-cluster
   # connector that dials out and pulls its config via TUNNEL_TOKEN. The token
   # secret is SOPS-encrypted and decrypted in-cluster by Flux.

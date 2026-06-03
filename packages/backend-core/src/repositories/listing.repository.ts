@@ -21,7 +21,7 @@ import {
   type Tenure,
 } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import type { ListingSortField, SortDirection } from "@homescout/shared";
+import type { ListingSortField, SortDirection } from "@homeranger/shared";
 import {
   clampLimit,
   decodeCompositeCursor,

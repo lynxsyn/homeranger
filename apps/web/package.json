@@ -1,5 +1,5 @@
 {
-  "name": "@homescout/web",
+  "name": "@homeranger/web",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -13,8 +13,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@homescout/backend-core": "workspace:*",
-    "@homescout/shared": "workspace:*",
+    "@homeranger/backend-core": "workspace:*",
+    "@homeranger/shared": "workspace:*",
     "@tanstack/react-query": "5.100.14",
     "@trpc/client": "11.16.0",
     "@trpc/react-query": "11.16.0",

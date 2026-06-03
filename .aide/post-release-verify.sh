@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# homescout post-release verify (AIDE Change Delivery Protocol Step 17).
+# homeranger post-release verify (AIDE Change Delivery Protocol Step 17).
 # SELF-CONTAINED (no doxus-ops dependency).
 #
 # Two modes (VERIFY_MODE):
 #   infra (default, M1): the DB/Redis/Flux gate IS the verify, per
 #         docs/specs/M1-infra-scaffold.md DoD. Checks, in order:
-#           1. Flux Kustomization `homescout` reconciles to Ready (if registered).
-#           2. homescout-postgres + homescout-redis Deployments rolled out.
+#           1. Flux Kustomization `homeranger` reconciles to Ready (if registered).
+#           2. homeranger-postgres + homeranger-redis Deployments rolled out.
 #           3. Live data checks: SELECT '[1,2,3]'::vector (pgvector) + redis AUTH PING.
 #         No app Deployment / HTTP probe (none exists until M2+).
 #   app   (M2+): everything in infra PLUS:
-#           4. homescout-api Deployment rolled out.
+#           4. homeranger-api Deployment rolled out.
 #           5. HTTP /api/health == 200 and /api/version contains MERGE_SHA.
 #           6. (external probe only) /trpc reaches the API as JSON, not the
 #              nginx SPA shell — guards the tunnel-ingress /trpc routing.
 #
 # Env: MERGE_SHA (required, used in app mode for the version-ancestry check).
-#      VERIFY_MODE=infra|app  NS=homescout  FLUX_NS=flux-system  KS=homescout
+#      VERIFY_MODE=infra|app  NS=homeranger  FLUX_NS=flux-system  KS=homeranger
 #      KUBE_CONTEXT (optional)  VERIFY_TIMEOUT_SEC=600
 #      VERIFY_API_BASE_URL (app mode external probe; else in-cluster curl)
 set -euo pipefail
 
 : "${MERGE_SHA:?MERGE_SHA is required}"
 VERIFY_MODE="${VERIFY_MODE:-infra}"
-NS="${NS:-homescout}"
+NS="${NS:-homeranger}"
 FLUX_NS="${FLUX_NS:-flux-system}"
-KS="${KS:-homescout}"
+KS="${KS:-homeranger}"
 TIMEOUT="${VERIFY_TIMEOUT_SEC:-600}"
 KCTX=(${KUBE_CONTEXT:+--context "$KUBE_CONTEXT"})
 K() { kubectl "${KCTX[@]}" "$@"; }
@@ -49,16 +49,16 @@ fi
 
 # 2. Data-layer rollouts.
 log "waiting for postgres + redis rollouts …"
-K -n "$NS" rollout status deploy/homescout-postgres --timeout="${TIMEOUT}s" || fail "homescout-postgres not rolled out"
-K -n "$NS" rollout status deploy/homescout-redis --timeout="${TIMEOUT}s" || fail "homescout-redis not rolled out"
+K -n "$NS" rollout status deploy/homeranger-postgres --timeout="${TIMEOUT}s" || fail "homeranger-postgres not rolled out"
+K -n "$NS" rollout status deploy/homeranger-redis --timeout="${TIMEOUT}s" || fail "homeranger-redis not rolled out"
 
 # 3. Live data checks (encode the gate the operator ran manually at bootstrap).
 log "pgvector check: SELECT '[1,2,3]'::vector …"
-K -n "$NS" exec deploy/homescout-postgres -- psql -U homescout_admin -d homescout -tAc "SELECT '[1,2,3]'::vector;" >/dev/null \
+K -n "$NS" exec deploy/homeranger-postgres -- psql -U homeranger_admin -d homeranger -tAc "SELECT '[1,2,3]'::vector;" >/dev/null \
   || fail "pgvector SELECT failed (extension missing?)"
 log "redis AUTH PING …"
-RPW="$(K -n "$NS" get secret homescout-secret -o jsonpath='{.data.REDIS_PASSWORD}' | base64 -d)"
-[ "$(K -n "$NS" exec deploy/homescout-redis -- env REDISCLI_AUTH="$RPW" redis-cli ping 2>/dev/null)" = "PONG" ] \
+RPW="$(K -n "$NS" get secret homeranger-secret -o jsonpath='{.data.REDIS_PASSWORD}' | base64 -d)"
+[ "$(K -n "$NS" exec deploy/homeranger-redis -- env REDISCLI_AUTH="$RPW" redis-cli ping 2>/dev/null)" = "PONG" ] \
   || fail "redis PING did not return PONG"
 log "infra gate PASSED ✓ (pgvector + roles via init-Job, redis reachable)"
 
@@ -68,8 +68,8 @@ if [ "$VERIFY_MODE" != "app" ]; then
 fi
 
 # 4. App deployment (M2+).
-log "VERIFY_MODE=app — waiting for homescout-api rollout …"
-K -n "$NS" rollout status deploy/homescout-api --timeout="${TIMEOUT}s" || fail "homescout-api not rolled out"
+log "VERIFY_MODE=app — waiting for homeranger-api rollout …"
+K -n "$NS" rollout status deploy/homeranger-api --timeout="${TIMEOUT}s" || fail "homeranger-api not rolled out"
 
 # 5. HTTP /api/health + /api/version SHA-ancestry.
 probe() { # $1=path -> echoes body
@@ -81,7 +81,7 @@ probe() { # $1=path -> echoes body
     # In-cluster: the api runtime is node:alpine (busybox wget, no curl); use
     # 127.0.0.1 (not localhost — alpine resolves localhost to ::1 (IPv6) while
     # Fastify listens on IPv4 0.0.0.0).
-    K -n "$NS" exec deploy/homescout-api -c api -- wget -qO- "http://127.0.0.1:3000$1"
+    K -n "$NS" exec deploy/homeranger-api -c api -- wget -qO- "http://127.0.0.1:3000$1"
   fi
 }
 log "GET /api/health …"; probe /api/health >/dev/null || fail "/api/health not healthy"

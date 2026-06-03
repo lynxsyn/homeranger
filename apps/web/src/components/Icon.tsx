@@ -1,5 +1,5 @@
 /**
- * Icon — a thin wrapper over lucide-react keyed by the HomeScout design's
+ * Icon — a thin wrapper over lucide-react keyed by the HomeRanger design's
  * kebab-case names (so ported markup reads the same as the handoff prototype).
  * Default strokeWidth 1.75 matches the design system.
  *

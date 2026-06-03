@@ -8,7 +8,7 @@
 -- SearchProfile in the UI.
 --
 -- DDL only (no data backfill — a fresh table). Hand-authored to match the
--- NNNN_name convention of 0001..0004 (homescout does NOT use Prisma's
+-- NNNN_name convention of 0001..0004 (homeranger does NOT use Prisma's
 -- timestamped dirs); the DDL is exactly what `prisma migrate diff` emits for
 -- this schema change. The string-array option columns mirror the
 -- SearchProfile.outcodes / Agent.coveredOutcodes form (TEXT[] DEFAULT ARRAY).
@@ -46,4 +46,4 @@ CREATE INDEX "Scout_updatedAt_idx" ON "Scout" ("updatedAt" DESC);
 -- should already cover tables created by the migration role, but we grant
 -- explicitly here so a missing privilege can never silently 500 the app in prod
 -- (post-release-verify only probes /api/version, so it would not catch it).
-GRANT SELECT, INSERT, UPDATE, DELETE ON "Scout" TO "homescout";
+GRANT SELECT, INSERT, UPDATE, DELETE ON "Scout" TO "homeranger";

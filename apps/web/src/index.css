@@ -1,5 +1,5 @@
 @import "tailwindcss";
-/* HomeScout design system (claude.ai/design handoff — see docs/design/homescout-design).
+/* HomeRanger design system (claude.ai/design handoff — see docs/design/homeranger-design).
    tokens → component layer → app layout, all built on CSS variables with a
    first-class light/dark split via [data-theme]. */
 @import "./styles/tokens.css";
@@ -25,7 +25,7 @@
 }
 
 /* ---- Topbar navigation -----------------------------------------------------
-   The handoff design is a single Listings screen; homescout is multi-page
+   The handoff design is a single Listings screen; homeranger is multi-page
    (Listings · Scouts), so the topbar carries a small nav styled with the design
    tokens. Grouped left with the logo; theme toggle stays right. */
 .topbar__left {

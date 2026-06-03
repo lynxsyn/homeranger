@@ -1,6 +1,6 @@
 /**
- * ListingsPage — the HomeScout listings screen, a faithful port of the 2nd
- * claude.ai/design handoff (docs/design/homescout-design/project/app/listings.jsx)
+ * ListingsPage — the HomeRanger listings screen, a faithful port of the 2nd
+ * claude.ai/design handoff (docs/design/homeranger-design/project/app/listings.jsx)
  * onto real tRPC data.
  *
  * The product loop is discover → outreach → ingest → list: homes arrive from
@@ -21,7 +21,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@homescout/backend-core";
+import type { AppRouter } from "@homeranger/backend-core";
 import type { ScoutFilter } from "./ScoutsPage";
 import { trpc } from "../lib/trpc";
 import { Icon } from "../components/Icon";

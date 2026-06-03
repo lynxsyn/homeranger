@@ -5,8 +5,8 @@
  * (PECR/opt-out/suppression/breaker/kill) drops the job; a retryable one
  * (warm-up cap / Redis unavailable) backs off and retries.
  */
-import type { OutreachSendJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
-import type { OutreachService } from "@homescout/backend-core/services/outreach.service";
+import type { OutreachSendJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
+import type { OutreachService } from "@homeranger/backend-core/services/outreach.service";
 import { toWorkerError } from "./worker-error.js";
 
 export interface OutreachSendHandlerDeps {

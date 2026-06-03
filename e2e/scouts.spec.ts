@@ -22,7 +22,7 @@ import { Client } from "pg";
 
 const DB_URL =
   process.env.DATABASE_URL ??
-  "postgresql://homescout:homescout@localhost:5434/homescout";
+  "postgresql://homeranger:homeranger@localhost:5434/homeranger";
 
 const RUN_ID = Date.now().toString(36);
 const SCOUT_NAME = `E2E Scout ${RUN_ID}`;
