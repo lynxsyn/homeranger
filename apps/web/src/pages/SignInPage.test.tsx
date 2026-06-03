@@ -78,4 +78,28 @@ describe("SignInPage", () => {
     fireEvent.click(screen.getByTestId("auth-submit"));
     expect(await screen.findByTestId("auth-confirm")).toBeInTheDocument();
   });
+
+  it("guards against a double-submit while a sign-in is in flight", () => {
+    // A never-resolving signIn keeps the form busy; a second click must not
+    // fire a second call (busy guard + disabled button).
+    signInMock.mockReturnValue(new Promise(() => {}));
+    render(<SignInPage />);
+    fillCredentials();
+    fireEvent.click(screen.getByTestId("auth-submit"));
+    fireEvent.click(screen.getByTestId("auth-submit"));
+    expect(signInMock).toHaveBeenCalledTimes(1);
+    const submit = screen.getByTestId("auth-submit");
+    expect(submit).toBeDisabled();
+    expect(submit).toHaveTextContent(/One moment/i);
+  });
+
+  it("clears a surfaced error when toggling between sign-in and sign-up", async () => {
+    signInMock.mockResolvedValue({ error: "Invalid login credentials" });
+    render(<SignInPage />);
+    fillCredentials();
+    fireEvent.click(screen.getByTestId("auth-submit"));
+    await screen.findByTestId("auth-error");
+    fireEvent.click(screen.getByTestId("auth-toggle"));
+    expect(screen.queryByTestId("auth-error")).not.toBeInTheDocument();
+  });
 });

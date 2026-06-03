@@ -155,3 +155,33 @@ describe("outreach.killSwitch", () => {
     });
   });
 });
+
+describe("outreachRouter operator gating", () => {
+  // A signed-in NON-operator: the outreach engine (send + the global
+  // kill-switch) acts on one shared sending domain / warm-up / kill-switch, so
+  // it must be FORBIDDEN to anyone but the operator. senderName stays open (the
+  // per-user follow-up modal reads it for draft previews).
+  const partner = appRouter.createCaller({
+    user: { id: "33333333-3333-4333-8333-333333333333", email: "partner@homeranger.test" },
+  });
+
+  it("FORBIDS a non-operator from outreach.send", async () => {
+    await expect(
+      partner.outreach.send({ agentEmail: "branch@agency.test" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("FORBIDS a non-operator from reading/flipping the global kill-switch", async () => {
+    await expect(partner.outreach.killSwitch.get()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    await expect(
+      partner.outreach.killSwitch.toggle({ enabled: true }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("still ALLOWS a non-operator to read senderName (per-user follow-up preview)", async () => {
+    // senderName is a plain protectedProcedure — no operator gate.
+    await expect(partner.outreach.senderName()).resolves.toHaveProperty("name");
+  });
+});

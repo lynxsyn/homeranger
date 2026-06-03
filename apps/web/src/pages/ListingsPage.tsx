@@ -652,13 +652,15 @@ export function ListingsPage({
     );
   }
 
-  // Clear the whole interest set — locally AND on the server (so a reload does
-  // not resurrect the cleared bookmarks). Used by the bar's "Clear" + after a
-  // follow-up send.
-  function clearInterest() {
-    const ids = interested;
-    setInterested([]);
-    for (const id of ids) {
+  // Clear the SHOWN interested homes — locally AND on the server (so a reload
+  // does not resurrect them). Scoped to the ids the interest-bar actually counts
+  // (the loaded/filtered page), so Clear matches the visible count and never
+  // silently unsaves off-page bookmarks the user can't see. Used by the bar's
+  // "Clear" + after a follow-up send (both operate on the shown interestedRows).
+  function clearShownInterest(shownIds: string[]) {
+    const shown = new Set(shownIds);
+    setInterested((s) => s.filter((id) => !shown.has(id)));
+    for (const id of shownIds) {
       unsaveMut.mutate({ listingId: id });
     }
     void utils.listings.saved.invalidate();
@@ -859,7 +861,9 @@ export function ListingsPage({
             <InterestBar
               count={interestedRows.length}
               onReview={() => setFollowUp(true)}
-              onClear={clearInterest}
+              onClear={() =>
+                clearShownInterest(interestedRows.map((l) => l.id))
+              }
             />
           )}
 
@@ -868,7 +872,7 @@ export function ListingsPage({
               rows={interestedRows}
               onClose={() => setFollowUp(false)}
               onSent={() => {
-                clearInterest();
+                clearShownInterest(interestedRows.map((l) => l.id));
                 setFollowUp(false);
               }}
             />

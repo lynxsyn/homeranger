@@ -22,17 +22,22 @@ import { createTRPCReact } from "@trpc/react-query";
 import { httpBatchLink, loggerLink } from "@trpc/client";
 import SuperJSON from "superjson";
 import type { AppRouter } from "@homeranger/backend-core";
-import { supabase } from "./supabase";
+import { AUTH_BYPASS, supabase } from "./supabase";
 
 export const trpc = createTRPCReact<AppRouter>();
 
 const authedFetch: typeof fetch = async (input, init) => {
   const headers = new Headers(init?.headers);
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (session?.access_token) {
-    headers.set("Authorization", `Bearer ${session.access_token}`);
+  // Skip the session lookup entirely under the E2E/dev bypass — there is no
+  // login, so no token, and avoiding the per-request async getSession() hop
+  // keeps requests snappy (the API takes its own dev bypass).
+  if (!AUTH_BYPASS) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      headers.set("Authorization", `Bearer ${session.access_token}`);
+    }
   }
   return fetch(input, { ...init, headers, credentials: "include" });
 };

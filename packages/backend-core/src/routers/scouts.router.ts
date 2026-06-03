@@ -34,7 +34,7 @@ import {
   scoutSetStatusInputSchema,
   scoutUpdateInputSchema,
 } from "@homeranger/shared";
-import { protectedProcedure, router } from "../trpc.js";
+import { operatorProcedure, protectedProcedure, router } from "../trpc.js";
 import { ownerKeyFor } from "../lib/auth/supabase-auth.js";
 import {
   scoutRepository,
@@ -170,22 +170,13 @@ function scoutNotFound(error: unknown): never {
   throw error;
 }
 
-/**
- * The outreach loop (launch → discover → review → guarded send) is the
- * OPERATOR's compliance-governed engine: it cold-emails estate agents on the
- * shared sending domain under one global warmup budget + kill-switch + sign-off
- * profile. Multi-user does NOT fan that out — a non-operator can manage their
- * own searches/listings/settings but cannot drive sends. These procedures
- * assert the caller is the operator (owner key null) before doing anything.
- */
-function assertOperator(user: { id: string; email: string } | null): void {
-  if (ownerKeyFor(user) !== null) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "Outreach is operator-only",
-    });
-  }
-}
+// The outreach loop (launch → discover → review → guarded send) is the
+// OPERATOR's compliance-governed engine: it cold-emails estate agents on the
+// shared sending domain under one global warmup budget + kill-switch + sign-off
+// profile. Multi-user does NOT fan that out — a non-operator can manage their
+// own searches/listings/settings but cannot drive sends. Those three procedures
+// use `operatorProcedure` (FORBIDDEN for a non-operator); the CRUD surface uses
+// `protectedProcedure` and scopes by ownerKeyFor(ctx.user).
 
 export const scoutsRouter = router({
   list: protectedProcedure.query(async ({ ctx }): Promise<ScoutRow[]> => {
@@ -281,10 +272,9 @@ export const scoutsRouter = router({
    * Discovery only SOURCES agents — no send fires here. Returns the enqueued
    * flag + the outcodes targeted (so the UI can echo the patch).
    */
-  launch: protectedProcedure
+  launch: operatorProcedure
     .input(scoutByIdInputSchema)
-    .mutation(async ({ ctx, input }): Promise<ScoutLaunchResult> => {
-      assertOperator(ctx.user);
+    .mutation(async ({ input }): Promise<ScoutLaunchResult> => {
       const scout = await scoutRepository.getById(input.id, null);
       if (!scout) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
@@ -313,10 +303,9 @@ export const scoutsRouter = router({
    * an eligible one with reason=null. NOTHING is sent — this is the operator's
    * review surface. A non-ComplianceError rethrows (a real fault, not a block).
    */
-  reviewDrafts: protectedProcedure
+  reviewDrafts: operatorProcedure
     .input(scoutByIdInputSchema)
-    .query(async ({ ctx, input }): Promise<ScoutReviewDraftsResult> => {
-      assertOperator(ctx.user);
+    .query(async ({ input }): Promise<ScoutReviewDraftsResult> => {
       const scout = await scoutRepository.getById(input.id, null);
       if (!scout) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
@@ -371,10 +360,9 @@ export const scoutsRouter = router({
    * brief. The send is STILL guarded at the worker (assertCanSend reserve:true) —
    * approval is consent, not a guard bypass. Returns the count enqueued.
    */
-  approveSends: protectedProcedure
+  approveSends: operatorProcedure
     .input(scoutApproveSendsInputSchema)
-    .mutation(async ({ ctx, input }): Promise<ScoutApproveSendsResult> => {
-      assertOperator(ctx.user);
+    .mutation(async ({ input }): Promise<ScoutApproveSendsResult> => {
       for (const agentId of input.agentIds) {
         await scoutOutreachSendEnqueuer({
           // Scope the key to (scout, agent) so a generic outreach:send to the

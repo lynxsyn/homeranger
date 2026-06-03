@@ -16,9 +16,11 @@
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL =
-  import.meta.env.VITE_SUPABASE_URL ?? "https://jdaklyjwxymrahnbuczi.supabase.co";
-const SUPABASE_ANON_KEY =
-  import.meta.env.VITE_SUPABASE_ANON_KEY ?? "anon-key-not-configured";
+  import.meta.env.VITE_SUPABASE_URL || "https://jdaklyjwxymrahnbuczi.supabase.co";
+const ANON_SENTINEL = "anon-key-not-configured";
+// `||` so an EMPTY repo var (an unset CI variable resolves the build-arg to "")
+// collapses to the sentinel too, not just genuine undefined.
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ANON_SENTINEL;
 
 /**
  * When `VITE_E2E_AUTH_BYPASS === "1"` the SPA treats the user as the signed-in
@@ -28,6 +30,17 @@ const SUPABASE_ANON_KEY =
  * run against the app without a real Supabase login. NEVER set in the prod build.
  */
 export const AUTH_BYPASS = import.meta.env.VITE_E2E_AUTH_BYPASS === "1";
+
+// Loud, not silent: a real (non-bypass) build with no anon key would otherwise
+// mount fine and only fail when a user tries to sign in. Surface the misconfig
+// at boot so a missing `VITE_SUPABASE_ANON_KEY` build var is obvious in the
+// browser console rather than a mysterious "Invalid API key" on submit.
+if (!AUTH_BYPASS && SUPABASE_ANON_KEY === ANON_SENTINEL) {
+  console.error(
+    "[homeranger] VITE_SUPABASE_ANON_KEY is not configured — Supabase sign-in " +
+      "will fail. Set the repo variable / .env value and rebuild.",
+  );
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {

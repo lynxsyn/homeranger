@@ -2,10 +2,12 @@
 # scoped to homeranger: single replica, wait-for-postgres + prisma-migrate init
 # containers, /api/health probes on 3000, secrets from homeranger-secret.
 #
-# Auth is Cloudflare Access (CF_ACCESS_* + ALLOWED_USER_EMAIL from the secret).
-# For M3 those keys are EMPTY in the secret → the api takes the dev-bypass path
-# (ctx.user = { email: DEV_USER_EMAIL }); M4 sets them with the tunnel. There is
-# NO SuperTokens env or sidecar.
+# Auth is Supabase (multi-user). ctx.user is built from the Supabase access
+# token, verified in-process against the project JWKS. SUPABASE_URL +
+# SUPABASE_JWT_AUD are PLAIN env below (public; no runtime secret). With
+# SUPABASE_URL unset the api takes the dev-bypass path (ctx.user = the dev
+# operator) — set here so prod verifies real tokens. ALLOWED_USER_EMAIL is
+# reused as the operator email. No SuperTokens; no CF Access JWT verification.
 #
 # CHICKEN-AND-EGG: the image must exist in GHCR before Flux deploys this pod, or
 # the pod ImagePullBackOffs. The orchestrator builds + pushes ghcr.io/lynxsyn/

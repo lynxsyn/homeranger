@@ -30,6 +30,7 @@ const {
   killSwitchToggleMock,
   killSwitchToggleStateMock,
   locationsSuggestMock,
+  meQueryMock,
 } = vi.hoisted(() => ({
   listQueryMock: vi.fn(),
   invalidateMock: vi.fn(),
@@ -49,6 +50,7 @@ const {
   killSwitchToggleMock: vi.fn(),
   killSwitchToggleStateMock: { isPending: false },
   locationsSuggestMock: vi.fn(),
+  meQueryMock: vi.fn(),
 }));
 
 vi.mock("../lib/trpc", () => ({
@@ -57,15 +59,10 @@ vi.mock("../lib/trpc", () => ({
       scouts: { list: { invalidate: invalidateMock } },
       outreach: { killSwitch: { get: { invalidate: killSwitchInvalidateMock } } },
     }),
-    // The page gates the operator-only launch UI on auth.me.isOperator; default
-    // the tests to the operator so the existing launch/kill-switch tests apply.
-    auth: {
-      me: {
-        useQuery: () => ({
-          data: { id: "u1", email: "dev@homeranger.local", isOperator: true },
-        }),
-      },
-    },
+    // The page gates the operator-only launch UI on auth.me.isOperator; an
+    // overridable hoisted mock (defaulted to the operator in beforeEach) lets a
+    // single test assert the non-operator hides those controls.
+    auth: { me: { useQuery: meQueryMock } },
     scouts: {
       list: { useQuery: listQueryMock },
       create: { useMutation: () => ({ mutate: createMutateMock, isPending: false }) },
@@ -254,6 +251,10 @@ beforeEach(() => {
   withReview();
   withStats();
   withKillSwitch();
+  // Default to the operator so the existing launch/kill-switch tests apply.
+  meQueryMock.mockReturnValue({
+    data: { id: "u1", email: "dev@homeranger.local", isOperator: true },
+  });
 });
 
 describe("ScoutsPage states", () => {
@@ -644,5 +645,30 @@ describe("ScoutsPage kill-switch", () => {
     expect(within(sw).getByRole("switch")).toHaveAttribute("aria-checked", "true");
     fireEvent.click(within(sw).getByRole("switch"));
     expect(killSwitchToggleMock).toHaveBeenCalledWith({ enabled: false });
+  });
+});
+
+describe("ScoutsPage operator-only UI gating", () => {
+  it("hides the Launch control + kill-switch for a non-operator (CRUD still shown)", () => {
+    meQueryMock.mockReturnValue({
+      data: { id: "partner-1", email: "partner@homeranger.test", isOperator: false },
+    });
+    withScouts();
+    render(<ScoutsPage onViewHomes={vi.fn()} />);
+
+    // Operator-only controls are absent from the DOM (not just hidden).
+    expect(screen.queryByTestId("kill-switch")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("scout-launch")).not.toBeInTheDocument();
+    // The per-user CRUD surface still renders.
+    expect(screen.getByTestId("new-scout")).toBeInTheDocument();
+    expect(screen.getAllByTestId("scout-card").length).toBeGreaterThan(0);
+  });
+
+  it("shows the Launch control + kill-switch for the operator", () => {
+    // meQueryMock defaults to the operator in beforeEach.
+    withScouts();
+    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    expect(screen.getByTestId("kill-switch")).toBeInTheDocument();
+    expect(screen.getAllByTestId("scout-launch").length).toBeGreaterThan(0);
   });
 });
