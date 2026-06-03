@@ -23,10 +23,10 @@
 resource "cloudflare_dns_record" "resend_dkim" {
   zone_id = var.zone_id
   name    = "resend._domainkey.${var.mail_subdomain}"
-  type    = "CNAME"
-  content = "RESEND_DKIM_CNAME_TARGET_PLACEHOLDER" # e.g. <selector>.dkim.amazonses.com — copy from Resend dashboard
+  # Resend issued a TXT public-key DKIM record (not a CNAME) for homeranger.app.
+  type    = "TXT"
+  content = "\"p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC2bsZVrX6exfDktPk8oXnrhU3E2G8+bWYQMjgrQj0JZ+nn4UiO5RqfRsXqWKoI2hK5SPu34w6tNphPs9hIR5gm4IUh81vZiEoy9zlRgJmwe19EShB6pGR6NCZLAJehRgPFikLChDWCxmXJMCmuckFIaXgBi7T5uPj3QneAuhoTkQIDAQAB\""
   ttl     = 3600
-  proxied = false
 }
 
 # --- Return-Path / MAIL FROM (bounce + feedback alignment) ---
@@ -41,7 +41,19 @@ resource "cloudflare_dns_record" "resend_return_path_mx" {
   zone_id  = var.zone_id
   name     = "send.${var.mail_subdomain}"
   type     = "MX"
-  content  = "RESEND_DKIM_RETURN_PATH_MX_PLACEHOLDER" # e.g. feedback-smtp.us-east-1.amazonses.com — copy from Resend
+  content  = "feedback-smtp.eu-west-1.amazonses.com" # Resend EU return-path (MAIL FROM bounce/feedback)
+  priority = 10
+  ttl      = 3600
+}
+
+# --- Inbound mail (Resend inbound parse) ---
+# MX on the apex routes inbound replies to Resend's inbound, which POSTs them to
+# the /webhooks/resend/inbound handler (hooks.homeranger.app, Svix-verified).
+resource "cloudflare_dns_record" "resend_inbound_mx" {
+  zone_id  = var.zone_id
+  name     = var.mail_subdomain
+  type     = "MX"
+  content  = "inbound-smtp.eu-west-1.amazonaws.com"
   priority = 10
   ttl      = 3600
 }
