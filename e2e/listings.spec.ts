@@ -12,7 +12,8 @@
  *     whose "Draft follow-ups" opens a FollowUpModal that groups the bookmarked
  *     homes BY AGENCY (one warm note per agency) for review. "Send" is a MOCK →
  *     a success state (followup-sent); no real send (that's PR3). Bookmarks
- *     persist in localStorage "hs-interested".
+ *     persist PER USER server-side (listings.save/unsave); the operator's saved
+ *     set is reset by the E2E seed so the bar starts empty.
  *
  * Covers:
  *   - loads the seeded listings into the table (one row per fixture);
