@@ -118,7 +118,7 @@ function gbpShort(pounds: number | null): string | null {
  * the editor preview in lock-step with the email the agent actually sends.
  * Takes the editor form (pounds), so the preview updates as you type.
  */
-function draftScoutEmail(form: ScoutForm): string {
+function draftScoutEmail(form: ScoutForm, senderName?: string | null): string {
   // Mirror backend-core's draftScoutEmail exactly: trim the location, and only
   // count a positive integer min-beds (a "0" or blank shows no beds clause).
   const loc = (form.location || "your area").split(/[,—–-]/)[0].trim();
@@ -178,7 +178,7 @@ function draftScoutEmail(form: ScoutForm): string {
     (taste ? `In short: ${taste}\n\n` : "") +
     (body ? `${body}\n\n` : "") +
     `If anything's coming up that fits — including pre-market or off-portal — I'd be glad to hear from you before it reaches the portals. Happy to move quickly for the right place.\n\n` +
-    `Many thanks`
+    (senderName ? `Many thanks,\n${senderName}` : `Many thanks`)
   );
 }
 
@@ -583,6 +583,9 @@ function ScoutEditor({
   onClose,
 }: ScoutEditorProps) {
   const [form, setForm] = useState<ScoutForm>(initial);
+  // The sender's name (from RESEND_FROM) so the preview signs off exactly like
+  // the sent email does.
+  const { data: sender } = trpc.outreach.senderName.useQuery();
   const [showPreview, setShowPreview] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
 
@@ -761,7 +764,7 @@ function ScoutEditor({
             </button>
             {showPreview && (
               <pre className="preview__body" data-testid="scout-email-preview">
-                {draftScoutEmail(form)}
+                {draftScoutEmail(form, sender?.name)}
               </pre>
             )}
           </div>

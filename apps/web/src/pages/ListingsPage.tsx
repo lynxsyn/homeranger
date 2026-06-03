@@ -417,7 +417,7 @@ function joinNames(arr: string[]): string {
 }
 
 /** One warm, in-voice note covering all of an agency's bookmarked homes. */
-function followUpEmail(rows: ViewRow[]): string {
+function followUpEmail(rows: ViewRow[], senderName?: string | null): string {
   const single = rows.length === 1;
   const names = joinNames(rows.map((l) => l.address));
   return (
@@ -427,7 +427,7 @@ function followUpEmail(rows: ViewRow[]): string {
     `Could we arrange ${single ? "a viewing" : "viewings"}? I'm flexible on timing and ready to ` +
     `move quickly for the right place. If anything similar is coming up that hasn't reached the ` +
     `portals yet, I'd be glad to hear about it first.\n\n` +
-    `Many thanks`
+    (senderName ? `Many thanks,\n${senderName}` : `Many thanks`)
   );
 }
 
@@ -461,6 +461,7 @@ function FollowUpModal({ rows, onClose, onSent }: FollowUpModalProps) {
   // "Send" is a MOCK → success state. No real email goes out (that lands in a
   // later PR); this just flips to the confirmation.
   const [sent, setSent] = useState(false);
+  const { data: sender } = trpc.outreach.senderName.useQuery();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -541,7 +542,7 @@ function FollowUpModal({ rows, onClose, onSent }: FollowUpModalProps) {
                     </span>
                   ))}
                 </div>
-                <pre className="preview__body fg-draft">{followUpEmail(g.rows)}</pre>
+                <pre className="preview__body fg-draft">{followUpEmail(g.rows, sender?.name)}</pre>
               </div>
             ))}
           </div>

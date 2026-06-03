@@ -20,6 +20,7 @@ import {
   ComplianceError,
   type AgentForGuard,
 } from "../lib/compliance/compliance-guard.js";
+import { currentSenderName } from "../lib/email/email-provider.js";
 import {
   enqueueOutreachSend,
   type EnqueueInput,
@@ -107,4 +108,13 @@ export const outreachRouter = router({
         return { enabled: state.killSwitch };
       }),
   }),
+
+  /**
+   * The outreach sender's display name (parsed from RESEND_FROM) so the email
+   * PREVIEWS in the UI sign off with the same name the sent emails do. `null`
+   * when RESEND_FROM is unset or is a bare address.
+   */
+  senderName: protectedProcedure.query((): { name: string | null } => ({
+    name: currentSenderName(),
+  })),
 });

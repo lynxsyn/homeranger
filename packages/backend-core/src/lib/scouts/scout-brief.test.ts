@@ -155,4 +155,13 @@ describe("draftScoutEmail", () => {
     expect(email).not.toContain("I'd also consider");
     expect(email).not.toContain("auction lots");
   });
+
+  it("signs off with the sender's name when one is given", () => {
+    expect(draftScoutEmail(brief(), "Bryan").endsWith("Many thanks,\nBryan")).toBe(
+      true,
+    );
+    // No name (null / undefined) → the bare "Many thanks" closing.
+    expect(draftScoutEmail(brief(), null).endsWith("Many thanks")).toBe(true);
+    expect(draftScoutEmail(brief()).endsWith("Many thanks")).toBe(true);
+  });
 });
