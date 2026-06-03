@@ -12,8 +12,8 @@ vi.mock("./lib/auth", () => ({ useAuth: useAuthMock }));
 vi.mock("./pages/ListingsPage", () => ({
   ListingsPage: () => <div data-testid="stub-listings" />,
 }));
-vi.mock("./pages/ScoutsPage", () => ({
-  ScoutsPage: () => <div data-testid="stub-scouts" />,
+vi.mock("./pages/SearchesPage", () => ({
+  SearchesPage: () => <div data-testid="stub-searches" />,
 }));
 vi.mock("./pages/SettingsPage", () => ({
   SettingsPage: () => <div data-testid="stub-settings" />,

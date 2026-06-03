@@ -75,15 +75,15 @@ describe("UserMenu dropdown", () => {
     fireEvent.click(screen.getByTestId("account-avatar"));
     const menu = screen.getByTestId("account-menu");
     expect(within(menu).getByTestId("nav-listings")).toHaveTextContent("Listings");
-    expect(within(menu).getByTestId("nav-scouts")).toHaveTextContent("Searches");
+    expect(within(menu).getByTestId("nav-searches")).toHaveTextContent("Searches");
     expect(within(menu).getByTestId("nav-settings")).toHaveTextContent("Settings");
     expect(within(menu).getByTestId("theme-toggle")).toHaveTextContent("Theme");
   });
 
-  it("marks the active route (Searches at /scouts)", () => {
-    renderMenu({}, "/scouts");
+  it("marks the active route (Searches at /searches)", () => {
+    renderMenu({}, "/searches");
     fireEvent.click(screen.getByTestId("account-avatar"));
-    expect(screen.getByTestId("nav-scouts")).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("nav-searches")).toHaveAttribute("aria-current", "true");
     expect(screen.getByTestId("nav-listings")).toHaveAttribute(
       "aria-current",
       "false",

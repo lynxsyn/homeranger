@@ -1,6 +1,6 @@
 /**
- * scoutsRouter unit tests (M8). Pure unit: a fake ScoutRepository is injected
- * via `_setScoutRepositoryForTesting`, and procedures are invoked through a
+ * searchesRouter unit tests (M8). Pure unit: a fake SearchRepository is injected
+ * via `_setSearchRepositoryForTesting`, and procedures are invoked through a
  * caller built with `appRouter.createCaller({ user })`. No DB.
  *
  * Asserts:
@@ -17,18 +17,18 @@ import { TRPCError } from "@trpc/server";
 import { Prisma } from "@prisma/client";
 import { appRouter } from "../index.js";
 import {
-  ScoutRepository,
-  _setScoutRepositoryForTesting,
-  type ScoutRecord,
-} from "../../repositories/scout.repository.js";
+  SearchRepository,
+  _setSearchRepositoryForTesting,
+  type SearchRecord,
+} from "../../repositories/search.repository.js";
 import {
-  _setScoutComplianceGuardForTesting,
-  _setScoutAgentRepositoryForTesting,
-  _setScoutListingRepositoryForTesting,
-  _setScoutSearchProfileRepositoryForTesting,
+  _setSearchComplianceGuardForTesting,
+  _setSearchAgentRepositoryForTesting,
+  _setSearchListingRepositoryForTesting,
+  _setReviewProfileRepositoryForTesting,
   _setDiscoverAgentsEnqueuerForTesting,
-  _setScoutOutreachSendEnqueuerForTesting,
-} from "../scouts.router.js";
+  _setSearchOutreachSendEnqueuerForTesting,
+} from "../searches.router.js";
 import {
   AgentRepository,
   type AgentRecord,
@@ -83,10 +83,10 @@ function makeProfile(
 function injectProfile(overrides: Partial<SearchProfileRecord> = {}): void {
   const repo = new SearchProfileRepository();
   vi.spyOn(repo, "getOrCreate").mockResolvedValue(makeProfile(overrides));
-  _setScoutSearchProfileRepositoryForTesting(repo);
+  _setReviewProfileRepositoryForTesting(repo);
 }
 
-function makeScout(overrides: Partial<ScoutRecord> = {}): ScoutRecord {
+function makeSearch(overrides: Partial<SearchRecord> = {}): SearchRecord {
   const now = new Date("2026-01-01T00:00:00.000Z");
   return {
     id: "00000000-0000-7000-8000-000000000001",
@@ -120,42 +120,42 @@ const partnerCaller = appRouter.createCaller({
 });
 
 afterEach(() => {
-  _setScoutRepositoryForTesting(null);
-  _setScoutComplianceGuardForTesting(null);
-  _setScoutAgentRepositoryForTesting(null);
-  _setScoutListingRepositoryForTesting(null);
-  _setScoutSearchProfileRepositoryForTesting(null);
+  _setSearchRepositoryForTesting(null);
+  _setSearchComplianceGuardForTesting(null);
+  _setSearchAgentRepositoryForTesting(null);
+  _setSearchListingRepositoryForTesting(null);
+  _setReviewProfileRepositoryForTesting(null);
   _setDiscoverAgentsEnqueuerForTesting(null);
-  _setScoutOutreachSendEnqueuerForTesting(null);
+  _setSearchOutreachSendEnqueuerForTesting(null);
   vi.restoreAllMocks();
 });
 
-function injectRepo(): ScoutRepository {
-  const fake = new ScoutRepository();
-  _setScoutRepositoryForTesting(fake);
+function injectRepo(): SearchRepository {
+  const fake = new SearchRepository();
+  _setSearchRepositoryForTesting(fake);
   return fake;
 }
 
-describe("scoutsRouter.list", () => {
-  it("returns every scout from the repository", async () => {
+describe("searchesRouter.list", () => {
+  it("returns every search from the repository", async () => {
     const fake = injectRepo();
-    const scouts = [makeScout(), makeScout({ id: "00000000-0000-7000-8000-000000000002" })];
-    const spy = vi.spyOn(fake, "list").mockResolvedValue(scouts);
+    const searches = [makeSearch(), makeSearch({ id: "00000000-0000-7000-8000-000000000002" })];
+    const spy = vi.spyOn(fake, "list").mockResolvedValue(searches);
 
-    const result = await authedCaller.scouts.list();
-    expect(result).toEqual(scouts);
+    const result = await authedCaller.searches.list();
+    expect(result).toEqual(searches);
     expect(spy).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("scoutsRouter.getById", () => {
-  it("returns the scout", async () => {
+describe("searchesRouter.getById", () => {
+  it("returns the search", async () => {
     const fake = injectRepo();
-    const scout = makeScout();
-    vi.spyOn(fake, "getById").mockResolvedValue(scout);
+    const search = makeSearch();
+    vi.spyOn(fake, "getById").mockResolvedValue(search);
 
-    const result = await authedCaller.scouts.getById({ id: scout.id });
-    expect(result).toEqual(scout);
+    const result = await authedCaller.searches.getById({ id: search.id });
+    expect(result).toEqual(search);
   });
 
   it("throws TRPCError NOT_FOUND on an unknown id", async () => {
@@ -163,20 +163,20 @@ describe("scoutsRouter.getById", () => {
     vi.spyOn(fake, "getById").mockResolvedValue(null);
 
     await expect(
-      authedCaller.scouts.getById({
+      authedCaller.searches.getById({
         id: "00000000-0000-7000-8000-0000000000ff",
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 
-describe("scoutsRouter.create", () => {
+describe("searchesRouter.create", () => {
   it("maps the wire fields to the repository (no outcodes passed) and returns the row", async () => {
     const fake = injectRepo();
-    const created = makeScout();
+    const created = makeSearch();
     const spy = vi.spyOn(fake, "create").mockResolvedValue(created);
 
-    const result = await authedCaller.scouts.create({
+    const result = await authedCaller.searches.create({
       name: "Conwy coast",
       location: "Conwy County",
       types: ["Cottage"],
@@ -211,9 +211,9 @@ describe("scoutsRouter.create", () => {
 
   it("coerces an omitted minBedrooms/maxPricePence to null", async () => {
     const fake = injectRepo();
-    const spy = vi.spyOn(fake, "create").mockResolvedValue(makeScout());
+    const spy = vi.spyOn(fake, "create").mockResolvedValue(makeSearch());
 
-    await authedCaller.scouts.create({ name: "Anywhere" });
+    await authedCaller.searches.create({ name: "Anywhere" });
 
     const arg = spy.mock.calls[0]![0];
     expect(arg.minBedrooms).toBeNull();
@@ -226,15 +226,15 @@ describe("scoutsRouter.create", () => {
   });
 });
 
-describe("scoutsRouter.update", () => {
-  it("updates an existing scout and returns the row", async () => {
+describe("searchesRouter.update", () => {
+  it("updates an existing search and returns the row", async () => {
     const fake = injectRepo();
-    const existing = makeScout();
-    const updated = makeScout({ name: "Renamed" });
+    const existing = makeSearch();
+    const updated = makeSearch({ name: "Renamed" });
     vi.spyOn(fake, "getById").mockResolvedValue(existing);
     const updateSpy = vi.spyOn(fake, "update").mockResolvedValue(updated);
 
-    const result = await authedCaller.scouts.update({
+    const result = await authedCaller.searches.update({
       id: existing.id,
       name: "Renamed",
       location: "Conwy County",
@@ -260,7 +260,7 @@ describe("scoutsRouter.update", () => {
     const updateSpy = vi.spyOn(fake, "update");
 
     await expect(
-      authedCaller.scouts.update({
+      authedCaller.searches.update({
         id: "00000000-0000-7000-8000-0000000000ff",
         name: "Ghost",
         location: "",
@@ -278,13 +278,13 @@ describe("scoutsRouter.update", () => {
   });
 });
 
-describe("scoutsRouter.delete", () => {
+describe("searchesRouter.delete", () => {
   it("deletes by id and echoes { id }", async () => {
     const fake = injectRepo();
     const id = "00000000-0000-7000-8000-000000000001";
     const spy = vi.spyOn(fake, "delete").mockResolvedValue({ id });
 
-    const result = await authedCaller.scouts.delete({ id });
+    const result = await authedCaller.searches.delete({ id });
     expect(result).toEqual({ id });
     expect(spy).toHaveBeenCalledWith(id, null);
   });
@@ -298,18 +298,18 @@ describe("scoutsRouter.delete", () => {
       }),
     );
     await expect(
-      authedCaller.scouts.delete({ id: "00000000-0000-7000-8000-0000000000ff" }),
+      authedCaller.searches.delete({ id: "00000000-0000-7000-8000-0000000000ff" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 
-describe("scoutsRouter.setStatus", () => {
+describe("searchesRouter.setStatus", () => {
   it("maps id + status to the repository and returns the row", async () => {
     const fake = injectRepo();
-    const paused = makeScout({ status: "paused" });
+    const paused = makeSearch({ status: "paused" });
     const spy = vi.spyOn(fake, "setStatus").mockResolvedValue(paused);
 
-    const result = await authedCaller.scouts.setStatus({
+    const result = await authedCaller.searches.setStatus({
       id: paused.id,
       status: "paused",
     });
@@ -326,7 +326,7 @@ describe("scoutsRouter.setStatus", () => {
       }),
     );
     await expect(
-      authedCaller.scouts.setStatus({
+      authedCaller.searches.setStatus({
         id: "00000000-0000-7000-8000-0000000000ff",
         status: "paused",
       }),
@@ -334,71 +334,71 @@ describe("scoutsRouter.setStatus", () => {
   });
 });
 
-describe("scoutsRouter.launch", () => {
-  it("enqueues discover:agents over the scout's outcodes and echoes them", async () => {
+describe("searchesRouter.launch", () => {
+  it("enqueues discover:agents over the search's outcodes and echoes them", async () => {
     const fake = injectRepo();
     vi.spyOn(fake, "getById").mockResolvedValue(
-      makeScout({ outcodes: ["LL30", "LL31"] }),
+      makeSearch({ outcodes: ["LL30", "LL31"] }),
     );
     const enqueue = vi.fn().mockResolvedValue(undefined);
     _setDiscoverAgentsEnqueuerForTesting(enqueue);
 
-    const result = await authedCaller.scouts.launch({
+    const result = await authedCaller.searches.launch({
       id: "00000000-0000-7000-8000-000000000001",
     });
     expect(result).toEqual({ enqueued: true, outcodes: ["LL30", "LL31"] });
     expect(enqueue).toHaveBeenCalledWith({
       idempotencyKey:
-        "discover:agents:scout:00000000-0000-7000-8000-000000000001",
+        "discover:agents:search:00000000-0000-7000-8000-000000000001",
       payload: { regionName: "Conwy County", outcodes: ["LL30", "LL31"] },
     });
   });
 
-  it("BAD_REQUEST when the scout has no target outcodes (no enqueue)", async () => {
+  it("BAD_REQUEST when the search has no target outcodes (no enqueue)", async () => {
     const fake = injectRepo();
-    vi.spyOn(fake, "getById").mockResolvedValue(makeScout({ outcodes: [] }));
+    vi.spyOn(fake, "getById").mockResolvedValue(makeSearch({ outcodes: [] }));
     const enqueue = vi.fn().mockResolvedValue(undefined);
     _setDiscoverAgentsEnqueuerForTesting(enqueue);
 
     await expect(
-      authedCaller.scouts.launch({
+      authedCaller.searches.launch({
         id: "00000000-0000-7000-8000-000000000001",
       }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it("NOT_FOUND for an unknown scout id", async () => {
+  it("NOT_FOUND for an unknown search id", async () => {
     const fake = injectRepo();
     vi.spyOn(fake, "getById").mockResolvedValue(null);
     await expect(
-      authedCaller.scouts.launch({
+      authedCaller.searches.launch({
         id: "00000000-0000-7000-8000-0000000000ff",
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 
-describe("scoutsRouter.reviewDrafts", () => {
+describe("searchesRouter.reviewDrafts", () => {
   function injectAgents(agents: AgentRecord[]): AgentRepository {
     const repo = new AgentRepository();
     vi.spyOn(repo, "list").mockResolvedValue({ items: agents, nextCursor: null });
-    _setScoutAgentRepositoryForTesting(repo);
+    _setSearchAgentRepositoryForTesting(repo);
     return repo;
   }
 
   function injectGuard(impl: (agentId: string) => Promise<void>): void {
-    _setScoutComplianceGuardForTesting({
+    _setSearchComplianceGuardForTesting({
       assertCanSend: vi.fn(
         (agent: { id: string }) => impl(agent.id),
       ),
     } as unknown as ComplianceGuard);
   }
 
-  it("builds the scout draft and maps each agent's guard precheck to eligible/reason", async () => {
+  it("builds the search draft and maps each agent's guard precheck to eligible/reason", async () => {
     const fake = injectRepo();
     vi.spyOn(fake, "getById").mockResolvedValue(
-      makeScout({ location: "Conwy County", outcodes: ["LL30"] }),
+      makeSearch({ location: "Conwy County", outcodes: ["LL30"] }),
     );
     const eligible = makeAgent({
       id: "00000000-0000-7000-8000-0000000000a1",
@@ -420,7 +420,7 @@ describe("scoutsRouter.reviewDrafts", () => {
       }
     });
 
-    const result = await authedCaller.scouts.reviewDrafts({
+    const result = await authedCaller.searches.reviewDrafts({
       id: "00000000-0000-7000-8000-000000000001",
     });
 
@@ -448,7 +448,7 @@ describe("scoutsRouter.reviewDrafts", () => {
   it("signs + paces the reviewed draft from the buyer profile (Settings)", async () => {
     const fake = injectRepo();
     vi.spyOn(fake, "getById").mockResolvedValue(
-      makeScout({ location: "Conwy County", outcodes: ["LL30"] }),
+      makeSearch({ location: "Conwy County", outcodes: ["LL30"] }),
     );
     injectAgents([]);
     injectProfile({
@@ -458,7 +458,7 @@ describe("scoutsRouter.reviewDrafts", () => {
       urgency: "ready",
     });
 
-    const result = await authedCaller.scouts.reviewDrafts({
+    const result = await authedCaller.searches.reviewDrafts({
       id: "00000000-0000-7000-8000-000000000001",
     });
 
@@ -473,15 +473,15 @@ describe("scoutsRouter.reviewDrafts", () => {
 
   it("calls the guard with reserve:false (a review never consumes a token)", async () => {
     const fake = injectRepo();
-    vi.spyOn(fake, "getById").mockResolvedValue(makeScout({ outcodes: ["LL30"] }));
+    vi.spyOn(fake, "getById").mockResolvedValue(makeSearch({ outcodes: ["LL30"] }));
     injectAgents([makeAgent()]);
     injectProfile();
     const assertCanSend = vi.fn().mockResolvedValue(undefined);
-    _setScoutComplianceGuardForTesting({
+    _setSearchComplianceGuardForTesting({
       assertCanSend,
     } as unknown as ComplianceGuard);
 
-    await authedCaller.scouts.reviewDrafts({
+    await authedCaller.searches.reviewDrafts({
       id: "00000000-0000-7000-8000-000000000001",
     });
     expect(assertCanSend).toHaveBeenCalledWith(
@@ -492,36 +492,36 @@ describe("scoutsRouter.reviewDrafts", () => {
 
   it("rethrows a non-ComplianceError from the guard (a real fault, not a block)", async () => {
     const fake = injectRepo();
-    vi.spyOn(fake, "getById").mockResolvedValue(makeScout({ outcodes: ["LL30"] }));
+    vi.spyOn(fake, "getById").mockResolvedValue(makeSearch({ outcodes: ["LL30"] }));
     injectAgents([makeAgent()]);
     injectProfile();
     injectGuard(async () => {
       throw new Error("redis down");
     });
     await expect(
-      authedCaller.scouts.reviewDrafts({
+      authedCaller.searches.reviewDrafts({
         id: "00000000-0000-7000-8000-000000000001",
       }),
     ).rejects.toThrow("redis down");
   });
 
-  it("NOT_FOUND for an unknown scout id", async () => {
+  it("NOT_FOUND for an unknown search id", async () => {
     const fake = injectRepo();
     vi.spyOn(fake, "getById").mockResolvedValue(null);
     await expect(
-      authedCaller.scouts.reviewDrafts({
+      authedCaller.searches.reviewDrafts({
         id: "00000000-0000-7000-8000-0000000000ff",
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 
-describe("scoutsRouter.approveSends", () => {
-  it("enqueues one guarded outreach:send per agent, each carrying the scoutId", async () => {
+describe("searchesRouter.approveSends", () => {
+  it("enqueues one guarded outreach:send per agent, each carrying the searchId", async () => {
     const enqueue = vi.fn().mockResolvedValue(undefined);
-    _setScoutOutreachSendEnqueuerForTesting(enqueue);
+    _setSearchOutreachSendEnqueuerForTesting(enqueue);
 
-    const result = await authedCaller.scouts.approveSends({
+    const result = await authedCaller.searches.approveSends({
       id: "00000000-0000-7000-8000-000000000001",
       agentIds: [
         "00000000-0000-7000-8000-0000000000a1",
@@ -532,26 +532,26 @@ describe("scoutsRouter.approveSends", () => {
     expect(enqueue).toHaveBeenCalledTimes(2);
     expect(enqueue).toHaveBeenNthCalledWith(1, {
       idempotencyKey:
-        "outreach:send:scout:00000000-0000-7000-8000-000000000001:00000000-0000-7000-8000-0000000000a1",
+        "outreach:send:search:00000000-0000-7000-8000-000000000001:00000000-0000-7000-8000-0000000000a1",
       payload: {
         agentId: "00000000-0000-7000-8000-0000000000a1",
-        scoutId: "00000000-0000-7000-8000-000000000001",
+        searchId: "00000000-0000-7000-8000-000000000001",
       },
     });
     expect(enqueue).toHaveBeenNthCalledWith(2, {
       idempotencyKey:
-        "outreach:send:scout:00000000-0000-7000-8000-000000000001:00000000-0000-7000-8000-0000000000a2",
+        "outreach:send:search:00000000-0000-7000-8000-000000000001:00000000-0000-7000-8000-0000000000a2",
       payload: {
         agentId: "00000000-0000-7000-8000-0000000000a2",
-        scoutId: "00000000-0000-7000-8000-000000000001",
+        searchId: "00000000-0000-7000-8000-000000000001",
       },
     });
   });
 
   it("enqueues nothing for an empty agentIds list", async () => {
     const enqueue = vi.fn().mockResolvedValue(undefined);
-    _setScoutOutreachSendEnqueuerForTesting(enqueue);
-    const result = await authedCaller.scouts.approveSends({
+    _setSearchOutreachSendEnqueuerForTesting(enqueue);
+    const result = await authedCaller.searches.approveSends({
       id: "00000000-0000-7000-8000-000000000001",
       agentIds: [],
     });
@@ -560,18 +560,18 @@ describe("scoutsRouter.approveSends", () => {
   });
 });
 
-describe("scoutsRouter.stats", () => {
-  it("returns homesFound + agentsInPatch + agentsContacted for the scout's outcodes", async () => {
+describe("searchesRouter.stats", () => {
+  it("returns homesFound + agentsInPatch + agentsContacted for the search's outcodes", async () => {
     const fake = injectRepo();
     vi.spyOn(fake, "getById").mockResolvedValue(
-      makeScout({ outcodes: ["LL30", "LL31"] }),
+      makeSearch({ outcodes: ["LL30", "LL31"] }),
     );
 
     const listingRepo = new ListingRepository();
     const countListings = vi
       .spyOn(listingRepo, "countByOutcodes")
       .mockResolvedValue(7);
-    _setScoutListingRepositoryForTesting(listingRepo);
+    _setSearchListingRepositoryForTesting(listingRepo);
 
     const agentRepo = new AgentRepository();
     const countAgents = vi
@@ -579,9 +579,9 @@ describe("scoutsRouter.stats", () => {
       .mockImplementation(async (_outcodes, options) =>
         options?.contactedOnly ? 2 : 5,
       );
-    _setScoutAgentRepositoryForTesting(agentRepo);
+    _setSearchAgentRepositoryForTesting(agentRepo);
 
-    const result = await authedCaller.scouts.stats({
+    const result = await authedCaller.searches.stats({
       id: "00000000-0000-7000-8000-000000000001",
     });
     expect(result).toEqual({
@@ -596,33 +596,33 @@ describe("scoutsRouter.stats", () => {
     });
   });
 
-  it("NOT_FOUND for an unknown scout id", async () => {
+  it("NOT_FOUND for an unknown search id", async () => {
     const fake = injectRepo();
     vi.spyOn(fake, "getById").mockResolvedValue(null);
     await expect(
-      authedCaller.scouts.stats({ id: "00000000-0000-7000-8000-0000000000ff" }),
+      authedCaller.searches.stats({ id: "00000000-0000-7000-8000-0000000000ff" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 
-describe("scoutsRouter auth", () => {
+describe("searchesRouter auth", () => {
   it("rejects an anonymous caller with UNAUTHORIZED", async () => {
     const anon = appRouter.createCaller({ user: null });
-    await expect(anon.scouts.list()).rejects.toBeInstanceOf(TRPCError);
-    await expect(anon.scouts.list()).rejects.toMatchObject({
+    await expect(anon.searches.list()).rejects.toBeInstanceOf(TRPCError);
+    await expect(anon.searches.list()).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
   });
 });
 
-describe("scoutsRouter multi-user scoping", () => {
+describe("searchesRouter multi-user scoping", () => {
   it("scopes list/create to the operator's NULL namespace for the operator", async () => {
     const fake = injectRepo();
     const listSpy = vi.spyOn(fake, "list").mockResolvedValue([]);
-    const createSpy = vi.spyOn(fake, "create").mockResolvedValue(makeScout());
+    const createSpy = vi.spyOn(fake, "create").mockResolvedValue(makeSearch());
 
-    await authedCaller.scouts.list();
-    await authedCaller.scouts.create({ name: "Op scout" });
+    await authedCaller.searches.list();
+    await authedCaller.searches.create({ name: "Op search" });
 
     expect(listSpy).toHaveBeenCalledWith(null);
     expect(createSpy.mock.calls[0]![1]).toBeNull();
@@ -631,14 +631,14 @@ describe("scoutsRouter multi-user scoping", () => {
   it("scopes list/getById/create to a non-operator's own user id", async () => {
     const fake = injectRepo();
     const listSpy = vi.spyOn(fake, "list").mockResolvedValue([]);
-    const getSpy = vi.spyOn(fake, "getById").mockResolvedValue(makeScout());
-    const createSpy = vi.spyOn(fake, "create").mockResolvedValue(makeScout());
+    const getSpy = vi.spyOn(fake, "getById").mockResolvedValue(makeSearch());
+    const createSpy = vi.spyOn(fake, "create").mockResolvedValue(makeSearch());
 
-    await partnerCaller.scouts.list();
-    await partnerCaller.scouts.getById({
+    await partnerCaller.searches.list();
+    await partnerCaller.searches.getById({
       id: "00000000-0000-7000-8000-000000000001",
     });
-    await partnerCaller.scouts.create({ name: "Partner scout" });
+    await partnerCaller.searches.create({ name: "Partner search" });
 
     expect(listSpy).toHaveBeenCalledWith(PARTNER_ID);
     expect(getSpy).toHaveBeenCalledWith(
@@ -651,13 +651,13 @@ describe("scoutsRouter multi-user scoping", () => {
   it("FORBIDS the operator-only outreach loop for a non-operator", async () => {
     injectRepo();
     for (const call of [
-      () => partnerCaller.scouts.launch({ id: "00000000-0000-7000-8000-000000000001" }),
+      () => partnerCaller.searches.launch({ id: "00000000-0000-7000-8000-000000000001" }),
       () =>
-        partnerCaller.scouts.reviewDrafts({
+        partnerCaller.searches.reviewDrafts({
           id: "00000000-0000-7000-8000-000000000001",
         }),
       () =>
-        partnerCaller.scouts.approveSends({
+        partnerCaller.searches.approveSends({
           id: "00000000-0000-7000-8000-000000000001",
           agentIds: [],
         }),

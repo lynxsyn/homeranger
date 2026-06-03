@@ -22,11 +22,11 @@ export * from "./profile.js";
 // SearchProfile update contract (drives preferencesRouter.update + the form).
 export * from "./preferences.js";
 
-// Scout domain enums + option sets (status / types / condition / land / sale).
-export * from "./scout-enums.js";
+// Search domain enums + option sets (status / types / condition / land / sale).
+export * from "./search-enums.js";
 
-// Scout input contracts (drives scoutsRouter create/update/setStatus/byId).
-export * from "./scouts.js";
+// Search input contracts (drives searchesRouter create/update/setStatus/byId).
+export * from "./searches.js";
 
 // Outreach control contracts (drives outreachRouter.killSwitch toggle).
 export * from "./outreach.js";

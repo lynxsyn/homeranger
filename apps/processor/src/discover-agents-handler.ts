@@ -1,7 +1,7 @@
 /**
  * discover:agents consumer (M7 + PR3) — runs agent discovery + upsert. Two
  * targeting modes, branched on the payload:
- *   - { outcodes } (PR3 scout launch): discover by an EXPLICIT outcode set.
+ *   - { outcodes } (PR3 search launch): discover by an EXPLICIT outcode set.
  *   - { regionName } (M7): discover by a curated region name (resolved server-side).
  * Delegates to the AgentDiscoveryService. Discovery errors (transient
  * search/scrape failures) are retryable via the shared worker-error mapper.

@@ -110,7 +110,7 @@ export default defineConfig({
         RESEND_FROM: "HomeRanger <outreach@homeranger.test>",
         // M8 PR3: deterministic, network-free agent discovery (no Firecrawl /
         // web scrape / spend). The FakeAgentDiscoveryProvider mints stable
-        // business-domain agents from the discovery input so the scout-launch
+        // business-domain agents from the discovery input so the search-launch
         // E2E can prove the launch loop — discover:agents → reviewed drafts →
         // approve → guarded send — end-to-end against real infra.
         DISCOVERY_FAKE: "1",

@@ -170,8 +170,8 @@ describe("AgentDiscoveryService.discoverByOutcodes", () => {
   });
 
   it("uses the place-name regionLabel as the provider query (not the raw outcodes)", async () => {
-    // The scout-launch fix: a web search for "LL30, LL31" finds nothing, so the
-    // scout's human place name ("Conwy County") MUST drive the provider query —
+    // The search-launch fix: a web search for "LL30, LL31" finds nothing, so the
+    // search's human place name ("Conwy County") MUST drive the provider query —
     // while the explicit outcodes still get stamped on the discovered agents.
     const h = makeHarness({
       agents: [{ email: "info@conwy-estates.co.uk", agencyName: "Conwy Estates" }],

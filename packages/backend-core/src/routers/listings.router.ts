@@ -56,7 +56,7 @@ export type ListingRow = ListingRecord;
  * label. The SPA reads this shape via `inferRouterOutputs` — the Match ring
  * renders `combinedScore` and the score sort orders by it.
  *
- * `bathrooms` + `agentEmail` arrive on the underlying `ListingRecord` (Scouts
+ * `bathrooms` + `agentEmail` arrive on the underlying `ListingRecord` (Searches
  * PR2 capture); `agency` is COMPUTED here as `agencyName ?? agentEmail ?? null`
  * so the Agent column has one display field and the per-agency follow-up
  * grouping has one key (falling back to the raw sender email, then `null`).

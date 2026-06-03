@@ -240,7 +240,7 @@ spec:
             # optional:true + the provider is construction-safe (boots without
             # it; discover() throws retryable:false → drops the job) so discovery
             # stays dormant until the operator adds the key, then activates with
-            # no redeploy. Scout launches query Firecrawl by the scout's PLACE
+            # no redeploy. Search launches query Firecrawl by the search's PLACE
             # NAME (v0.13.0), so real launches now find agents UK-wide.
             - name: FIRECRAWL_API_KEY
               valueFrom:

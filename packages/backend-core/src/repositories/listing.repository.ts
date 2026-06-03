@@ -471,8 +471,8 @@ export class ListingRepository {
 
   /**
    * Count listings whose `outcode` is one of the given set — the "homes found in
-   * a scout's patch" stat (PR3 scoutsRouter.stats). An empty set returns 0 (a
-   * scout with no target outcodes covers nothing). `outcode` is nullable, so a
+   * a search's patch" stat (PR3 searchesRouter.stats). An empty set returns 0 (a
+   * search with no target outcodes covers nothing). `outcode` is nullable, so a
    * NULL-outcode listing is never counted (the `in` filter excludes NULLs).
    */
   async countByOutcodes(outcodes: string[]): Promise<number> {

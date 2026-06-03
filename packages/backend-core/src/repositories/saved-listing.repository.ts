@@ -5,7 +5,7 @@
  * setter. Coverage-excluded (Prisma I/O) like the sibling repos — exercised by
  * the saved-listing integration test, not the unit project.
  *
- * Owner key follows the Scout/SearchProfile convention: `ownerId == null` is the
+ * Owner key follows the Search/SearchProfile convention: `ownerId == null` is the
  * operator namespace, a set `ownerId` is that user's namespace. Uniqueness of
  * (owner, listing) is enforced by the COALESCE expression index from migration
  * 0008, so `save` is idempotent (a duplicate raises P2002 → swallowed).

@@ -1,23 +1,23 @@
 /**
- * scoutsRouter — the M8 scout (saved buyer brief) CRUD surface.
+ * searchesRouter — the M8 search (saved buyer brief) CRUD surface.
  *
  * Single `protectedProcedure` surface (one user, no tenant scoping):
- *   - list     : all scouts, most-recently-updated first.
- *   - getById  : a single scout, NOT_FOUND on miss.
- *   - create   : a new scout (outcodes resolved server-side from location).
- *   - update   : full-replace an existing scout, NOT_FOUND on miss.
- *   - delete   : remove a scout, echoes `{ id }`.
+ *   - list     : all searches, most-recently-updated first.
+ *   - getById  : a single search, NOT_FOUND on miss.
+ *   - create   : a new search (outcodes resolved server-side from location).
+ *   - update   : full-replace an existing search, NOT_FOUND on miss.
+ *   - delete   : remove a search, echoes `{ id }`.
  *   - setStatus: toggle active ⇄ paused.
  *
  * NO SERVICE LAYER — like listingsRouter, this is a pure CRUD path with no
  * business logic between the wire and storage (the only derivation, outcode
- * resolution, lives in the repository). The router calls `scoutRepository`
+ * resolution, lives in the repository). The router calls `searchRepository`
  * directly. The shared input schemas are `.strict()`, so no stray field slips
  * through; the repository derives `outcodes` from `location` (the form has no
  * outcodes field).
  *
- * Every returned row is a full `ScoutRecord` carrying all DB columns, so the SPA
- * infers the scout shape via `inferRouterOutputs`.
+ * Every returned row is a full `SearchRecord` carrying all DB columns, so the SPA
+ * infers the search shape via `inferRouterOutputs`.
  *
  * NOT_FOUND mapping: getById + update map a missing row to NOT_FOUND (update
  * pre-checks via getById so the unit test stays simple); delete + setStatus go
@@ -28,18 +28,18 @@
 import { TRPCError } from "@trpc/server";
 import { Prisma } from "@prisma/client";
 import {
-  scoutApproveSendsInputSchema,
-  scoutByIdInputSchema,
-  scoutCreateInputSchema,
-  scoutSetStatusInputSchema,
-  scoutUpdateInputSchema,
+  searchApproveSendsInputSchema,
+  searchByIdInputSchema,
+  searchCreateInputSchema,
+  searchSetStatusInputSchema,
+  searchUpdateInputSchema,
 } from "@homeranger/shared";
 import { operatorProcedure, protectedProcedure, router } from "../trpc.js";
 import { ownerKeyFor } from "../lib/auth/supabase-auth.js";
 import {
-  scoutRepository,
-  type ScoutRecord,
-} from "../repositories/scout.repository.js";
+  searchRepository,
+  type SearchRecord,
+} from "../repositories/search.repository.js";
 import {
   agentRepository,
   type AgentRepository,
@@ -54,7 +54,7 @@ import {
   type AgentForGuard,
   type ComplianceGuard,
 } from "../lib/compliance/compliance-guard.js";
-import { draftScoutEmail } from "../lib/scouts/scout-brief.js";
+import { draftSearchEmail } from "../lib/searches/search-brief.js";
 import {
   searchProfileRepository as defaultSearchProfileRepository,
   type SearchProfileRepository,
@@ -71,42 +71,42 @@ import type {
   OutreachSendJobPayload,
 } from "../lib/queue/queue-config.js";
 
-/** A single scout row as the procedures return it. */
-export type ScoutRow = ScoutRecord;
+/** A single search row as the procedures return it. */
+export type SearchRow = SearchRecord;
 
 // ── Swappable seams (mirror outreach.router's _set*ForTesting pattern) so unit
 // tests assert the launch loop without a live Redis or DB. The guard +
 // agent/listing repos default to the real singletons; tests inject fakes.
-let scoutComplianceGuard: ComplianceGuard = defaultComplianceGuard;
-export function _setScoutComplianceGuardForTesting(
+let searchComplianceGuard: ComplianceGuard = defaultComplianceGuard;
+export function _setSearchComplianceGuardForTesting(
   guard: ComplianceGuard | null,
 ): void {
-  scoutComplianceGuard = guard ?? defaultComplianceGuard;
+  searchComplianceGuard = guard ?? defaultComplianceGuard;
 }
 
-let scoutAgentRepository: AgentRepository = agentRepository;
-export function _setScoutAgentRepositoryForTesting(
+let searchAgentRepository: AgentRepository = agentRepository;
+export function _setSearchAgentRepositoryForTesting(
   repo: AgentRepository | null,
 ): void {
-  scoutAgentRepository = repo ?? agentRepository;
+  searchAgentRepository = repo ?? agentRepository;
 }
 
-let scoutListingRepository: ListingRepository = listingRepository;
-export function _setScoutListingRepositoryForTesting(
+let searchListingRepository: ListingRepository = listingRepository;
+export function _setSearchListingRepositoryForTesting(
   repo: ListingRepository | null,
 ): void {
-  scoutListingRepository = repo ?? listingRepository;
+  searchListingRepository = repo ?? listingRepository;
 }
 
 // The buyer profile drives the reviewed draft's sign-off + urgency so the
 // operator reviews EXACTLY what gets sent. Swappable so the router unit test
 // asserts reviewDrafts without a live DB.
-let scoutSearchProfileRepository: SearchProfileRepository =
+let reviewProfileRepository: SearchProfileRepository =
   defaultSearchProfileRepository;
-export function _setScoutSearchProfileRepositoryForTesting(
+export function _setReviewProfileRepositoryForTesting(
   repo: SearchProfileRepository | null,
 ): void {
-  scoutSearchProfileRepository = repo ?? defaultSearchProfileRepository;
+  reviewProfileRepository = repo ?? defaultSearchProfileRepository;
 }
 
 type DiscoverAgentsEnqueuer = (
@@ -122,15 +122,15 @@ export function _setDiscoverAgentsEnqueuerForTesting(
 type OutreachSendEnqueuer = (
   input: EnqueueInput<OutreachSendJobPayload>,
 ) => Promise<void>;
-let scoutOutreachSendEnqueuer: OutreachSendEnqueuer = enqueueOutreachSend;
-export function _setScoutOutreachSendEnqueuerForTesting(
+let searchOutreachSendEnqueuer: OutreachSendEnqueuer = enqueueOutreachSend;
+export function _setSearchOutreachSendEnqueuerForTesting(
   enqueuer: OutreachSendEnqueuer | null,
 ): void {
-  scoutOutreachSendEnqueuer = enqueuer ?? enqueueOutreachSend;
+  searchOutreachSendEnqueuer = enqueuer ?? enqueueOutreachSend;
 }
 
 /** One reviewed agent: eligible iff the ComplianceGuard precheck passes. */
-export interface ScoutReviewAgent {
+export interface SearchReviewAgent {
   id: string;
   email: string;
   agencyName: string | null;
@@ -139,33 +139,33 @@ export interface ScoutReviewAgent {
   reason: string | null;
 }
 
-export interface ScoutLaunchResult {
+export interface SearchLaunchResult {
   enqueued: boolean;
   outcodes: string[];
 }
 
-export interface ScoutReviewDraftsResult {
+export interface SearchReviewDraftsResult {
   draft: string;
-  agents: ScoutReviewAgent[];
+  agents: SearchReviewAgent[];
 }
 
-export interface ScoutApproveSendsResult {
+export interface SearchApproveSendsResult {
   enqueued: number;
 }
 
-export interface ScoutStatsResult {
+export interface SearchStatsResult {
   homesFound: number;
   agentsInPatch: number;
   agentsContacted: number;
 }
 
 /** Remap Prisma's "record not found" (P2025) to a tRPC NOT_FOUND; rethrow else. */
-function scoutNotFound(error: unknown): never {
+function searchNotFound(error: unknown): never {
   if (
     error instanceof Prisma.PrismaClientKnownRequestError &&
     error.code === "P2025"
   ) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
+    throw new TRPCError({ code: "NOT_FOUND", message: "Search not found" });
   }
   throw error;
 }
@@ -178,25 +178,25 @@ function scoutNotFound(error: unknown): never {
 // use `operatorProcedure` (FORBIDDEN for a non-operator); the CRUD surface uses
 // `protectedProcedure` and scopes by ownerKeyFor(ctx.user).
 
-export const scoutsRouter = router({
-  list: protectedProcedure.query(async ({ ctx }): Promise<ScoutRow[]> => {
-    return scoutRepository.list(ownerKeyFor(ctx.user));
+export const searchesRouter = router({
+  list: protectedProcedure.query(async ({ ctx }): Promise<SearchRow[]> => {
+    return searchRepository.list(ownerKeyFor(ctx.user));
   }),
 
   getById: protectedProcedure
-    .input(scoutByIdInputSchema)
-    .query(async ({ ctx, input }): Promise<ScoutRow> => {
-      const row = await scoutRepository.getById(input.id, ownerKeyFor(ctx.user));
+    .input(searchByIdInputSchema)
+    .query(async ({ ctx, input }): Promise<SearchRow> => {
+      const row = await searchRepository.getById(input.id, ownerKeyFor(ctx.user));
       if (!row) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
+        throw new TRPCError({ code: "NOT_FOUND", message: "Search not found" });
       }
       return row;
     }),
 
   create: protectedProcedure
-    .input(scoutCreateInputSchema)
-    .mutation(async ({ ctx, input }): Promise<ScoutRow> => {
-      return scoutRepository.create(
+    .input(searchCreateInputSchema)
+    .mutation(async ({ ctx, input }): Promise<SearchRow> => {
+      return searchRepository.create(
         {
           name: input.name,
           location: input.location,
@@ -214,16 +214,16 @@ export const scoutsRouter = router({
     }),
 
   update: protectedProcedure
-    .input(scoutUpdateInputSchema)
-    .mutation(async ({ ctx, input }): Promise<ScoutRow> => {
+    .input(searchUpdateInputSchema)
+    .mutation(async ({ ctx, input }): Promise<SearchRow> => {
       const ownerId = ownerKeyFor(ctx.user);
       // Pre-check existence (scoped to the owner) so a missing/foreign id maps
       // to NOT_FOUND rather than a raw Prisma P2025 → INTERNAL_SERVER_ERROR.
-      const existing = await scoutRepository.getById(input.id, ownerId);
+      const existing = await searchRepository.getById(input.id, ownerId);
       if (!existing) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
+        throw new TRPCError({ code: "NOT_FOUND", message: "Search not found" });
       }
-      return scoutRepository.update(
+      return searchRepository.update(
         {
           id: input.id,
           name: input.name,
@@ -242,83 +242,83 @@ export const scoutsRouter = router({
     }),
 
   delete: protectedProcedure
-    .input(scoutByIdInputSchema)
+    .input(searchByIdInputSchema)
     .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
       try {
-        return await scoutRepository.delete(input.id, ownerKeyFor(ctx.user));
+        return await searchRepository.delete(input.id, ownerKeyFor(ctx.user));
       } catch (error) {
-        return scoutNotFound(error);
+        return searchNotFound(error);
       }
     }),
 
   setStatus: protectedProcedure
-    .input(scoutSetStatusInputSchema)
-    .mutation(async ({ ctx, input }): Promise<ScoutRow> => {
+    .input(searchSetStatusInputSchema)
+    .mutation(async ({ ctx, input }): Promise<SearchRow> => {
       try {
-        return await scoutRepository.setStatus(
+        return await searchRepository.setStatus(
           input.id,
           input.status,
           ownerKeyFor(ctx.user),
         );
       } catch (error) {
-        return scoutNotFound(error);
+        return searchNotFound(error);
       }
     }),
 
   /**
-   * LAUNCH a scout's discovery: resolve the scout, then enqueue ONE
+   * LAUNCH a search's discovery: resolve the search, then enqueue ONE
    * discover:agents over its target outcodes (the M7 pipeline, taking outcodes
-   * directly). A scout with no outcodes is a BAD_REQUEST (nothing to target).
+   * directly). A search with no outcodes is a BAD_REQUEST (nothing to target).
    * Discovery only SOURCES agents — no send fires here. Returns the enqueued
    * flag + the outcodes targeted (so the UI can echo the patch).
    */
   launch: operatorProcedure
-    .input(scoutByIdInputSchema)
-    .mutation(async ({ input }): Promise<ScoutLaunchResult> => {
-      const scout = await scoutRepository.getById(input.id, null);
-      if (!scout) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
+    .input(searchByIdInputSchema)
+    .mutation(async ({ input }): Promise<SearchLaunchResult> => {
+      const search = await searchRepository.getById(input.id, null);
+      if (!search) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Search not found" });
       }
-      if (scout.outcodes.length === 0) {
+      if (search.outcodes.length === 0) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "scout has no target outcodes",
+          message: "search has no target outcodes",
         });
       }
       await discoverAgentsEnqueuer({
-        idempotencyKey: `discover:agents:scout:${scout.id}`,
-        // `regionName` is the scout's human place name — it drives the discovery
+        idempotencyKey: `discover:agents:search:${search.id}`,
+        // `regionName` is the search's human place name — it drives the discovery
         // web-search query ("estate agents in <location>, UK"); `outcodes` is what
         // gets stamped onto the discovered agents so reviewDrafts can match them.
-        payload: { regionName: scout.location, outcodes: scout.outcodes },
+        payload: { regionName: search.location, outcodes: search.outcodes },
       });
-      return { enqueued: true, outcodes: scout.outcodes };
+      return { enqueued: true, outcodes: search.outcodes };
     }),
 
   /**
-   * REVIEW the outreach drafts before any send: build the scout-tailored draft
-   * (draftScoutEmail) and, for every agent in the scout's patch, run the
+   * REVIEW the outreach drafts before any send: build the search-tailored draft
+   * (draftSearchEmail) and, for every agent in the search's patch, run the
    * ComplianceGuard PRECHECK (reserve:false — peeks, never consumes a token). A
    * blocked agent is returned with eligible=false + the ComplianceCode reason;
    * an eligible one with reason=null. NOTHING is sent — this is the operator's
    * review surface. A non-ComplianceError rethrows (a real fault, not a block).
    */
   reviewDrafts: operatorProcedure
-    .input(scoutByIdInputSchema)
-    .query(async ({ input }): Promise<ScoutReviewDraftsResult> => {
-      const scout = await scoutRepository.getById(input.id, null);
-      if (!scout) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
+    .input(searchByIdInputSchema)
+    .query(async ({ input }): Promise<SearchReviewDraftsResult> => {
+      const search = await searchRepository.getById(input.id, null);
+      if (!search) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Search not found" });
       }
       // Resolve the buyer identity so the reviewed draft is signed + paced
       // exactly like the email the worker will send (operator profile = null).
-      const profile = await scoutSearchProfileRepository.getOrCreate(null);
+      const profile = await reviewProfileRepository.getOrCreate(null);
       const sender = resolveSender(profile, currentSenderName());
-      const draft = draftScoutEmail(scout, sender);
-      const { items } = await scoutAgentRepository.list({
-        outcodes: scout.outcodes,
+      const draft = draftSearchEmail(search, sender);
+      const { items } = await searchAgentRepository.list({
+        outcodes: search.outcodes,
       });
-      const agents: ScoutReviewAgent[] = [];
+      const agents: SearchReviewAgent[] = [];
       for (const agent of items) {
         const guardAgent: AgentForGuard = {
           id: agent.id,
@@ -327,7 +327,7 @@ export const scoutsRouter = router({
           optedOut: agent.optedOut,
         };
         try {
-          await scoutComplianceGuard.assertCanSend(guardAgent, {
+          await searchComplianceGuard.assertCanSend(guardAgent, {
             reserve: false,
           });
           agents.push({
@@ -356,41 +356,41 @@ export const scoutsRouter = router({
 
   /**
    * APPROVE the operator-selected sends: enqueue one guarded outreach:send per
-   * agent id, each carrying the scoutId so the worker drafts from the scout's
+   * agent id, each carrying the searchId so the worker drafts from the search's
    * brief. The send is STILL guarded at the worker (assertCanSend reserve:true) —
    * approval is consent, not a guard bypass. Returns the count enqueued.
    */
   approveSends: operatorProcedure
-    .input(scoutApproveSendsInputSchema)
-    .mutation(async ({ input }): Promise<ScoutApproveSendsResult> => {
+    .input(searchApproveSendsInputSchema)
+    .mutation(async ({ input }): Promise<SearchApproveSendsResult> => {
       for (const agentId of input.agentIds) {
-        await scoutOutreachSendEnqueuer({
-          // Scope the key to (scout, agent) so a generic outreach:send to the
-          // same agent can't swallow this scout approval (and re-approving the
-          // same scout+agent stays idempotent).
-          idempotencyKey: `outreach:send:scout:${input.id}:${agentId}`,
-          payload: { agentId, scoutId: input.id },
+        await searchOutreachSendEnqueuer({
+          // Scope the key to (search, agent) so a generic outreach:send to the
+          // same agent can't swallow this search approval (and re-approving the
+          // same search+agent stays idempotent).
+          idempotencyKey: `outreach:send:search:${input.id}:${agentId}`,
+          payload: { agentId, searchId: input.id },
         });
       }
       return { enqueued: input.agentIds.length };
     }),
 
   /**
-   * Per-scout stats for the launch dashboard: homes found in the patch (listings
-   * whose outcode ∈ scout.outcodes), agents in the patch (agents covering any of
+   * Per-search stats for the launch dashboard: homes found in the patch (listings
+   * whose outcode ∈ search.outcodes), agents in the patch (agents covering any of
    * the outcodes), and agents already contacted (lastContactedAt != null).
    */
   stats: protectedProcedure
-    .input(scoutByIdInputSchema)
-    .query(async ({ ctx, input }): Promise<ScoutStatsResult> => {
-      const scout = await scoutRepository.getById(input.id, ownerKeyFor(ctx.user));
-      if (!scout) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
+    .input(searchByIdInputSchema)
+    .query(async ({ ctx, input }): Promise<SearchStatsResult> => {
+      const search = await searchRepository.getById(input.id, ownerKeyFor(ctx.user));
+      if (!search) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Search not found" });
       }
       const [homesFound, agentsInPatch, agentsContacted] = await Promise.all([
-        scoutListingRepository.countByOutcodes(scout.outcodes),
-        scoutAgentRepository.countByOutcodes(scout.outcodes),
-        scoutAgentRepository.countByOutcodes(scout.outcodes, {
+        searchListingRepository.countByOutcodes(search.outcodes),
+        searchAgentRepository.countByOutcodes(search.outcodes),
+        searchAgentRepository.countByOutcodes(search.outcodes, {
           contactedOnly: true,
         }),
       ]);

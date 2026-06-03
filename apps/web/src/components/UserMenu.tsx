@@ -8,7 +8,7 @@
  * The avatar shows the buyer's initials once their details are filled in (a user
  * glyph until then), read from the single SearchProfile via `preferences.get`.
  * The menu header shows their name + current urgency. Navigation is delegated to
- * `onNavigate` (the App clears any scout filter, then routes) so manual nav
+ * `onNavigate` (the App clears any search filter, then routes) so manual nav
  * always lands on the full set; active item is derived from the current route.
  *
  * apps/web is moduleResolution=bundler → relative imports carry NO `.js`.
@@ -20,18 +20,18 @@ import { trpc } from "../lib/trpc";
 import { useAuth } from "../lib/auth";
 import { Icon } from "./Icon";
 
-/** The user-facing nav. Routes stay internal (`/scouts`), labels are the brand
+/** The user-facing nav. Routes stay internal (`/searches`), labels are the brand
  *  copy ("Searches"). Order matches the design's dropdown. */
 const NAV = [
   { label: "Listings", icon: "home", to: "/listings", testid: "nav-listings" },
-  { label: "Searches", icon: "search", to: "/scouts", testid: "nav-scouts" },
+  { label: "Searches", icon: "search", to: "/searches", testid: "nav-searches" },
   { label: "Settings", icon: "settings", to: "/settings", testid: "nav-settings" },
 ] as const;
 
 export interface UserMenuProps {
   theme: "light" | "dark";
   onToggleTheme: () => void;
-  /** App-level navigation: clears any scout filter, then routes to `to`. */
+  /** App-level navigation: clears any search filter, then routes to `to`. */
   onNavigate: (to: string) => void;
   /** Sign the user out of Supabase (returns to the sign-in gate). */
   onSignOut: () => void;

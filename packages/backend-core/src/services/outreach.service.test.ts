@@ -5,13 +5,13 @@ import {
   OutreachError,
   getOutreachConfig,
   getOutreachService,
-  makeDefaultScoutDraftLoader,
+  makeDefaultSearchDraftLoader,
   _setOutreachServiceForTesting,
 } from "./outreach.service.js";
 import type {
-  ScoutRecord,
-  ScoutRepository,
-} from "../repositories/scout.repository.js";
+  SearchRecord,
+  SearchRepository,
+} from "../repositories/search.repository.js";
 import type { SearchProfileRepository } from "../repositories/search-profile.repository.js";
 import { ComplianceError } from "../lib/compliance/compliance-guard.js";
 import type {
@@ -203,9 +203,9 @@ describe("OutreachService.sendOutreach", () => {
     expect(h.send).not.toHaveBeenCalled();
   });
 
-  it("SCOUT BRANCH: a scoutId substitutes the scout-tailored subject + body (with the unsubscribe footer)", async () => {
+  it("SEARCH BRANCH: a searchId substitutes the search-tailored subject + body (with the unsubscribe footer)", async () => {
     const h = makeHarness();
-    const scoutDraft = vi.fn().mockResolvedValue({
+    const searchDraft = vi.fn().mockResolvedValue({
       subject: "A private buyer looking in Conwy County",
       bodyText: "Hello,\n\nI'm a private buyer searching in Conwy County.",
     });
@@ -229,18 +229,18 @@ describe("OutreachService.sendOutreach", () => {
         unsubscribeBaseUrl: "https://app.test/api/outreach/unsubscribe",
         followupCadenceHours: 72,
       },
-      scoutDraft,
+      searchDraft,
       signToken: () => "unsub-token",
       now: () => new Date("2026-06-02T12:00:00Z"),
     });
 
-    await service.sendOutreach({ agentId: "agent-1", scoutId: "scout-7" });
+    await service.sendOutreach({ agentId: "agent-1", searchId: "search-7" });
 
-    // The loader was consulted with the scoutId.
-    expect(scoutDraft).toHaveBeenCalledWith("scout-7");
+    // The loader was consulted with the searchId.
+    expect(searchDraft).toHaveBeenCalledWith("search-7");
     const sendArg = h.send.mock.calls[0]![0] as SendEmailInput;
     expect(sendArg.subject).toBe("A private buyer looking in Conwy County");
-    // The scout brief body is present...
+    // The search brief body is present...
     expect(sendArg.bodyText).toContain("I'm a private buyer searching in Conwy County");
     // ...and the one-click unsubscribe footer is re-appended.
     expect(sendArg.bodyText).toContain("unsubscribe here:");
@@ -248,7 +248,7 @@ describe("OutreachService.sendOutreach", () => {
     expect(sendArg.headers?.["List-Unsubscribe-Post"]).toBe(
       "List-Unsubscribe=One-Click",
     );
-    // The persisted message carries the scout subject too.
+    // The persisted message carries the search subject too.
     expect(h.createOutboundMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         subject: "A private buyer looking in Conwy County",
@@ -256,9 +256,9 @@ describe("OutreachService.sendOutreach", () => {
     );
   });
 
-  it("SCOUT FALLBACK: a scoutId whose scout is gone falls back to the generic draft (still guarded + sent)", async () => {
+  it("SEARCH FALLBACK: a searchId whose search is gone falls back to the generic draft (still guarded + sent)", async () => {
     const h = makeHarness();
-    const scoutDraft = vi.fn().mockResolvedValue(null);
+    const searchDraft = vi.fn().mockResolvedValue(null);
     const service = new DefaultOutreachService({
       emailProvider: { send: h.send } as unknown as EmailProvider,
       complianceGuard: {
@@ -279,21 +279,21 @@ describe("OutreachService.sendOutreach", () => {
         unsubscribeBaseUrl: "https://app.test/api/outreach/unsubscribe",
         followupCadenceHours: 72,
       },
-      scoutDraft,
+      searchDraft,
       signToken: () => "unsub-token",
       now: () => new Date("2026-06-02T12:00:00Z"),
     });
 
-    await service.sendOutreach({ agentId: "agent-1", scoutId: "ghost" });
-    expect(scoutDraft).toHaveBeenCalledWith("ghost");
+    await service.sendOutreach({ agentId: "agent-1", searchId: "ghost" });
+    expect(searchDraft).toHaveBeenCalledWith("ghost");
     const sendArg = h.send.mock.calls[0]![0] as SendEmailInput;
-    // Generic subject (the draftOutreach default), not the scout line.
+    // Generic subject (the draftOutreach default), not the search line.
     expect(sendArg.subject).toBe(
       "Buyer enquiry — pre-market & upcoming listings",
     );
   });
 
-  it("scout draft is loaded AFTER the guard (a blocked send never touches the scout)", async () => {
+  it("search draft is loaded AFTER the guard (a blocked send never touches the search)", async () => {
     const h = makeHarness();
     h.assertCanSend.mockRejectedValue(
       new ComplianceError("KILL_SWITCH", {
@@ -301,7 +301,7 @@ describe("OutreachService.sendOutreach", () => {
         trpcCode: "FORBIDDEN",
       }),
     );
-    const scoutDraft = vi.fn().mockResolvedValue({
+    const searchDraft = vi.fn().mockResolvedValue({
       subject: "x",
       bodyText: "y",
     });
@@ -320,15 +320,15 @@ describe("OutreachService.sendOutreach", () => {
         unsubscribeBaseUrl: "https://app.test/api/outreach/unsubscribe",
         followupCadenceHours: 72,
       },
-      scoutDraft,
+      searchDraft,
       signToken: () => "unsub-token",
       now: () => new Date("2026-06-02T12:00:00Z"),
     });
 
     await expect(
-      service.sendOutreach({ agentId: "agent-1", scoutId: "scout-7" }),
+      service.sendOutreach({ agentId: "agent-1", searchId: "search-7" }),
     ).rejects.toBeInstanceOf(ComplianceError);
-    expect(scoutDraft).not.toHaveBeenCalled();
+    expect(searchDraft).not.toHaveBeenCalled();
     expect(h.send).not.toHaveBeenCalled();
   });
 });
@@ -372,10 +372,10 @@ describe("OutreachService.sendFollowup", () => {
   });
 });
 
-describe("makeDefaultScoutDraftLoader", () => {
-  function scoutRecord(overrides: Partial<ScoutRecord> = {}): ScoutRecord {
+describe("makeDefaultSearchDraftLoader", () => {
+  function searchRecord(overrides: Partial<SearchRecord> = {}): SearchRecord {
     return {
-      id: "scout-7",
+      id: "search-7",
       name: "Conwy coast",
       location: "Conwy County",
       outcodes: ["LL30"],
@@ -390,7 +390,7 @@ describe("makeDefaultScoutDraftLoader", () => {
       createdAt: new Date("2026-06-01"),
       updatedAt: new Date("2026-06-01"),
       ...overrides,
-    } as ScoutRecord;
+    } as SearchRecord;
   }
 
   // A fake profile repo so the loader never touches the DB. `overrides` shape
@@ -414,15 +414,15 @@ describe("makeDefaultScoutDraftLoader", () => {
     } as unknown as SearchProfileRepository;
   }
 
-  it("builds a location-named subject + a draftScoutEmail body", async () => {
-    const getById = vi.fn().mockResolvedValue(scoutRecord());
-    const load = makeDefaultScoutDraftLoader(
-      { getById } as unknown as ScoutRepository,
+  it("builds a location-named subject + a draftSearchEmail body", async () => {
+    const getById = vi.fn().mockResolvedValue(searchRecord());
+    const load = makeDefaultSearchDraftLoader(
+      { getById } as unknown as SearchRepository,
       profileRepo(),
     );
-    const draft = await load("scout-7");
+    const draft = await load("search-7");
     // The outreach loop reads the operator namespace (null owner key).
-    expect(getById).toHaveBeenCalledWith("scout-7", null);
+    expect(getById).toHaveBeenCalledWith("search-7", null);
     expect(draft?.subject).toBe("A private buyer looking in Conwy County");
     expect(draft?.bodyText).toContain(
       "I'm a private buyer searching in Conwy County",
@@ -430,8 +430,8 @@ describe("makeDefaultScoutDraftLoader", () => {
   });
 
   it("signs + paces the body from the buyer profile", async () => {
-    const load = makeDefaultScoutDraftLoader(
-      { getById: vi.fn().mockResolvedValue(scoutRecord()) } as unknown as ScoutRepository,
+    const load = makeDefaultSearchDraftLoader(
+      { getById: vi.fn().mockResolvedValue(searchRecord()) } as unknown as SearchRepository,
       profileRepo({
         firstName: "Jane",
         lastName: "Whitfield",
@@ -439,7 +439,7 @@ describe("makeDefaultScoutDraftLoader", () => {
         urgency: "ready",
       }),
     );
-    const draft = await load("scout-7");
+    const draft = await load("search-7");
     expect(draft?.bodyText).toContain(
       "Many thanks,\nJane Whitfield\n07700 900123",
     );
@@ -447,21 +447,21 @@ describe("makeDefaultScoutDraftLoader", () => {
   });
 
   it("falls back to a generic subject for a blank location", async () => {
-    const load = makeDefaultScoutDraftLoader(
+    const load = makeDefaultSearchDraftLoader(
       {
-        getById: vi.fn().mockResolvedValue(scoutRecord({ location: "" })),
-      } as unknown as ScoutRepository,
+        getById: vi.fn().mockResolvedValue(searchRecord({ location: "" })),
+      } as unknown as SearchRepository,
       profileRepo(),
     );
-    const draft = await load("scout-7");
+    const draft = await load("search-7");
     expect(draft?.subject).toBe("A private buyer looking in your area");
   });
 
-  it("returns null when the scout is gone", async () => {
-    const load = makeDefaultScoutDraftLoader(
+  it("returns null when the search is gone", async () => {
+    const load = makeDefaultSearchDraftLoader(
       {
         getById: vi.fn().mockResolvedValue(null),
-      } as unknown as ScoutRepository,
+      } as unknown as SearchRepository,
       profileRepo(),
     );
     expect(await load("ghost")).toBeNull();

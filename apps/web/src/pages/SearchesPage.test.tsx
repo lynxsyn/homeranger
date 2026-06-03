@@ -1,9 +1,9 @@
 /**
- * ScoutsPage unit tests — render the Scouts screen with a mocked tRPC client
+ * SearchesPage unit tests — render the Searches screen with a mocked tRPC client
  * and assert the ported behaviour: cards render from the list query, the editor
  * opens + toggles chip-selects + interpolates the live email preview, pausing
  * asks first (confirm modal) while resuming is instant, and the "View homes"
- * link-through fires `onViewHomes` with the scout's outcodes.
+ * link-through fires `onViewHomes` with the search's outcodes.
  *
  * The tRPC client is mocked at the module boundary (vi.hoisted) so no
  * backend/DB is needed; `listQueryMock` controls the list state and the
@@ -56,14 +56,14 @@ const {
 vi.mock("../lib/trpc", () => ({
   trpc: {
     useUtils: () => ({
-      scouts: { list: { invalidate: invalidateMock } },
+      searches: { list: { invalidate: invalidateMock } },
       outreach: { killSwitch: { get: { invalidate: killSwitchInvalidateMock } } },
     }),
     // The page gates the operator-only launch UI on auth.me.isOperator; an
     // overridable hoisted mock (defaulted to the operator in beforeEach) lets a
     // single test assert the non-operator hides those controls.
     auth: { me: { useQuery: meQueryMock } },
-    scouts: {
+    searches: {
       list: { useQuery: listQueryMock },
       create: { useMutation: () => ({ mutate: createMutateMock, isPending: false }) },
       update: { useMutation: () => ({ mutate: updateMutateMock, isPending: false }) },
@@ -122,14 +122,14 @@ vi.mock("../lib/trpc", () => ({
   },
 }));
 
-import { ScoutsPage } from "./ScoutsPage";
+import { SearchesPage } from "./SearchesPage";
 
 const NOW = new Date();
 
-function makeScout(overrides: Record<string, unknown> = {}) {
+function makeSearch(overrides: Record<string, unknown> = {}) {
   return {
-    id: "scout-" + (overrides.name ?? "x"),
-    name: "A scout",
+    id: "search-" + (overrides.name ?? "x"),
+    name: "A search",
     location: "Snowdonia, Gwynedd",
     outcodes: ["LL55", "LL48"],
     types: ["Detached", "Cottage"],
@@ -146,9 +146,9 @@ function makeScout(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const SCOUTS = [
-  makeScout({
-    id: "scout-snowdonia",
+const SEARCHES = [
+  makeSearch({
+    id: "search-snowdonia",
     name: "Snowdonia — detached with a view",
     outcodes: ["LL55", "LL48", "LL40"],
     types: ["Detached", "Cottage"],
@@ -156,8 +156,8 @@ const SCOUTS = [
     saleMethods: ["Private treaty", "Auction"],
     status: "active",
   }),
-  makeScout({
-    id: "scout-bermondsey",
+  makeSearch({
+    id: "search-bermondsey",
     name: "Bermondsey family home",
     location: "Bermondsey — SE16",
     outcodes: ["SE16", "SE1"],
@@ -170,9 +170,9 @@ const SCOUTS = [
   }),
 ];
 
-function withScouts(scouts: unknown[] = SCOUTS) {
+function withSearches(searches: unknown[] = SEARCHES) {
   listQueryMock.mockReturnValue({
-    data: scouts,
+    data: searches,
     isLoading: false,
     isError: false,
     refetch: vi.fn(),
@@ -257,7 +257,7 @@ beforeEach(() => {
   });
 });
 
-describe("ScoutsPage states", () => {
+describe("SearchesPage states", () => {
   it("shows a loading message while the query is pending", () => {
     listQueryMock.mockReturnValue({
       data: undefined,
@@ -265,9 +265,9 @@ describe("ScoutsPage states", () => {
       isError: false,
       refetch: vi.fn(),
     });
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     expect(screen.getByText(/loading searches/i)).toBeInTheDocument();
-    expect(screen.queryByTestId("scout-card")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("search-card")).not.toBeInTheDocument();
   });
 
   it("shows an error + Retry that calls refetch", () => {
@@ -278,50 +278,50 @@ describe("ScoutsPage states", () => {
       isError: true,
       refetch,
     });
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     expect(screen.getByRole("alert")).toHaveTextContent(/couldn.t load your searches/i);
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the empty state when there are no scouts", () => {
-    withScouts([]);
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
-    expect(screen.getByTestId("scouts-empty")).toBeInTheDocument();
-    expect(screen.queryByTestId("scout-card")).not.toBeInTheDocument();
+  it("shows the empty state when there are no searches", () => {
+    withSearches([]);
+    render(<SearchesPage onViewHomes={vi.fn()} />);
+    expect(screen.getByTestId("searches-empty")).toBeInTheDocument();
+    expect(screen.queryByTestId("search-card")).not.toBeInTheDocument();
   });
 });
 
-describe("ScoutsPage cards", () => {
-  it("renders one card per scout with name, chips, and active count", () => {
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
-    const cards = screen.getAllByTestId("scout-card");
+describe("SearchesPage cards", () => {
+  it("renders one card per search with name, chips, and active count", () => {
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
+    const cards = screen.getAllByTestId("search-card");
     expect(cards).toHaveLength(2);
     expect(screen.getByText("Snowdonia — detached with a view")).toBeInTheDocument();
     expect(screen.getByText("Bermondsey family home")).toBeInTheDocument();
-    // 2 scouts · 1 active (Bermondsey is paused).
-    const count = screen.getByTestId("scouts-count");
+    // 2 searches · 1 active (Bermondsey is paused).
+    const count = screen.getByTestId("searches-count");
     expect(count).toHaveTextContent("2");
     expect(count).toHaveTextContent("1");
     expect(count).toHaveTextContent("active");
   });
 
   it("shows a gold Auction tag only when saleMethods includes Auction", () => {
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
-    // Only the Snowdonia scout includes Auction.
-    expect(screen.getAllByTestId("scout-auction-tag")).toHaveLength(1);
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
+    // Only the Snowdonia search includes Auction.
+    expect(screen.getAllByTestId("search-auction-tag")).toHaveLength(1);
   });
 
-  it("links through to the scout's homes with its outcodes + status", () => {
+  it("links through to the search's homes with its outcodes + status", () => {
     const onViewHomes = vi.fn();
-    withScouts();
-    render(<ScoutsPage onViewHomes={onViewHomes} />);
+    withSearches();
+    render(<SearchesPage onViewHomes={onViewHomes} />);
     const snowdonia = screen.getByText("Snowdonia — detached with a view").closest(
-      "[data-testid='scout-card']",
+      "[data-testid='search-card']",
     ) as HTMLElement;
-    fireEvent.click(within(snowdonia).getByTestId("scout-homes-link"));
+    fireEvent.click(within(snowdonia).getByTestId("search-homes-link"));
     expect(onViewHomes).toHaveBeenCalledTimes(1);
     expect(onViewHomes).toHaveBeenCalledWith({
       name: "Snowdonia — detached with a view",
@@ -331,69 +331,69 @@ describe("ScoutsPage cards", () => {
   });
 });
 
-describe("ScoutsPage status toggle", () => {
-  it("resumes a paused scout instantly (no confirm)", () => {
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+describe("SearchesPage status toggle", () => {
+  it("resumes a paused search instantly (no confirm)", () => {
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     const bermondsey = screen.getByText("Bermondsey family home").closest(
-      "[data-testid='scout-card']",
+      "[data-testid='search-card']",
     ) as HTMLElement;
-    fireEvent.click(within(bermondsey).getByTestId("scout-status-pill"));
-    expect(screen.queryByTestId("scout-pause-confirm")).not.toBeInTheDocument();
+    fireEvent.click(within(bermondsey).getByTestId("search-status-pill"));
+    expect(screen.queryByTestId("search-pause-confirm")).not.toBeInTheDocument();
     expect(setStatusMutateMock).toHaveBeenCalledWith({
-      id: "scout-bermondsey",
+      id: "search-bermondsey",
       status: "active",
     });
   });
 
-  it("asks before pausing an active scout, then pauses on confirm", () => {
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+  it("asks before pausing an active search, then pauses on confirm", () => {
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     const snowdonia = screen.getByText("Snowdonia — detached with a view").closest(
-      "[data-testid='scout-card']",
+      "[data-testid='search-card']",
     ) as HTMLElement;
-    fireEvent.click(within(snowdonia).getByTestId("scout-status-pill"));
+    fireEvent.click(within(snowdonia).getByTestId("search-status-pill"));
     // Confirm modal appears; nothing has been mutated yet.
-    expect(screen.getByTestId("scout-pause-confirm")).toBeInTheDocument();
+    expect(screen.getByTestId("search-pause-confirm")).toBeInTheDocument();
     expect(setStatusMutateMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId("scout-pause-confirm-btn"));
+    fireEvent.click(screen.getByTestId("search-pause-confirm-btn"));
     expect(setStatusMutateMock).toHaveBeenCalledWith({
-      id: "scout-snowdonia",
+      id: "search-snowdonia",
       status: "paused",
     });
   });
 
   it("cancels the pause confirm without mutating", () => {
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     const snowdonia = screen.getByText("Snowdonia — detached with a view").closest(
-      "[data-testid='scout-card']",
+      "[data-testid='search-card']",
     ) as HTMLElement;
-    fireEvent.click(within(snowdonia).getByTestId("scout-status-pill"));
+    fireEvent.click(within(snowdonia).getByTestId("search-status-pill"));
     fireEvent.click(screen.getByRole("button", { name: /keep active/i }));
-    expect(screen.queryByTestId("scout-pause-confirm")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("search-pause-confirm")).not.toBeInTheDocument();
     expect(setStatusMutateMock).not.toHaveBeenCalled();
   });
 });
 
-describe("ScoutsPage editor", () => {
-  it("opens a blank editor from New scout and creates with pence + nulls", () => {
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
-    fireEvent.click(screen.getByTestId("new-scout"));
-    const editor = screen.getByTestId("scout-editor");
+describe("SearchesPage editor", () => {
+  it("opens a blank editor from New search and creates with pence + nulls", () => {
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("new-search"));
+    const editor = screen.getByTestId("search-editor");
     expect(editor).toBeInTheDocument();
 
-    fireEvent.change(within(editor).getByTestId("scout-name"), {
+    fireEvent.change(within(editor).getByTestId("search-name"), {
       target: { value: "Coastal cottage" },
     });
-    fireEvent.change(within(editor).getByTestId("scout-location"), {
+    fireEvent.change(within(editor).getByTestId("search-location"), {
       target: { value: "Pembrokeshire" },
     });
-    fireEvent.change(within(editor).getByTestId("scout-max-price"), {
+    fireEvent.change(within(editor).getByTestId("search-max-price"), {
       target: { value: "500000" },
     });
-    fireEvent.click(within(editor).getByTestId("scout-save"));
+    fireEvent.click(within(editor).getByTestId("search-save"));
 
     expect(createMutateMock).toHaveBeenCalledTimes(1);
     const payload = createMutateMock.mock.calls[0]![0];
@@ -406,10 +406,10 @@ describe("ScoutsPage editor", () => {
   });
 
   it("toggles a chip-select option on and off", () => {
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
-    fireEvent.click(screen.getByTestId("new-scout"));
-    const editor = screen.getByTestId("scout-editor");
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("new-search"));
+    const editor = screen.getByTestId("search-editor");
     const farmhouse = within(editor).getByRole("button", { name: /farmhouse/i });
     expect(farmhouse).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(farmhouse);
@@ -419,22 +419,22 @@ describe("ScoutsPage editor", () => {
   });
 
   it("interpolates the live email preview from the form", () => {
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
-    fireEvent.click(screen.getByTestId("new-scout"));
-    const editor = screen.getByTestId("scout-editor");
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("new-search"));
+    const editor = screen.getByTestId("search-editor");
 
-    fireEvent.change(within(editor).getByTestId("scout-location"), {
+    fireEvent.change(within(editor).getByTestId("search-location"), {
       target: { value: "Hampstead, NW3" },
     });
-    fireEvent.change(within(editor).getByTestId("scout-min-beds"), {
+    fireEvent.change(within(editor).getByTestId("search-min-beds"), {
       target: { value: "2" },
     });
     // Pick Auction so its line appears in the body.
     fireEvent.click(within(editor).getByRole("button", { name: /auction/i }));
-    fireEvent.click(within(editor).getByTestId("scout-preview-toggle"));
+    fireEvent.click(within(editor).getByTestId("search-preview-toggle"));
 
-    const preview = within(editor).getByTestId("scout-email-preview");
+    const preview = within(editor).getByTestId("search-email-preview");
     expect(preview).toHaveTextContent("Hampstead, NW3");
     expect(preview).toHaveTextContent("2+ bedroom");
     expect(preview).toHaveTextContent(/auction lots/i);
@@ -442,35 +442,35 @@ describe("ScoutsPage editor", () => {
     expect(preview).toHaveTextContent(/Many thanks,\s*Bryan/);
   });
 
-  it("opens an existing scout pre-filled and updates with its id", () => {
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+  it("opens an existing search pre-filled and updates with its id", () => {
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     const snowdonia = screen.getByText("Snowdonia — detached with a view").closest(
-      "[data-testid='scout-card']",
+      "[data-testid='search-card']",
     ) as HTMLElement;
     fireEvent.click(snowdonia);
-    const editor = screen.getByTestId("scout-editor");
-    expect(within(editor).getByTestId("scout-name")).toHaveValue(
+    const editor = screen.getByTestId("search-editor");
+    expect(within(editor).getByTestId("search-name")).toHaveValue(
       "Snowdonia — detached with a view",
     );
-    fireEvent.click(within(editor).getByTestId("scout-save"));
+    fireEvent.click(within(editor).getByTestId("search-save"));
     expect(updateMutateMock).toHaveBeenCalledTimes(1);
-    expect(updateMutateMock.mock.calls[0]![0]).toMatchObject({ id: "scout-snowdonia" });
+    expect(updateMutateMock.mock.calls[0]![0]).toMatchObject({ id: "search-snowdonia" });
   });
 
-  it("deletes an existing scout from the editor", () => {
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+  it("deletes an existing search from the editor", () => {
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     const snowdonia = screen.getByText("Snowdonia — detached with a view").closest(
-      "[data-testid='scout-card']",
+      "[data-testid='search-card']",
     ) as HTMLElement;
     fireEvent.click(snowdonia);
-    fireEvent.click(screen.getByTestId("scout-delete"));
-    expect(deleteMutateMock).toHaveBeenCalledWith({ id: "scout-snowdonia" });
+    fireEvent.click(screen.getByTestId("search-delete"));
+    expect(deleteMutateMock).toHaveBeenCalledWith({ id: "search-snowdonia" });
   });
 
   it("suggests UK locations as you type and fills the field on pick", () => {
-    withScouts();
+    withSearches();
     locationsSuggestMock.mockReturnValue({
       data: [
         {
@@ -487,15 +487,15 @@ describe("ScoutsPage editor", () => {
         },
       ],
     });
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
-    fireEvent.click(screen.getByTestId("new-scout"));
-    const editor = screen.getByTestId("scout-editor");
-    const input = within(editor).getByTestId("scout-location");
+    render(<SearchesPage onViewHomes={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("new-search"));
+    const editor = screen.getByTestId("search-editor");
+    const input = within(editor).getByTestId("search-location");
 
     // Typing opens the suggestion list (one row per suggestion, kind tagged).
     fireEvent.change(input, { target: { value: "Conw" } });
-    const list = within(editor).getByTestId("scout-location-suggestions");
-    const opts = within(list).getAllByTestId("scout-location-suggestion");
+    const list = within(editor).getByTestId("search-location-suggestions");
+    const opts = within(list).getAllByTestId("search-location-suggestion");
     expect(opts).toHaveLength(2);
     expect(opts[0]).toHaveTextContent("Conwy");
     expect(opts[0]).toHaveTextContent("16 outcodes");
@@ -512,50 +512,50 @@ describe("ScoutsPage editor", () => {
     fireEvent.mouseDown(opts[0]);
     expect(input).toHaveValue("Conwy");
     expect(
-      within(editor).queryByTestId("scout-location-suggestions"),
+      within(editor).queryByTestId("search-location-suggestions"),
     ).not.toBeInTheDocument();
   });
 });
 
-/** Open the launch modal for the named scout (clicks its card's Launch). */
+/** Open the launch modal for the named search (clicks its card's Launch). */
 function openLaunch(name = "Snowdonia — detached with a view") {
   const card = screen.getByText(name).closest(
-    "[data-testid='scout-card']",
+    "[data-testid='search-card']",
   ) as HTMLElement;
-  fireEvent.click(within(card).getByTestId("scout-launch"));
+  fireEvent.click(within(card).getByTestId("search-launch"));
 }
 
-describe("ScoutsPage per-scout stats", () => {
+describe("SearchesPage per-search stats", () => {
   it("renders homes-found and contacted/in-patch counts per card", () => {
-    withScouts();
+    withSearches();
     withStats({ homesFound: 12, agentsInPatch: 5, agentsContacted: 2 });
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     // Both cards have outcodes → both show a stats strip.
-    const strips = screen.getAllByTestId("scout-stats");
+    const strips = screen.getAllByTestId("search-stats");
     expect(strips.length).toBe(2);
     expect(strips[0]).toHaveTextContent("12");
     expect(strips[0]).toHaveTextContent("2");
     expect(strips[0]).toHaveTextContent("5");
-    // The stats query is keyed by scout id.
-    expect(statsQueryMock).toHaveBeenCalledWith({ id: "scout-snowdonia" });
+    // The stats query is keyed by search id.
+    expect(statsQueryMock).toHaveBeenCalledWith({ id: "search-snowdonia" });
   });
 
   it("shows placeholders while stats are loading", () => {
-    withScouts([SCOUTS[0]]);
+    withSearches([SEARCHES[0]]);
     statsQueryMock.mockReturnValue({ data: undefined, isLoading: true });
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
-    expect(screen.getByTestId("scout-stats")).toHaveTextContent("–");
+    render(<SearchesPage onViewHomes={vi.fn()} />);
+    expect(screen.getByTestId("search-stats")).toHaveTextContent("–");
   });
 });
 
-describe("ScoutsPage launch loop", () => {
+describe("SearchesPage launch loop", () => {
   it("launches on open and renders the woven draft + pre-checked agents", async () => {
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     openLaunch();
 
-    // The launch mutation fires once with the scout id.
-    expect(launchMutateMock).toHaveBeenCalledWith({ id: "scout-snowdonia" });
+    // The launch mutation fires once with the search id.
+    expect(launchMutateMock).toHaveBeenCalledWith({ id: "search-snowdonia" });
 
     const modal = await screen.findByTestId("launch-modal");
     expect(within(modal).getByTestId("launch-draft")).toHaveTextContent(
@@ -573,8 +573,8 @@ describe("ScoutsPage launch loop", () => {
   });
 
   it("pre-selects only eligible agents and approves the checked ids", async () => {
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     openLaunch();
 
     const modal = await screen.findByTestId("launch-modal");
@@ -584,7 +584,7 @@ describe("ScoutsPage launch loop", () => {
 
     fireEvent.click(approveBtn);
     expect(approveMutateMock).toHaveBeenCalledWith({
-      id: "scout-snowdonia",
+      id: "search-snowdonia",
       agentIds: ["agent-eligible"], // the blocked agent is NOT enqueued
     });
 
@@ -595,13 +595,13 @@ describe("ScoutsPage launch loop", () => {
   });
 
   it("blocks approval when nothing eligible is checked", async () => {
-    withScouts();
+    withSearches();
     // Only an ineligible agent in the patch → nothing gets pre-selected.
     withReview({
       draft: "Hello,",
       agents: [REVIEW_AGENTS[1]],
     });
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     openLaunch();
 
     const modal = await screen.findByTestId("launch-modal");
@@ -611,23 +611,23 @@ describe("ScoutsPage launch loop", () => {
   });
 
   it("shows a busy state while discovery is still running", () => {
-    withScouts();
+    withSearches();
     // Launch hasn't resolved yet → review is gated off and we show the spinner.
     launchStateMock.isPending = true;
     launchStateMock.isSuccess = false;
     withReview(null, { isLoading: true });
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     openLaunch();
     expect(screen.getByTestId("launch-busy")).toBeInTheDocument();
     expect(screen.queryByTestId("launch-draft")).not.toBeInTheDocument();
   });
 });
 
-describe("ScoutsPage kill-switch", () => {
+describe("SearchesPage kill-switch", () => {
   it("reads the live (off) state and toggles it on", () => {
-    withScouts();
+    withSearches();
     withKillSwitch(false);
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     const sw = screen.getByTestId("kill-switch");
     expect(screen.getByTestId("kill-switch-state")).toHaveTextContent(/sending live/i);
     fireEvent.click(within(sw).getByRole("switch"));
@@ -637,9 +637,9 @@ describe("ScoutsPage kill-switch", () => {
   });
 
   it("reads the paused state and toggles it back off", () => {
-    withScouts();
+    withSearches();
     withKillSwitch(true);
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     const sw = screen.getByTestId("kill-switch");
     expect(screen.getByTestId("kill-switch-state")).toHaveTextContent(/sending paused/i);
     expect(within(sw).getByRole("switch")).toHaveAttribute("aria-checked", "true");
@@ -648,27 +648,27 @@ describe("ScoutsPage kill-switch", () => {
   });
 });
 
-describe("ScoutsPage operator-only UI gating", () => {
+describe("SearchesPage operator-only UI gating", () => {
   it("hides the Launch control + kill-switch for a non-operator (CRUD still shown)", () => {
     meQueryMock.mockReturnValue({
       data: { id: "partner-1", email: "partner@homeranger.test", isOperator: false },
     });
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
 
     // Operator-only controls are absent from the DOM (not just hidden).
     expect(screen.queryByTestId("kill-switch")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("scout-launch")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("search-launch")).not.toBeInTheDocument();
     // The per-user CRUD surface still renders.
-    expect(screen.getByTestId("new-scout")).toBeInTheDocument();
-    expect(screen.getAllByTestId("scout-card").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("new-search")).toBeInTheDocument();
+    expect(screen.getAllByTestId("search-card").length).toBeGreaterThan(0);
   });
 
   it("shows the Launch control + kill-switch for the operator", () => {
     // meQueryMock defaults to the operator in beforeEach.
-    withScouts();
-    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
     expect(screen.getByTestId("kill-switch")).toBeInTheDocument();
-    expect(screen.getAllByTestId("scout-launch").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("search-launch").length).toBeGreaterThan(0);
   });
 });
