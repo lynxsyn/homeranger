@@ -117,7 +117,7 @@ spec:
     semver:
       range: '>=0.0.1'
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageUpdateAutomation
 metadata:
   name: homeranger
@@ -136,7 +136,7 @@ spec:
         name: fluxcdbot
         email: fluxcdbot@users.noreply.github.com
       messageTemplate: |
-        chore(flux): update image tags
+        chore(flux): update image tags [skip ci]
 
         {{ range .Updated.Images }}- {{ . }}
         {{ end }}
