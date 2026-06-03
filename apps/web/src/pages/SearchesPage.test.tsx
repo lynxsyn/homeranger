@@ -16,7 +16,6 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 const {
   listQueryMock,
   invalidateMock,
-  killSwitchInvalidateMock,
   createMutateMock,
   updateMutateMock,
   deleteMutateMock,
@@ -27,15 +26,11 @@ const {
   approveMutateMock,
   approveStateMock,
   statsQueryMock,
-  killSwitchGetMock,
-  killSwitchToggleMock,
-  killSwitchToggleStateMock,
   locationsSuggestMock,
   meQueryMock,
 } = vi.hoisted(() => ({
   listQueryMock: vi.fn(),
   invalidateMock: vi.fn(),
-  killSwitchInvalidateMock: vi.fn(),
   createMutateMock: vi.fn(),
   updateMutateMock: vi.fn(),
   deleteMutateMock: vi.fn(),
@@ -47,9 +42,6 @@ const {
   approveMutateMock: vi.fn(),
   approveStateMock: { isPending: false },
   statsQueryMock: vi.fn(),
-  killSwitchGetMock: vi.fn(),
-  killSwitchToggleMock: vi.fn(),
-  killSwitchToggleStateMock: { isPending: false },
   locationsSuggestMock: vi.fn(),
   meQueryMock: vi.fn(),
 }));
@@ -58,7 +50,6 @@ vi.mock("../lib/trpc", () => ({
   trpc: {
     useUtils: () => ({
       searches: { list: { invalidate: invalidateMock } },
-      outreach: { killSwitch: { get: { invalidate: killSwitchInvalidateMock } } },
     }),
     // The page gates the operator-only launch UI on auth.me.isOperator; an
     // overridable hoisted mock (defaulted to the operator in beforeEach) lets a
@@ -107,18 +98,6 @@ vi.mock("../lib/trpc", () => ({
     },
     outreach: {
       senderName: { useQuery: () => ({ data: { name: "Bryan" } }) },
-      killSwitch: {
-        get: { useQuery: killSwitchGetMock },
-        toggle: {
-          useMutation: (opts?: { onSuccess?: () => void }) => ({
-            mutate: (input: unknown) => {
-              killSwitchToggleMock(input);
-              opts?.onSuccess?.();
-            },
-            ...killSwitchToggleStateMock,
-          }),
-        },
-      },
     },
   },
 }));
@@ -221,10 +200,6 @@ function withStats(
   statsQueryMock.mockReturnValue({ data: stats, isLoading: false });
 }
 
-function withKillSwitch(enabled = false) {
-  killSwitchGetMock.mockReturnValue({ data: { enabled } });
-}
-
 /** Render with sensible defaults; callers override (e.g. `pendingNew`). The
  *  topbar's "New search" CTA lives in the App now, so opening the editor on
  *  mount goes through the lifted `pendingNew` flag rather than a click. */
@@ -234,7 +209,6 @@ function renderPage(props: Partial<ComponentProps<typeof SearchesPage>> = {}) {
 
 beforeEach(() => {
   invalidateMock.mockClear();
-  killSwitchInvalidateMock.mockClear();
   createMutateMock.mockClear();
   updateMutateMock.mockClear();
   deleteMutateMock.mockClear();
@@ -243,8 +217,6 @@ beforeEach(() => {
   reviewQueryMock.mockClear();
   approveMutateMock.mockClear();
   statsQueryMock.mockClear();
-  killSwitchGetMock.mockClear();
-  killSwitchToggleMock.mockClear();
   locationsSuggestMock.mockClear();
   // Default: no location suggestions (the editor renders without a dropdown).
   locationsSuggestMock.mockReturnValue({ data: [] });
@@ -253,13 +225,11 @@ beforeEach(() => {
   launchStateMock.isError = false;
   launchStateMock.error = null;
   approveStateMock.isPending = false;
-  killSwitchToggleStateMock.isPending = false;
   // Sensible defaults so existing tests that never touch the launch loop still
-  // render: a resolved review, populated stats, and a live (off) kill-switch.
+  // render: a resolved review and populated stats.
   withReview();
   withStats();
-  withKillSwitch();
-  // Default to the operator so the existing launch/kill-switch tests apply.
+  // Default to the operator so the launch controls + per-card links apply.
   meQueryMock.mockReturnValue({
     data: { id: "u1", email: "dev@homeranger.local", isOperator: true },
   });
@@ -661,52 +631,30 @@ describe("SearchesPage launch loop", () => {
   });
 });
 
-describe("SearchesPage kill-switch", () => {
-  it("reads the live (off) state and toggles it on", () => {
-    withSearches();
-    withKillSwitch(false);
-    render(<SearchesPage onViewHomes={vi.fn()} />);
-    const sw = screen.getByTestId("kill-switch");
-    expect(screen.getByTestId("kill-switch-state")).toHaveTextContent(/sending live/i);
-    fireEvent.click(within(sw).getByRole("switch"));
-    expect(killSwitchToggleMock).toHaveBeenCalledWith({ enabled: true });
-    // Refetches the kill-switch after a successful toggle.
-    expect(killSwitchInvalidateMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("reads the paused state and toggles it back off", () => {
-    withSearches();
-    withKillSwitch(true);
-    render(<SearchesPage onViewHomes={vi.fn()} />);
-    const sw = screen.getByTestId("kill-switch");
-    expect(screen.getByTestId("kill-switch-state")).toHaveTextContent(/sending paused/i);
-    expect(within(sw).getByRole("switch")).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(within(sw).getByRole("switch"));
-    expect(killSwitchToggleMock).toHaveBeenCalledWith({ enabled: false });
-  });
-});
-
 describe("SearchesPage operator-only UI gating", () => {
-  it("hides the Launch control + kill-switch for a non-operator (CRUD still shown)", () => {
+  // The kill-switch lives on Settings now (operator-only there); Searches keeps
+  // only the per-search Launch control gated to the operator.
+  it("hides the Launch control for a non-operator (CRUD still shown)", () => {
     meQueryMock.mockReturnValue({
       data: { id: "partner-1", email: "partner@homeranger.test", isOperator: false },
     });
     withSearches();
     render(<SearchesPage onViewHomes={vi.fn()} />);
 
-    // Operator-only controls are absent from the DOM (not just hidden).
-    expect(screen.queryByTestId("kill-switch")).not.toBeInTheDocument();
+    // The operator-only Launch control is absent from the DOM (not just hidden).
     expect(screen.queryByTestId("search-launch")).not.toBeInTheDocument();
+    // The kill-switch has moved to Settings — it never renders on Searches.
+    expect(screen.queryByTestId("kill-switch")).not.toBeInTheDocument();
     // The per-user CRUD surface still renders (cards + per-card view links).
     expect(screen.getAllByTestId("search-card").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("search-agents-link").length).toBeGreaterThan(0);
   });
 
-  it("shows the Launch control + kill-switch for the operator", () => {
+  it("shows the Launch control for the operator (no kill-switch here anymore)", () => {
     // meQueryMock defaults to the operator in beforeEach.
     withSearches();
     render(<SearchesPage onViewHomes={vi.fn()} />);
-    expect(screen.getByTestId("kill-switch")).toBeInTheDocument();
     expect(screen.getAllByTestId("search-launch").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("kill-switch")).not.toBeInTheDocument();
   });
 });

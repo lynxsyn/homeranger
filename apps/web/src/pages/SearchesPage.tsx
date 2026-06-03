@@ -37,6 +37,7 @@ import type {
 import { trpc } from "../lib/trpc";
 import { Icon } from "../components/Icon";
 import { Button, Chip } from "../components/ui";
+import { InfoTip } from "../components/InfoTip";
 import { relativeTime } from "../lib/format";
 
 type Search = inferRouterOutputs<AppRouter>["searches"]["list"][number];
@@ -194,55 +195,6 @@ function draftSearchEmail(form: SearchForm, sender?: ResolvedSender | null): str
     (body ? `${body}\n\n` : "") +
     `${closing}\n\n` +
     signatureBlock(sender?.name, sender?.phone)
-  );
-}
-
-/* ---- Global kill-switch (pause ALL sending) ------------------------------ */
-/**
- * The system-wide outreach kill-switch (M6 `WarmupState.killSwitch`, the 5th
- * compliance gate). When ON, no approved send leaves the building regardless of
- * per-search state — a single, prominent panic stop. Reads
- * `outreach.killSwitch.get` and flips it via `outreach.killSwitch.toggle`.
- */
-function KillSwitch() {
-  const utils = trpc.useUtils();
-  const { data } = trpc.outreach.killSwitch.get.useQuery();
-  const toggle = trpc.outreach.killSwitch.toggle.useMutation({
-    onSuccess: () => {
-      void utils.outreach.killSwitch.get.invalidate();
-    },
-  });
-  // Treat undefined (loading) as "not paused" so the control reads safe-by-default.
-  const enabled = data?.enabled ?? false;
-  return (
-    <div
-      className={`killswitch${enabled ? " is-on" : ""}`}
-      data-testid="kill-switch"
-      data-enabled={enabled}
-    >
-      <span className="killswitch__face">
-        <span className="killswitch__icon">
-          <Icon name="power" size={16} />
-        </span>
-        <span className="killswitch__copy">
-          <span className="killswitch__title">Outreach</span>
-          <span className="killswitch__state" data-testid="kill-switch-state">
-            {enabled ? "Sending paused" : "Sending live"}
-          </span>
-        </span>
-      </span>
-      <button
-        type="button"
-        className={`killswitch__toggle${enabled ? " is-on" : ""}`}
-        role="switch"
-        aria-checked={enabled}
-        aria-label={enabled ? "Resume all outreach" : "Pause all outreach"}
-        disabled={toggle.isPending}
-        onClick={() => toggle.mutate({ enabled: !enabled })}
-      >
-        <span className="killswitch__knob" />
-      </button>
-    </div>
   );
 }
 
@@ -1336,15 +1288,18 @@ export function SearchesPage({
       ) : (
         <>
           <div className="controls">
-            <span className="count" data-testid="searches-count">
-              <b>{searches.length}</b> searches · <b className="green">{activeCount}</b>{" "}
-              active
+            <span className="ctrl-left">
+              <span className="count" data-testid="searches-count">
+                <b>{searches.length}</b> searches · <b className="green">{activeCount}</b>{" "}
+                active
+              </span>
+              <InfoTip label="About searches">
+                Each search works a patch for you. It drafts the first outreach
+                email, finds local agents when you launch it, and pulls the homes
+                they send into Listings. Pausing one stops new outreach for that
+                patch while your existing conversations stay open.
+              </InfoTip>
             </span>
-            {isOperator && (
-              <div className="controls__right">
-                <KillSwitch />
-              </div>
-            )}
           </div>
 
           {searches.length === 0 ? (

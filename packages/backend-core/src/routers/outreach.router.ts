@@ -67,6 +67,12 @@ export interface KillSwitchState {
   enabled: boolean;
 }
 
+/** The warm-up meter the operator sees: sends spent today vs the daily cap. */
+export interface WarmupSummary {
+  sentToday: number;
+  dailyCap: number;
+}
+
 export const outreachRouter = router({
   send: operatorProcedure
     .input(sendInput)
@@ -114,6 +120,18 @@ export const outreachRouter = router({
         const state = await warmupStateRepository.setKillSwitch(input.enabled);
         return { enabled: state.killSwitch };
       }),
+  }),
+
+  /**
+   * The warm-up meter for the Settings → Outreach panel: how many sends have
+   * gone out today against the daily cap. Operator-only, same boundary as the
+   * kill-switch (one shared sending budget). The reconciled `sentToday` lives on
+   * WarmupState (the worker's `warmup:recalc` self-heals intraday drift); the
+   * live token-bucket count is the worker's concern, not the display.
+   */
+  warmup: operatorProcedure.query(async (): Promise<WarmupSummary> => {
+    const state = await warmupStateRepository.getOrCreate();
+    return { sentToday: state.sentToday, dailyCap: state.dailyCap };
   }),
 
   /**

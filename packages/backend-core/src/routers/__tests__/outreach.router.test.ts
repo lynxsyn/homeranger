@@ -156,6 +156,27 @@ describe("outreach.killSwitch", () => {
   });
 });
 
+describe("outreach.warmup", () => {
+  it("returns sentToday + dailyCap from WarmupState", async () => {
+    const repo = new WarmupStateRepository();
+    const spy = vi
+      .spyOn(repo, "getOrCreate")
+      .mockResolvedValue({ ...warmupState(false), sentToday: 7, dailyCap: 35 });
+    _setWarmupStateRepositoryForTesting(repo);
+
+    const result = await caller.outreach.warmup();
+    expect(result).toEqual({ sentToday: 7, dailyCap: 35 });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an anonymous caller with UNAUTHORIZED", async () => {
+    const anon = appRouter.createCaller({ user: null });
+    await expect(anon.outreach.warmup()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+  });
+});
+
 describe("outreachRouter operator gating", () => {
   // A signed-in NON-operator: the outreach engine (send + the global
   // kill-switch) acts on one shared sending domain / warm-up / kill-switch, so
@@ -178,6 +199,12 @@ describe("outreachRouter operator gating", () => {
     await expect(
       partner.outreach.killSwitch.toggle({ enabled: true }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("FORBIDS a non-operator from reading the warm-up meter", async () => {
+    await expect(partner.outreach.warmup()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
   });
 
   it("still ALLOWS a non-operator to read senderName (per-user follow-up preview)", async () => {

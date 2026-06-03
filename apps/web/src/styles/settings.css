@@ -164,3 +164,171 @@
 .saved-note svg {
   color: var(--success);
 }
+
+/* ==========================================================================
+   Settings → Outreach section (the global send control, operator-only).
+   Ported from the claude.ai/design handoff (project/app/styles.css): the
+   outreach-bar + warm-up meter + kill-switch toggle. The bar height is locked
+   so toggling live/paused never bounces the layout (design intent).
+   ========================================================================== */
+.settings-section {
+  margin-bottom: 28px;
+}
+.settings-section .settings-eyebrow {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.outreach-bar {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 10px 16px;
+  min-height: 74px;
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.outreach-bar.is-paused {
+  background: var(--danger-soft);
+  border-color: color-mix(in oklch, var(--danger) 30%, var(--border));
+}
+.ob-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--r-md);
+  background: var(--success-soft);
+  color: var(--success);
+}
+.outreach-bar.is-paused .ob-icon {
+  background: color-mix(in oklch, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+.ob-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.ob-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-body);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink-1);
+}
+.ob-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--success) 22%, transparent);
+}
+.outreach-bar.is-paused .ob-pulse {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--danger) 22%, transparent);
+}
+.ob-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+}
+.ob-warmup {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 132px;
+}
+.obw-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.obw-head svg {
+  color: var(--accent);
+}
+.obw-bar {
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.obw-bar i {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  transition: width var(--dur) var(--ease);
+}
+.obw-num {
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--ink-2);
+}
+@media (max-width: 720px) {
+  .outreach-bar {
+    flex-wrap: wrap;
+  }
+  .ob-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* Kill-switch toggle (knob slides right when paused). is-on / aria-checked
+   mean PAUSED, not sending — matching the design's inverted control. */
+.killswitch__toggle {
+  position: relative;
+  flex-shrink: 0;
+  width: 46px;
+  height: 26px;
+  border-radius: var(--r-full);
+  border: 0;
+  cursor: pointer;
+  background: var(--success);
+  transition: background var(--dur-fast) var(--ease);
+}
+.killswitch__toggle.is-on {
+  background: var(--danger);
+}
+.killswitch__toggle:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.killswitch__toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.killswitch__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-full);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.killswitch__toggle.is-on .killswitch__knob {
+  transform: translateX(20px);
+}

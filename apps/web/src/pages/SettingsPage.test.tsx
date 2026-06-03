@@ -8,15 +8,33 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const { profileQueryMock, updateMutateMock, invalidateMock } = vi.hoisted(() => ({
+const {
+  profileQueryMock,
+  updateMutateMock,
+  invalidateMock,
+  meQueryMock,
+  killSwitchGetMock,
+  killSwitchToggleMock,
+  killSwitchInvalidateMock,
+  warmupQueryMock,
+} = vi.hoisted(() => ({
   profileQueryMock: vi.fn(),
   updateMutateMock: vi.fn(),
   invalidateMock: vi.fn(),
+  meQueryMock: vi.fn(),
+  killSwitchGetMock: vi.fn(),
+  killSwitchToggleMock: vi.fn(),
+  killSwitchInvalidateMock: vi.fn(),
+  warmupQueryMock: vi.fn(),
 }));
 
 vi.mock("../lib/trpc", () => ({
   trpc: {
-    useUtils: () => ({ preferences: { get: { invalidate: invalidateMock } } }),
+    useUtils: () => ({
+      preferences: { get: { invalidate: invalidateMock } },
+      outreach: { killSwitch: { get: { invalidate: killSwitchInvalidateMock } } },
+    }),
+    auth: { me: { useQuery: meQueryMock } },
     preferences: {
       get: { useQuery: profileQueryMock },
       update: {
@@ -43,6 +61,19 @@ vi.mock("../lib/trpc", () => ({
     },
     outreach: {
       senderName: { useQuery: () => ({ data: { name: "Bryan" } }) },
+      warmup: { useQuery: warmupQueryMock },
+      killSwitch: {
+        get: { useQuery: killSwitchGetMock },
+        toggle: {
+          useMutation: (opts?: { onSuccess?: () => void }) => ({
+            mutate: (input: unknown) => {
+              killSwitchToggleMock(input);
+              opts?.onSuccess?.();
+            },
+            isPending: false,
+          }),
+        },
+      },
     },
   },
 }));
@@ -64,7 +95,16 @@ function withProfile(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   updateMutateMock.mockClear();
   invalidateMock.mockClear();
+  killSwitchToggleMock.mockClear();
+  killSwitchInvalidateMock.mockClear();
   withProfile();
+  // Default to a NON-operator so the profile-form tests do not render the
+  // operator-only Outreach control; the operator case is exercised explicitly.
+  meQueryMock.mockReturnValue({
+    data: { id: "u1", email: "user@homeranger.test", isOperator: false },
+  });
+  killSwitchGetMock.mockReturnValue({ data: { enabled: false } });
+  warmupQueryMock.mockReturnValue({ data: { sentToday: 6, dailyCap: 20 } });
 });
 
 describe("SettingsPage", () => {
@@ -150,5 +190,45 @@ describe("SettingsPage", () => {
     fireEvent.click(soon);
     expect(soon).toHaveAttribute("aria-pressed", "true");
     expect(ready).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("hides the Outreach control for a non-operator", () => {
+    // meQueryMock defaults to a non-operator in beforeEach.
+    render(<SettingsPage />);
+    expect(screen.queryByTestId("settings-outreach")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("kill-switch")).not.toBeInTheDocument();
+  });
+
+  it("shows the operator the Outreach kill-switch + warm-up meter, and toggles it", () => {
+    meQueryMock.mockReturnValue({
+      data: { id: "op", email: "dev@homeranger.local", isOperator: true },
+    });
+    render(<SettingsPage />);
+
+    const outreach = screen.getByTestId("settings-outreach");
+    expect(outreach).toBeInTheDocument();
+    const sw = screen.getByTestId("kill-switch");
+    // Live by default; the warm-up meter shows today / cap.
+    expect(sw).toHaveAttribute("data-enabled", "false");
+    expect(screen.getByTestId("kill-switch-state")).toHaveTextContent(/sending live/i);
+    expect(outreach).toHaveTextContent("6 / 20");
+
+    // Toggling flips the global kill-switch ON (paused) and refetches it.
+    fireEvent.click(screen.getByRole("switch", { name: /pause all outreach/i }));
+    expect(killSwitchToggleMock).toHaveBeenCalledWith({ enabled: true });
+    expect(killSwitchInvalidateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the warm-up meter when outreach is paused", () => {
+    meQueryMock.mockReturnValue({
+      data: { id: "op", email: "dev@homeranger.local", isOperator: true },
+    });
+    killSwitchGetMock.mockReturnValue({ data: { enabled: true } });
+    render(<SettingsPage />);
+    const sw = screen.getByTestId("kill-switch");
+    expect(sw).toHaveAttribute("data-enabled", "true");
+    expect(screen.getByTestId("kill-switch-state")).toHaveTextContent(/paused/i);
+    // The warm-up meter only shows while sending is live.
+    expect(screen.queryByText("6 / 20")).not.toBeInTheDocument();
   });
 });
