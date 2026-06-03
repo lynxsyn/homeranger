@@ -230,18 +230,20 @@ test("kill-switch halts the launch loop: every agent is ineligible and Approve i
   });
   expect(res.status()).toBe(200);
 
+  // Flip the GLOBAL kill-switch ON via Settings → Outreach (it lives there now,
+  // not on Searches) and confirm it reports enabled.
+  await page.goto("/settings");
+  await expect(page.getByTestId("settings-outreach")).toBeVisible();
+  const killSwitch = page.getByTestId("kill-switch");
+  await killSwitch.getByRole("switch").evaluate((el) => (el as HTMLElement).click());
+  await expect(killSwitch).toHaveAttribute("data-enabled", "true");
+
+  // Now open the search and launch + wait for discovery.
   await page.goto("/searches");
   const card = page.locator(
     `[data-testid="search-card"][data-search-name="${SEARCH_NAME}"]`,
   );
   await expect(card).toHaveCount(1);
-
-  // Flip the GLOBAL kill-switch ON via the UI and confirm it reports enabled.
-  const killSwitch = page.getByTestId("kill-switch");
-  await killSwitch.getByRole("switch").evaluate((el) => (el as HTMLElement).click());
-  await expect(killSwitch).toHaveAttribute("data-enabled", "true");
-
-  // Launch + wait for discovery.
   await card.getByTestId("search-launch").evaluate((el) => (el as HTMLElement).click());
   await expect(page.getByTestId("launch-modal")).toBeVisible();
   await expect

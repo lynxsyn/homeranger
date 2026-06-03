@@ -24,6 +24,7 @@ import {
 import { trpc } from "../lib/trpc";
 import { Icon } from "../components/Icon";
 import { Button } from "../components/ui";
+import { OutreachStatus } from "../components/OutreachStatus";
 
 interface Identity {
   firstName: string;
@@ -62,6 +63,11 @@ export function SettingsPage() {
   const { data: profile } = trpc.preferences.get.useQuery();
   // The RESEND_FROM display name — the sign-off fallback when no buyer name set.
   const { data: sender } = trpc.outreach.senderName.useQuery();
+  // The outreach control (kill-switch + warm-up) is operator-only — the backend
+  // (operatorProcedure) FORBIDs a non-operator, so we only render it for the
+  // operator. Non-operators just see their own details.
+  const { data: me } = trpc.auth.me.useQuery();
+  const isOperator = me?.isOperator ?? false;
 
   const [draft, setDraft] = useState<Identity>(BLANK);
   const [saved, setSaved] = useState(false);
@@ -142,6 +148,13 @@ export function SettingsPage() {
           until an agent is contacted.
         </p>
       </div>
+
+      {isOperator && (
+        <section className="settings-section" data-testid="settings-outreach">
+          <span className="settings-eyebrow">Outreach</span>
+          <OutreachStatus />
+        </section>
+      )}
 
       <div className="settings-grid">
         <div className="hs-card settings-card">

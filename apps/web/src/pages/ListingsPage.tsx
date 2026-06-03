@@ -25,6 +25,7 @@ import type { AppRouter } from "@homeranger/backend-core";
 import type { SearchFilter } from "./SearchesPage";
 import { trpc } from "../lib/trpc";
 import { Icon } from "../components/Icon";
+import { InfoTip } from "../components/InfoTip";
 import {
   Button,
   Chip,
@@ -763,12 +764,19 @@ export function ListingsPage({
       ) : (
         <>
           <div className="controls">
-            <span className="count" data-testid="listings-count">
-              <b>
-                {rows.length}
-                {hasMore ? "+" : ""}
-              </b>{" "}
-              {rows.length === 1 ? "home" : "homes"} from your agents
+            <span className="ctrl-left">
+              <span className="count" data-testid="listings-count">
+                <b>
+                  {rows.length}
+                  {hasMore ? "+" : ""}
+                </b>{" "}
+                {rows.length === 1 ? "home" : "homes"} from your agents
+              </span>
+              <InfoTip label="About listings">
+                Homes your agents have sent in, read from their emails and scored
+                against your taste. Click a home to open the agent&rsquo;s page;
+                bookmark the ones you like to draft a follow-up to their agency.
+              </InfoTip>
             </span>
             <div className="controls__right">
               <div className="sortwrap">
