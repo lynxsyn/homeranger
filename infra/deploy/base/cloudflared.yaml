@@ -1,5 +1,5 @@
-# Cloudflare Tunnel runtime for the homeranger edge (app.homeranger.app +
-# hooks.homeranger.app).
+# Cloudflare Tunnel runtime for the homeranger edge (the apex homeranger.app;
+# webhooks are a /webhooks path on the same host, not a separate subdomain).
 #
 # Tunnel ingress rules (hostname -> origin Service) AND the per-hostname DNS
 # CNAMEs are Terraform-managed in infra/terraform/cloudflare/tunnel.tf via

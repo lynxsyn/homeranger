@@ -227,6 +227,14 @@ spec:
                   name: homeranger-secret
                   key: UNSUBSCRIBE_TOKEN_SECRET
                   optional: true
+            # UNSUBSCRIBE_BASE_URL pins the RFC-8058 one-click unsubscribe link
+            # to the apex (homeranger.app), where it is Access-bypassed. The
+            # processor SENDS outreach, so it embeds this URL at send time. Set
+            # explicitly (not relying on the code default) so the RUNNING pod
+            # emits apex links immediately, independent of which image tag is
+            # deployed — no app.homeranger.app link survives the apex cutover.
+            - name: UNSUBSCRIBE_BASE_URL
+              value: https://homeranger.app/api/outreach/unsubscribe
             # M7/M8 agent discovery. FIRECRAWL_API_KEY powers the real
             # FirecrawlAgentDiscoveryProvider (web search → estate-agent emails).
             # optional:true + the provider is construction-safe (boots without

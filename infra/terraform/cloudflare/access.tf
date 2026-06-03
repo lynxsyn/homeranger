@@ -1,5 +1,5 @@
 # ── Cloudflare Zero Trust Access for the homeranger app ──
-# A self-hosted Access application fronting app.homeranger.app (the same
+# A self-hosted Access application fronting homeranger.app (the same
 # hostname the tunnel serves). Cloudflare challenges the request, mints a JWT,
 # and stamps it as the `Cf-Access-Jwt-Assertion` header on every proxied
 # request — which the api verifies in-process (jose) against the team JWKS,
@@ -71,6 +71,59 @@ resource "cloudflare_zero_trust_access_application" "homeranger" {
     {
       id         = cloudflare_zero_trust_access_policy.homeranger_service_auth.id
       precedence = 2
+    },
+  ]
+}
+
+# ── Public machine endpoints (Access BYPASS) ──
+# A couple of endpoints can't pass the human login wall: the RFC-8058 one-click
+# unsubscribe (mail clients click it) and the Resend webhooks (Resend POSTs to
+# them). They live on the SAME homeranger.app host, but as path-scoped Access
+# apps with a `bypass` decision so Cloudflare lets them through unauthenticated.
+# A more-specific path app takes precedence over the catch-all `homeranger` app
+# above, so EVERYTHING ELSE on homeranger.app stays behind the login wall. These
+# endpoints are NOT unprotected — each verifies its own crypto in-process: the
+# unsubscribe link carries an HMAC token; the webhook routes verify the Svix
+# signature on the raw body before doing anything.
+#
+# GUARDRAIL — the bypass domain is a PREFIX. "homeranger.app/webhooks" matches
+# /webhooks AND everything beneath it (/webhooks/*); likewise the unsubscribe
+# path. So ANY future route mounted under these prefixes inherits the edge
+# bypass and is reachable UNAUTHENTICATED — it MUST carry its own in-process
+# verification (Svix / HMAC / equivalent) before any side effect, or it becomes
+# a public side-effecting endpoint. Keep all authenticated business logic on the
+# /trpc data plane (behind the catch-all app), never under these bypass prefixes.
+resource "cloudflare_zero_trust_access_policy" "public_bypass" {
+  account_id = var.account_id
+  name       = "Public bypass — homeranger machine endpoints"
+  decision   = "bypass"
+  include    = [{ everyone = {} }]
+}
+
+resource "cloudflare_zero_trust_access_application" "unsubscribe" {
+  zone_id          = var.zone_id
+  name             = "homeranger unsubscribe (public)"
+  domain           = "${var.app_hostname}/api/outreach/unsubscribe"
+  session_duration = "24h"
+  type             = "self_hosted"
+  policies = [
+    {
+      id         = cloudflare_zero_trust_access_policy.public_bypass.id
+      precedence = 1
+    },
+  ]
+}
+
+resource "cloudflare_zero_trust_access_application" "webhooks" {
+  zone_id          = var.zone_id
+  name             = "homeranger webhooks (public)"
+  domain           = "${var.app_hostname}/webhooks"
+  session_duration = "24h"
+  type             = "self_hosted"
+  policies = [
+    {
+      id         = cloudflare_zero_trust_access_policy.public_bypass.id
+      precedence = 1
     },
   ]
 }

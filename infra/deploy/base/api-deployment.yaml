@@ -96,7 +96,12 @@ spec:
             - name: NODE_ENV
               value: production
             - name: WEB_ORIGIN
-              value: https://app.homeranger.app
+              value: https://homeranger.app
+            # Apex unsubscribe base — Access-bypassed at homeranger.app. Set
+            # explicitly so it matches the processor (single source of truth for
+            # where the one-click link points) regardless of image tag.
+            - name: UNSUBSCRIBE_BASE_URL
+              value: https://homeranger.app/api/outreach/unsubscribe
             # GIT_SHA is baked into the image at BUILD time
             # (apps/api/Dockerfile ARG GIT_SHA ← release.yml build-arg
             # github.sha). It is NOT injected from the image tag here — the tag

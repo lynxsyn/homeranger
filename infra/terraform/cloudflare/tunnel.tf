@@ -1,5 +1,5 @@
 # ── Cloudflare Tunnel ──
-# Outbound-only tunnel fronting the homeranger app (app.homeranger.app).
+# Outbound-only tunnel fronting the homeranger app (homeranger.app).
 # Mirrors Doxus's tunnel pattern: one named tunnel, a config with path-based
 # ingress (/api + /ws + /trpc → API service, everything else → web), and a
 # proxied CNAME pointing the public hostname at <tunnel-id>.cfargotunnel.com.
@@ -54,28 +54,23 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "homeranger" {
         service  = "http://homeranger-api.homeranger.svc.cluster.local:3000"
       },
       {
+        # Resend webhooks (inbound-parse + delivery/event) — /webhooks/* on the
+        # SAME homeranger.app host, routed to the api. Cloudflare Access BYPASSES
+        # this path (access.tf cloudflare_zero_trust_access_application.webhooks)
+        # since Resend can't present an Access JWT; each route still verifies the
+        # Svix signature on the raw body. MUST precede the web catch-all below
+        # (cloudflared matches top-to-bottom).
+        hostname = var.app_hostname
+        path     = "/webhooks"
+        service  = "http://homeranger-api.homeranger.svc.cluster.local:3000"
+      },
+      {
         # SPA / static web. If the web app is served from Cloudflare Pages
         # instead of an in-cluster Service, swap this for the Pages origin
         # + origin_request httpHostHeader/originServerName rewrite (see the
         # Doxus tunnel.tf Pages pattern). Default here is in-cluster web.
         hostname = var.app_hostname
         service  = "http://homeranger-web.homeranger.svc.cluster.local:8080"
-      },
-      {
-        # M4 — Resend inbound/event webhooks. Dedicated public host that maps
-        # to the SAME homeranger-api Service but is deliberately NOT fronted by
-        # the Cloudflare Access app (access.tf scopes the Access application to
-        # var.app_hostname only). Resend cannot present a CF Access JWT, so the
-        # webhook routes authenticate at the API layer instead: each route
-        # verifies the Svix signature (whsec_… secret) on the raw body before
-        # doing anything. Mirrors Doxus's edge-public api.doxus.app pattern for
-        # its CF Email Routing worker.
-        #
-        # The api's NetworkPolicy already allows ingress from cloudflared on
-        # 3000 (allow-homeranger-api) — the same Service answers both hostnames,
-        # so no extra netpol is needed for this host.
-        hostname = var.webhook_hostname
-        service  = "http://homeranger-api.homeranger.svc.cluster.local:3000"
       },
       {
         service = "http_status:404"
@@ -85,7 +80,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "homeranger" {
 }
 
 # ── DNS record ──
-# Proxied CNAME routing var.app_hostname (app.homeranger.app) through the
+# Proxied CNAME routing var.app_hostname (homeranger.app) through the
 # tunnel. Uses var.app_hostname so the published host matches the ingress
 # `hostname` blocks above exactly (no subdomain divergence).
 resource "cloudflare_dns_record" "tunnel_app" {
@@ -97,17 +92,5 @@ resource "cloudflare_dns_record" "tunnel_app" {
   ttl     = 1
 }
 
-# M4 — Proxied CNAME for the Resend webhook host (var.webhook_hostname, e.g.
-# hooks.homeranger.app). Pairs with the var.webhook_hostname ingress entry
-# in cloudflare_zero_trust_tunnel_cloudflared_config.homeranger. NOT covered by
-# the CF Access application — webhooks reach the api directly and are
-# authenticated by Svix signature verification at the route layer. Proxied so
-# Cloudflare's edge (and the custom WAF in waf.tf) still front it.
-resource "cloudflare_dns_record" "tunnel_webhook" {
-  zone_id = var.zone_id
-  name    = var.webhook_hostname
-  type    = "CNAME"
-  content = "${cloudflare_zero_trust_tunnel_cloudflared.homeranger.id}.cfargotunnel.com"
-  proxied = true
-  ttl     = 1
-}
+# Webhooks now live at homeranger.app/webhooks (a path on the apex tunnel CNAME
+# above), Access-bypassed per access.tf — so there is no separate webhook host.
