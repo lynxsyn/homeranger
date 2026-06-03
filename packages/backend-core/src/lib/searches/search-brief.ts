@@ -91,7 +91,9 @@ export function draftSearchEmail(
     search.maxPricePence != null && search.maxPricePence > 0
       ? `, up to ${formatGbpFromPence(search.maxPricePence)}`
       : "";
-  const taste = search.keywords.trim();
+  // The buyer's free-text "what you're looking for". Trailing punctuation is
+  // stripped so it reads as one tidy sentence woven into the draft.
+  const taste = search.keywords.trim().replace(/[.!?,;\s]+$/, "");
 
   // Project-appetite line, only for a renovation/restoration brief.
   let conditionLine = "";
@@ -100,7 +102,7 @@ export function draftSearchEmail(
     search.condition.includes("Full renovation")
   ) {
     conditionLine =
-      "I'm glad to take on a renovation or full restoration — condition isn't a barrier. ";
+      "I'm glad to take on a renovation or full restoration; condition isn't a barrier. ";
   } else if (search.condition.includes("Some updating")) {
     conditionLine = "Some updating is fine. ";
   }
@@ -126,19 +128,19 @@ export function draftSearchEmail(
 
   const body = (conditionLine + landLine + auctionLine).trim();
 
-  // The buyer's urgency line REPLACES the default closing sentence; "browsing"
-  // or an unset urgency keeps the relaxed default (so an empty profile reads
-  // identically to the pre-profile draft).
+  // A set urgency line APPENDS to the neutral base closing. "browsing" and an
+  // unset urgency append nothing — they stay relaxed, never the eager "move
+  // quickly" tell; eager copy belongs only to the ready/soon levels.
   const uLine = urgencyLine(sender?.urgency);
   const closing =
-    "If anything's coming up that fits — including pre-market or off-portal — " +
-    "I'd be glad to hear from you before it reaches the portals." +
-    (uLine ? ` ${uLine}` : " Happy to move quickly for the right place.");
+    "If anything's coming up that fits, including pre-market or off-portal " +
+    "listings, I'd be glad to hear from you before it reaches the portals." +
+    (uLine ? ` ${uLine}` : "");
 
   return (
     `Hello,\n\n` +
     `I'm a private buyer searching in ${locationPhrase} for a ${beds}${types}${price}.\n\n` +
-    (taste ? `In short: ${taste}\n\n` : "") +
+    (taste ? `To give you a feel for what I'm after: ${taste}.\n\n` : "") +
     (body ? `${body}\n\n` : "") +
     `${closing}\n\n` +
     signatureBlock(sender?.name, sender?.phone)

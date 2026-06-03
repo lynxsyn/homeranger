@@ -113,7 +113,7 @@ function renderSearchDraft(
   const bodyText = [
     searchDraft.bodyText,
     "",
-    "—",
+    "--",
     `To stop receiving these emails, unsubscribe here: ${unsubscribeUrl}`,
   ].join("\n");
   const htmlBody = searchDraft.bodyText
@@ -319,7 +319,7 @@ export class DefaultOutreachService implements OutreachService {
       thread ??
       (await this.outreachRepository.findOrCreateOpenThreadByAgent({
         agentId: agent.id,
-        subject: "Buyer enquiry — pre-market & upcoming listings",
+        subject: "Buyer enquiry: pre-market and upcoming listings",
       }));
 
     const token = this.signToken(agent.email);

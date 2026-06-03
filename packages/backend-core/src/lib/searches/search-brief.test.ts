@@ -97,19 +97,29 @@ describe("draftSearchEmail", () => {
     expect(email).not.toContain("up to");
   });
 
-  it("adds the taste line from keywords when present", () => {
+  it("weaves the 'what you're looking for' taste into the draft as prose", () => {
     const email = draftSearchEmail(brief({ keywords: "light, character, a garden" }));
-    expect(email).toContain("In short: light, character, a garden");
+    expect(email).toContain(
+      "To give you a feel for what I'm after: light, character, a garden.",
+    );
+  });
+
+  it("strips trailing punctuation from the taste so it reads as one sentence", () => {
+    const email = draftSearchEmail(brief({ keywords: "light and a garden.  " }));
+    expect(email).toContain("To give you a feel for what I'm after: light and a garden.");
+    expect(email).not.toContain("garden..");
   });
 
   it("omits the taste line when keywords are blank", () => {
-    expect(draftSearchEmail(brief({ keywords: "   " }))).not.toContain("In short:");
+    expect(draftSearchEmail(brief({ keywords: "   " }))).not.toContain(
+      "To give you a feel",
+    );
   });
 
   it("emits the renovation line for Restoration project / Full renovation", () => {
     const reno = draftSearchEmail(brief({ condition: ["Full renovation"] }));
     expect(reno).toContain(
-      "I'm glad to take on a renovation or full restoration — condition isn't a barrier.",
+      "I'm glad to take on a renovation or full restoration; condition isn't a barrier.",
     );
     const resto = draftSearchEmail(brief({ condition: ["Restoration project"] }));
     expect(resto).toContain("condition isn't a barrier.");
@@ -150,7 +160,7 @@ describe("draftSearchEmail", () => {
     expect(email.startsWith("Hello,\n\n")).toBe(true);
     expect(email.endsWith("Many thanks")).toBe(true);
     // No optional paragraphs leak in.
-    expect(email).not.toContain("In short:");
+    expect(email).not.toContain("To give you a feel");
     expect(email).not.toContain("condition isn't a barrier.");
     expect(email).not.toContain("I'd also consider");
     expect(email).not.toContain("auction lots");
@@ -186,15 +196,37 @@ describe("draftSearchEmail", () => {
     expect(ready).not.toContain("Happy to move quickly for the right place.");
   });
 
-  it("keeps the relaxed default closing for browsing / unset urgency", () => {
+  it("uses a relaxed closing for browsing and no eager line for unset urgency", () => {
     const browsing = draftSearchEmail(brief(), {
       name: "Jane",
       phone: null,
       urgency: "browsing",
     });
-    expect(browsing).toContain("Happy to move quickly for the right place.");
-    expect(draftSearchEmail(brief())).toContain(
-      "Happy to move quickly for the right place.",
+    // "Just looking" must never read as eager — no "move quickly" default.
+    expect(browsing).not.toContain("Happy to move quickly for the right place.");
+    expect(browsing).not.toContain("move quickly");
+    expect(browsing).toContain("before it reaches the portals.");
+    // An unset urgency keeps the same neutral closing (no eager tail).
+    const unset = draftSearchEmail(brief());
+    expect(unset).not.toContain("move quickly");
+    expect(unset).toContain("before it reaches the portals.");
+  });
+
+  it("never uses em or en dashes in the email body (AI tell)", () => {
+    const full = draftSearchEmail(
+      brief({
+        location: "Conwy County",
+        types: ["Cottage", "Barn"],
+        minBedrooms: 3,
+        maxPricePence: 42_500_000,
+        condition: ["Full renovation"],
+        land: ["Land with a building to convert"],
+        saleMethods: ["Auction"],
+        keywords: "light and character",
+      }),
+      { name: "Jane", phone: "07700 900123", urgency: "ready" },
     );
+    expect(full).not.toContain("—");
+    expect(full).not.toContain("–");
   });
 });

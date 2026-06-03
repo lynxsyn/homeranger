@@ -423,9 +423,9 @@ function followUpEmail(rows: ViewRow[], senderName?: string | null): string {
   return (
     `Hello,\n\n` +
     `Thank you for sending ${single ? "this" : "these"} through. I'm very interested in ` +
-    `${names}${single ? "" : " — each looks like a strong fit"}.\n\n` +
-    `Could we arrange ${single ? "a viewing" : "viewings"}? I'm flexible on timing and ready to ` +
-    `move quickly for the right place. If anything similar is coming up that hasn't reached the ` +
+    `${names}${single ? "" : ", each looks like a strong fit"}.\n\n` +
+    `Could we arrange ${single ? "a viewing" : "viewings"}? I'm flexible on timing and happy to ` +
+    `work around your diary. If anything similar is coming up that hasn't reached the ` +
     `portals yet, I'd be glad to hear about it first.\n\n` +
     (senderName ? `Many thanks,\n${senderName}` : `Many thanks`)
   );

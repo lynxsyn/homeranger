@@ -440,6 +440,10 @@ describe("SearchesPage editor", () => {
     expect(preview).toHaveTextContent(/auction lots/i);
     // Signs off with the sender's name (from RESEND_FROM via outreach.senderName).
     expect(preview).toHaveTextContent(/Many thanks,\s*Bryan/);
+    // No AI tells in the drafted email: no em/en dash, never the eager default.
+    expect(preview).not.toHaveTextContent("—");
+    expect(preview).not.toHaveTextContent("–");
+    expect(preview).not.toHaveTextContent("Happy to move quickly");
   });
 
   it("opens an existing search pre-filled and updates with its id", () => {
