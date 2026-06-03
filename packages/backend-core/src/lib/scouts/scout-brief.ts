@@ -70,7 +70,10 @@ function joinTypes(types: string[]): string {
  * paragraph (only the lines the brief opts into), and the closing. Pure,
  * deterministic, and graceful when the brief is empty.
  */
-export function draftScoutEmail(scout: ScoutBriefInput): string {
+export function draftScoutEmail(
+  scout: ScoutBriefInput,
+  senderName?: string | null,
+): string {
   // `loc` is the first comma/dash-delimited segment; the design uses it as the
   // fallback location when the full string is blank.
   const loc = (scout.location || "your area").split(/[,—–-]/)[0]!.trim();
@@ -124,6 +127,6 @@ export function draftScoutEmail(scout: ScoutBriefInput): string {
     (taste ? `In short: ${taste}\n\n` : "") +
     (body ? `${body}\n\n` : "") +
     `If anything's coming up that fits — including pre-market or off-portal — I'd be glad to hear from you before it reaches the portals. Happy to move quickly for the right place.\n\n` +
-    `Many thanks`
+    (senderName ? `Many thanks,\n${senderName}` : `Many thanks`)
   );
 }

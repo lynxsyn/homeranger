@@ -36,6 +36,7 @@ import {
 } from "../repositories/scout.repository.js";
 import {
   getOutreachEmailConfig,
+  currentSenderName,
   type EmailProvider,
   type OutreachEmailConfig,
 } from "../lib/email/email-provider.js";
@@ -74,7 +75,7 @@ export function makeDefaultScoutDraftLoader(
       subject: location
         ? `A private buyer looking in ${location}`
         : "A private buyer looking in your area",
-      bodyText: draftScoutEmail(scout),
+      bodyText: draftScoutEmail(scout, currentSenderName()),
     };
   };
 }

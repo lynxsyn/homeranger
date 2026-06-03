@@ -56,6 +56,28 @@ export function getOutreachEmailConfig(): OutreachEmailConfig {
 }
 
 /**
+ * Extract the human display name from a RESEND_FROM value, so outreach emails
+ * sign off with the sender's name (single source of truth — change the sender
+ * once and both the From header and the signature update). Returns null when
+ * there is no display name (bare address) or it is unset.
+ *   "Bryan <bryan@homeranger.app>" → "Bryan"
+ *   "bryan@homeranger.app"         → null
+ */
+export function senderDisplayName(
+  from: string | undefined | null,
+): string | null {
+  if (!from) return null;
+  const m = from.match(/^\s*"?([^"<]*?)"?\s*<[^>]+>\s*$/);
+  const name = m?.[1]?.trim() ?? "";
+  return name.length > 0 ? name : null;
+}
+
+/** The current outreach sender display name from RESEND_FROM (null if unset). */
+export function currentSenderName(): string | null {
+  return senderDisplayName(process.env.RESEND_FROM);
+}
+
+/**
  * Deterministic, network-free send provider for E2E/CI (OUTREACH_FAKE=1). The
  * id is derived from the idempotencyKey ALONE so a retried send returns the
  * SAME providerMessageId — exactly the property the real provider gets from its

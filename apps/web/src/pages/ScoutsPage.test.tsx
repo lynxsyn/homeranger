@@ -90,6 +90,7 @@ vi.mock("../lib/trpc", () => ({
       suggest: { useQuery: locationsSuggestMock },
     },
     outreach: {
+      senderName: { useQuery: () => ({ data: { name: "Bryan" } }) },
       killSwitch: {
         get: { useQuery: killSwitchGetMock },
         toggle: {
@@ -418,6 +419,8 @@ describe("ScoutsPage editor", () => {
     expect(preview).toHaveTextContent("Hampstead, NW3");
     expect(preview).toHaveTextContent("2+ bedroom");
     expect(preview).toHaveTextContent(/auction lots/i);
+    // Signs off with the sender's name (from RESEND_FROM via outreach.senderName).
+    expect(preview).toHaveTextContent(/Many thanks,\s*Bryan/);
   });
 
   it("opens an existing scout pre-filled and updates with its id", () => {

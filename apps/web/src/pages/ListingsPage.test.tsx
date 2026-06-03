@@ -13,7 +13,10 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 
 const { useQueryMock } = vi.hoisted(() => ({ useQueryMock: vi.fn() }));
 vi.mock("../lib/trpc", () => ({
-  trpc: { listings: { list: { useQuery: useQueryMock } } },
+  trpc: {
+    listings: { list: { useQuery: useQueryMock } },
+    outreach: { senderName: { useQuery: () => ({ data: { name: "Bryan" } }) } },
+  },
 }));
 
 import { ListingsPage } from "./ListingsPage";

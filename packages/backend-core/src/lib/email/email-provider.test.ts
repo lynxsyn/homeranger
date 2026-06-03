@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   FakeEmailSendProvider,
   getOutreachEmailConfig,
+  senderDisplayName,
+  currentSenderName,
 } from "./email-provider.js";
 
 const baseInput = {
@@ -45,5 +47,28 @@ describe("getOutreachEmailConfig", () => {
       from: "HomeRanger <hi@homeranger.test>",
       replyTo: "reply@homeranger.test",
     });
+  });
+});
+
+describe("senderDisplayName / currentSenderName", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("extracts the display name from a 'Name <addr>' value", () => {
+    expect(senderDisplayName("Bryan <bryan@homeranger.app>")).toBe("Bryan");
+    expect(senderDisplayName('"Bryan Smith" <b@x.app>')).toBe("Bryan Smith");
+  });
+
+  it("returns null for a bare address or empty/missing value", () => {
+    expect(senderDisplayName("bryan@homeranger.app")).toBeNull();
+    expect(senderDisplayName("")).toBeNull();
+    expect(senderDisplayName(undefined)).toBeNull();
+    expect(senderDisplayName("<only@addr.app>")).toBeNull();
+  });
+
+  it("currentSenderName reads RESEND_FROM", () => {
+    vi.stubEnv("RESEND_FROM", "Bryan <bryan@homeranger.app>");
+    expect(currentSenderName()).toBe("Bryan");
+    vi.stubEnv("RESEND_FROM", "");
+    expect(currentSenderName()).toBeNull();
   });
 });

@@ -175,6 +175,15 @@ spec:
                   name: homeranger-secret
                   key: UNSUBSCRIBE_TOKEN_SECRET
                   optional: true
+            # Read ONLY to expose the sender display name (outreach.senderName)
+            # so the UI email previews sign off like the sent emails do. The api
+            # does NOT send — the processor owns sending. optional:true.
+            - name: RESEND_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: homeranger-secret
+                  key: RESEND_FROM
+                  optional: true
           readinessProbe:
             httpGet:
               path: /api/health
