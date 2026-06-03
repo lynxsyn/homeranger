@@ -25,6 +25,32 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 30px;
 }
 .topbar__right { display: flex; align-items: center; gap: 10px; }
+.topbar__left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.topbar__left .brand-btn { flex-shrink: 0; }
+.topbar .nav { margin-left: 6px; }
+@media (max-width: 600px) {
+  .topbar__left { gap: 4px; }
+  .topbar .nav { margin-left: 0; gap: 0; }
+  .topbar .nav button { padding: 8px 10px; }
+}
+
+/* ---- Primary nav (editorial underline tabs) ------------------------------ */
+.nav { display: flex; align-items: center; gap: 2px; }
+.nav button {
+  position: relative; white-space: nowrap;
+  font-family: var(--font-sans); font-size: var(--fs-sm); font-weight: var(--fw-medium);
+  color: var(--ink-2); background: transparent; border: 0; cursor: pointer;
+  padding: 18px 12px; line-height: 1;
+  transition: color var(--dur-fast) var(--ease);
+}
+.nav button::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px;
+  background: var(--accent); transform: scaleX(0); transform-origin: center;
+  transition: transform var(--dur) var(--ease);
+}
+.nav button:hover { color: var(--ink-1); }
+.nav button[aria-current="page"] { color: var(--accent-ink); }
+.nav button[aria-current="page"]::after { transform: scaleX(1); }
 
 /* ---- Page header --------------------------------------------------------- */
 .page-head { display: flex; flex-direction: column; gap: 7px; margin-bottom: 22px; }

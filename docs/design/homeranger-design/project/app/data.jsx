@@ -102,6 +102,91 @@ const LISTINGS = [
     agency: "Hunters", photoCount: 11, score: 71, lastSeen: "6d ago", ageHours: 146,
     note: "Warehouse-style flat on a much-loved street. Withdrawn from market last week.",
   },
+
+  /* --- Snowdonia (matches the Snowdonia scout — LL outcodes) --- */
+  {
+    id: "01HZ8A",
+    address: "Pen y Bryn, Llanberis",
+    outcode: "LL55", postcode: "LL55 4EU",
+    price: 465000, bedrooms: 3, bathrooms: 1,
+    propertyType: "Detached", tenure: "Freehold", epc: "e",
+    status: "pre_market", listingUrl: null, agency: "Dafydd Hardy",
+    photoCount: 11, score: 90, lastSeen: "6h ago", ageHours: 6,
+    note: "Stone house looking straight at the Snowdon range, with a wood burner and a small paddock. Single glazing to budget for.",
+  },
+  {
+    id: "01HZ8B",
+    address: "Hen Efail, Penrhyndeudraeth",
+    outcode: "LL48", postcode: "LL48 6LR",
+    price: 398000, bedrooms: 3, bathrooms: 2,
+    propertyType: "Cottage", tenure: "Freehold", epc: "f",
+    status: "live", listingUrl: "https://www.rightmove.co.uk/properties/example-henefail",
+    agency: "Tom Parry", photoCount: 9, score: 84, lastSeen: "1d ago", ageHours: 28,
+    note: "Whitewashed cottage with valley views and a wood-panelled snug. Remote, but full of character.",
+  },
+  {
+    id: "01HZ8C",
+    address: "Tan y Gader, Dolgellau",
+    outcode: "LL40", postcode: "LL40 1RA",
+    price: 525000, bedrooms: 4, bathrooms: 2,
+    propertyType: "Detached", tenure: "Freehold", epc: "d",
+    status: "live", listingUrl: "https://www.zoopla.co.uk/example-tanygader",
+    agency: "Welsh Country Homes", photoCount: 14, score: 79, lastSeen: "2d ago", ageHours: 52,
+    note: "Substantial house under Cadair Idris with a big garden. Top of budget and a long drive to the nearest station.",
+  },
+
+  /* --- Hampstead (matches the Hampstead scout — NW3) --- */
+  {
+    id: "01HZ8D",
+    address: "Willoughby Road, Hampstead",
+    outcode: "NW3", postcode: "NW3 1RT",
+    price: 735000, bedrooms: 1, bathrooms: 1,
+    propertyType: "Flat", tenure: "Share of freehold", epc: "c",
+    status: "pre_market", listingUrl: null, agency: "Goldschmidt & Howland",
+    photoCount: 8, score: 86, lastSeen: "3h ago", ageHours: 3,
+    note: "Top-floor period conversion with high ceilings and rooftop light, two minutes from the Heath.",
+  },
+  {
+    id: "01HZ8E",
+    address: "Christchurch Hill, Hampstead",
+    outcode: "NW3", postcode: "NW3 1JH",
+    price: 690000, bedrooms: 1, bathrooms: 1,
+    propertyType: "Flat", tenure: "Leasehold", epc: "d",
+    status: "live", listingUrl: "https://www.onthemarket.com/example-christchurch",
+    agency: "Benham & Reeves", photoCount: 10, score: 77, lastSeen: "1d ago", ageHours: 30,
+    note: "Bright garden-flat conversion on a quiet hill. Lower ceilings than ideal and a short lease to check.",
+  },
+
+  /* --- Rural restoration (matches the Rural restoration scout — Powys) --- */
+  {
+    id: "01HZ8F",
+    address: "Ty Coch Farmhouse, near Llanidloes",
+    outcode: "SY18", postcode: "SY18 6QR",
+    price: 285000, bedrooms: 4, bathrooms: 1,
+    propertyType: "Farmhouse", tenure: "Freehold", epc: "g",
+    status: "live", listingUrl: "https://www.example-auctions.co.uk/lot-ty-coch",
+    agency: "Morris Marshall & Poole", photoCount: 12, score: 87, lastSeen: "1d ago", ageHours: 27,
+    tag: "Auction",
+    note: "Derelict stone farmhouse with two barns and roughly 4 acres. No services connected — a full restoration, but exactly the project you described. Guide price; for sale by auction next month.",
+  },
+  {
+    id: "01HZ8G",
+    address: "Building plot, Llandrindod Wells",
+    outcode: "LD1", postcode: "LD1 5AA",
+    price: 165000, bedrooms: null, bathrooms: null,
+    propertyType: "Land", tenure: "Freehold", epc: null,
+    status: "live", listingUrl: "https://www.example-agent.co.uk/plot-llandrindod",
+    agency: "McCartneys", photoCount: 5, score: 74, lastSeen: "3d ago", ageHours: 70,
+    tag: "Planning granted",
+    note: "Level half-acre plot with outline planning for a single dwelling, services to the boundary. Quiet edge-of-town lane with open views.",
+  },
 ];
 
 window.LISTINGS = LISTINGS;
+
+/* Listings a scout has turned up — matched by its target outcodes. */
+window.matchScout = function (scout) {
+  if (!scout || !scout.outcodes) return [];
+  const set = scout.outcodes.map((o) => o.toUpperCase());
+  return LISTINGS.filter((l) => set.includes((l.outcode || "").toUpperCase()));
+};

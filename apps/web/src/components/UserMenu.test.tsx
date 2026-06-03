@@ -1,9 +1,10 @@
 /**
  * UserMenu unit tests — the account avatar + dropdown. A mocked `preferences.get`
  * feeds the avatar initials + header; react-router's MemoryRouter supplies the
- * active route. Asserts: avatar glyph vs initials, the menu opens with Listings /
- * Searches / Settings / Theme, the active route is marked, navigation delegates
- * to `onNavigate`, and the theme row reports + toggles the theme.
+ * active route. Primary nav now lives in the topbar tabs, so the dropdown carries
+ * only Settings + Theme + Sign out. Asserts: avatar glyph vs initials, the menu
+ * opens with Settings + Theme (and no Listings/Searches), the active route is
+ * marked, navigation delegates to `onNavigate`, and the theme row toggles.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
@@ -69,24 +70,24 @@ describe("UserMenu avatar", () => {
 });
 
 describe("UserMenu dropdown", () => {
-  it("is closed until the avatar is clicked, then lists the nav + theme", () => {
+  it("is closed until the avatar is clicked, then lists Settings + theme only", () => {
     renderMenu();
     expect(screen.queryByTestId("account-menu")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("account-avatar"));
     const menu = screen.getByTestId("account-menu");
-    expect(within(menu).getByTestId("nav-listings")).toHaveTextContent("Listings");
-    expect(within(menu).getByTestId("nav-searches")).toHaveTextContent("Searches");
     expect(within(menu).getByTestId("nav-settings")).toHaveTextContent("Settings");
     expect(within(menu).getByTestId("theme-toggle")).toHaveTextContent("Theme");
+    // Listings/Searches are topbar tabs now, not dropdown items.
+    expect(within(menu).queryByTestId("nav-listings")).not.toBeInTheDocument();
+    expect(within(menu).queryByTestId("nav-searches")).not.toBeInTheDocument();
   });
 
-  it("marks the active route (Searches at /searches)", () => {
-    renderMenu({}, "/searches");
+  it("marks Settings active when on /settings", () => {
+    renderMenu({}, "/settings");
     fireEvent.click(screen.getByTestId("account-avatar"));
-    expect(screen.getByTestId("nav-searches")).toHaveAttribute("aria-current", "true");
-    expect(screen.getByTestId("nav-listings")).toHaveAttribute(
+    expect(screen.getByTestId("nav-settings")).toHaveAttribute(
       "aria-current",
-      "false",
+      "true",
     );
   });
 

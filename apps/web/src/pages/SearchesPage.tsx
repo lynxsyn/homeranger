@@ -301,11 +301,20 @@ interface SearchCardProps {
   onOpen: (search: Search) => void;
   onToggle: (search: Search) => void;
   onViewHomes: (search: Search) => void;
+  /** Drill into the agents contacted for this search's patch. */
+  onViewAgents?: (filter: { name: string; outcodes: string[] }) => void;
   /** Operator-only — undefined for non-operators (the Launch control is hidden). */
   onLaunch?: (search: Search) => void;
 }
 
-function SearchCard({ search, onOpen, onToggle, onViewHomes, onLaunch }: SearchCardProps) {
+function SearchCard({
+  search,
+  onOpen,
+  onToggle,
+  onViewHomes,
+  onViewAgents,
+  onLaunch,
+}: SearchCardProps) {
   const maxPricePounds =
     search.maxPricePence == null ? null : Math.round(search.maxPricePence / 100);
   // We can link through to the search's patch whenever it resolved any outcodes;
@@ -392,6 +401,20 @@ function SearchCard({ search, onOpen, onToggle, onViewHomes, onLaunch }: SearchC
           <span className="sc-muted">
             <Icon name="home" size={14} /> No patch yet
           </span>
+        )}
+        {canViewHomes && (
+          <button
+            type="button"
+            className="sc-link cc-link--muted"
+            data-testid="search-agents-link"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewAgents?.({ name: search.name, outcodes: search.outcodes });
+            }}
+          >
+            <Icon name="send" size={13} /> View agents
+            <Icon name="arrow-right" size={13} />
+          </button>
         )}
         {canViewHomes && <SearchStats searchId={search.id} />}
         <span className="sc-spacer" />
@@ -1171,9 +1194,20 @@ type EditingState =
 
 export interface SearchesPageProps {
   onViewHomes: (filter: SearchFilter) => void;
+  /** Drill into the agents contacted for a search's patch (App routes /agents). */
+  onViewAgents?: (filter: { name: string; outcodes: string[] }) => void;
+  /** When set by the topbar "New search" CTA, opens the editor on mount. */
+  pendingNew?: boolean;
+  /** Called once the pending-new intent has been consumed (clears the flag). */
+  onConsumedNew?: () => void;
 }
 
-export function SearchesPage({ onViewHomes }: SearchesPageProps) {
+export function SearchesPage({
+  onViewHomes,
+  onViewAgents,
+  pendingNew = false,
+  onConsumedNew,
+}: SearchesPageProps) {
   const utils = trpc.useUtils();
   const { data, isLoading, isError, refetch } = trpc.searches.list.useQuery();
   // The launch → discover → guarded-send outreach loop is operator-only (it
@@ -1214,6 +1248,16 @@ export function SearchesPage({ onViewHomes }: SearchesPageProps) {
       setPausing(null);
     },
   });
+
+  // The topbar's "New search" CTA routes here and raises `pendingNew`; open the
+  // editor on that signal, then call back so the App clears the flag (a repeat
+  // CTA re-opens it). Editing is local state, so this runs as an effect.
+  useEffect(() => {
+    if (pendingNew) {
+      setEditing({ kind: "new" });
+      onConsumedNew?.();
+    }
+  }, [pendingNew, onConsumedNew]);
 
   const searches = data ?? [];
   const activeCount = useMemo(
@@ -1270,26 +1314,7 @@ export function SearchesPage({ onViewHomes }: SearchesPageProps) {
 
   return (
     <main>
-      <div className="page-head page-head--row">
-        <div>
-          <h1 className="t-h1">Searches</h1>
-          <p>
-            Each search works a patch for you — where to look, what kind of home, and
-            the taste that shapes every message it sends to local agents.
-          </p>
-        </div>
-        <div className="page-head__actions">
-          {isOperator && <KillSwitch />}
-          <Button
-            variant="primary"
-            icon="search"
-            data-testid="new-search"
-            onClick={() => setEditing({ kind: "new" })}
-          >
-            New search
-          </Button>
-        </div>
-      </div>
+      <h1 className="sr-only">Searches</h1>
 
       {isError ? (
         <div className="empty" role="alert">
@@ -1315,6 +1340,11 @@ export function SearchesPage({ onViewHomes }: SearchesPageProps) {
               <b>{searches.length}</b> searches · <b className="green">{activeCount}</b>{" "}
               active
             </span>
+            {isOperator && (
+              <div className="controls__right">
+                <KillSwitch />
+              </div>
+            )}
           </div>
 
           {searches.length === 0 ? (
@@ -1340,6 +1370,7 @@ export function SearchesPage({ onViewHomes }: SearchesPageProps) {
                   onOpen={(s) => setEditing({ kind: "edit", search: s })}
                   onToggle={requestToggle}
                   onViewHomes={viewHomes}
+                  onViewAgents={onViewAgents}
                   onLaunch={isOperator ? setLaunching : undefined}
                 />
               ))}

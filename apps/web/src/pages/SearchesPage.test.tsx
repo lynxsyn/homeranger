@@ -9,6 +9,7 @@
  * backend/DB is needed; `listQueryMock` controls the list state and the
  * mutation `.mutate` spies record the wire payloads.
  */
+import type { ComponentProps } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
@@ -224,6 +225,13 @@ function withKillSwitch(enabled = false) {
   killSwitchGetMock.mockReturnValue({ data: { enabled } });
 }
 
+/** Render with sensible defaults; callers override (e.g. `pendingNew`). The
+ *  topbar's "New search" CTA lives in the App now, so opening the editor on
+ *  mount goes through the lifted `pendingNew` flag rather than a click. */
+function renderPage(props: Partial<ComponentProps<typeof SearchesPage>> = {}) {
+  return render(<SearchesPage onViewHomes={vi.fn()} {...props} />);
+}
+
 beforeEach(() => {
   invalidateMock.mockClear();
   killSwitchInvalidateMock.mockClear();
@@ -329,6 +337,28 @@ describe("SearchesPage cards", () => {
       status: "active",
     });
   });
+
+  it("links through to the search's agents with its name + outcodes", () => {
+    const onViewAgents = vi.fn();
+    withSearches();
+    renderPage({ onViewAgents });
+    const snowdonia = screen.getByText("Snowdonia — detached with a view").closest(
+      "[data-testid='search-card']",
+    ) as HTMLElement;
+    fireEvent.click(within(snowdonia).getByTestId("search-agents-link"));
+    expect(onViewAgents).toHaveBeenCalledTimes(1);
+    expect(onViewAgents).toHaveBeenCalledWith({
+      name: "Snowdonia — detached with a view",
+      outcodes: ["LL55", "LL48", "LL40"],
+    });
+  });
+
+  it("uses a screen-reader-only heading for the page title", () => {
+    withSearches();
+    render(<SearchesPage onViewHomes={vi.fn()} />);
+    const heading = screen.getByRole("heading", { name: "Searches" });
+    expect(heading).toHaveClass("sr-only");
+  });
 });
 
 describe("SearchesPage status toggle", () => {
@@ -377,10 +407,17 @@ describe("SearchesPage status toggle", () => {
 });
 
 describe("SearchesPage editor", () => {
-  it("opens a blank editor from New search and creates with pence + nulls", () => {
+  it("consumes the pending-new flag once the editor opens", () => {
+    const onConsumedNew = vi.fn();
     withSearches();
-    render(<SearchesPage onViewHomes={vi.fn()} />);
-    fireEvent.click(screen.getByTestId("new-search"));
+    renderPage({ pendingNew: true, onConsumedNew });
+    expect(screen.getByTestId("search-editor")).toBeInTheDocument();
+    expect(onConsumedNew).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a blank editor from the pending-new flag and creates with pence + nulls", () => {
+    withSearches();
+    renderPage({ pendingNew: true });
     const editor = screen.getByTestId("search-editor");
     expect(editor).toBeInTheDocument();
 
@@ -407,8 +444,7 @@ describe("SearchesPage editor", () => {
 
   it("toggles a chip-select option on and off", () => {
     withSearches();
-    render(<SearchesPage onViewHomes={vi.fn()} />);
-    fireEvent.click(screen.getByTestId("new-search"));
+    renderPage({ pendingNew: true });
     const editor = screen.getByTestId("search-editor");
     const farmhouse = within(editor).getByRole("button", { name: /farmhouse/i });
     expect(farmhouse).toHaveAttribute("aria-pressed", "false");
@@ -420,8 +456,7 @@ describe("SearchesPage editor", () => {
 
   it("interpolates the live email preview from the form", () => {
     withSearches();
-    render(<SearchesPage onViewHomes={vi.fn()} />);
-    fireEvent.click(screen.getByTestId("new-search"));
+    renderPage({ pendingNew: true });
     const editor = screen.getByTestId("search-editor");
 
     fireEvent.change(within(editor).getByTestId("search-location"), {
@@ -491,8 +526,7 @@ describe("SearchesPage editor", () => {
         },
       ],
     });
-    render(<SearchesPage onViewHomes={vi.fn()} />);
-    fireEvent.click(screen.getByTestId("new-search"));
+    renderPage({ pendingNew: true });
     const editor = screen.getByTestId("search-editor");
     const input = within(editor).getByTestId("search-location");
 
@@ -663,9 +697,9 @@ describe("SearchesPage operator-only UI gating", () => {
     // Operator-only controls are absent from the DOM (not just hidden).
     expect(screen.queryByTestId("kill-switch")).not.toBeInTheDocument();
     expect(screen.queryByTestId("search-launch")).not.toBeInTheDocument();
-    // The per-user CRUD surface still renders.
-    expect(screen.getByTestId("new-search")).toBeInTheDocument();
+    // The per-user CRUD surface still renders (cards + per-card view links).
     expect(screen.getAllByTestId("search-card").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("search-agents-link").length).toBeGreaterThan(0);
   });
 
   it("shows the Launch control + kill-switch for the operator", () => {

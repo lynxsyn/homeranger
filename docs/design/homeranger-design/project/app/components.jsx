@@ -60,7 +60,7 @@ function Logo({ size = 30, showWord = true, light = false }) {
             color: light ? "#fff" : "var(--ink-1)",
           }}
         >
-          Home<span style={{ color: light ? "#BFE3CE" : "var(--accent)" }}>Scout</span>
+          Home<span style={{ color: light ? "#BFE3CE" : "var(--accent)" }}>Ranger</span>
         </span>
       )}
     </span>
@@ -163,6 +163,36 @@ function Photo({ count, style, className = "" }) {
   );
 }
 
+/* ---- Info tip: small "i" that explains on click ------------------------- */
+function InfoTip({ children, label = "More information", align = "left", size = 15 }) {
+  const [open, setOpen] = React.useState(false);
+  const wrap = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (wrap.current && !wrap.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  return (
+    <span className="infotip" ref={wrap} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        className={`infotip__btn${open ? " is-open" : ""}`}
+        aria-label={label}
+        aria-expanded={open}
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+      >
+        <Icon name="info" size={size} />
+      </button>
+      {open && (
+        <span className={`infotip__pop infotip__pop--${align}`} role="tooltip">{children}</span>
+      )}
+    </span>
+  );
+}
+
 Object.assign(window, {
-  Icon, Logo, Button, Chip, StatusBadge, EpcBadge, ScoreRing, scoreLabel, Photo, STATUS_META,
+  Icon, Logo, Button, Chip, StatusBadge, EpcBadge, ScoreRing, scoreLabel, Photo, STATUS_META, InfoTip,
 });

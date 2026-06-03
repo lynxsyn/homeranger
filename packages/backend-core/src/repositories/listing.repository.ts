@@ -483,6 +483,33 @@ export class ListingRepository {
   }
 
   /**
+   * Count the homes each agent has sent, keyed by `agentEmail`. Backs the Agents
+   * screen's "homes" column (PR1 agentsRouter). One `groupBy` (no N+1) over the
+   * given emails; only emails that actually have listings appear in the Map, so
+   * the caller defaults a missing email to 0. `agentEmail` is nullable, but the
+   * `in` filter never matches a NULL, so unattributed listings are not counted.
+   * An empty email list returns an empty Map (no query).
+   */
+  async countByAgentEmails(emails: string[]): Promise<Map<string, number>> {
+    if (emails.length === 0) {
+      return new Map();
+    }
+    const groups = await prisma.listing.groupBy({
+      by: ["agentEmail"],
+      where: { agentEmail: { in: emails } },
+      _count: { _all: true },
+    });
+    const counts = new Map<string, number>();
+    for (const group of groups) {
+      // The `in` filter excludes NULLs, so every grouped agentEmail is non-null.
+      if (group.agentEmail !== null) {
+        counts.set(group.agentEmail, group._count._all);
+      }
+    }
+    return counts;
+  }
+
+  /**
    * Exact lookup on the unique dedup key `addressNormalized`. Backs the
    * DedupService exact-match stage: the canonical address the extractor +
    * dedup produce is looked up here, and a hit is a certain duplicate. M2
