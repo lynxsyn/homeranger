@@ -55,6 +55,12 @@ import {
 } from "../lib/compliance/compliance-guard.js";
 import { draftScoutEmail } from "../lib/scouts/scout-brief.js";
 import {
+  searchProfileRepository as defaultSearchProfileRepository,
+  type SearchProfileRepository,
+} from "../repositories/search-profile.repository.js";
+import { currentSenderName } from "../lib/email/email-provider.js";
+import { resolveSender } from "@homeranger/shared";
+import {
   enqueueDiscoverAgents,
   enqueueOutreachSend,
   type EnqueueInput,
@@ -89,6 +95,17 @@ export function _setScoutListingRepositoryForTesting(
   repo: ListingRepository | null,
 ): void {
   scoutListingRepository = repo ?? listingRepository;
+}
+
+// The buyer profile drives the reviewed draft's sign-off + urgency so the
+// operator reviews EXACTLY what gets sent. Swappable so the router unit test
+// asserts reviewDrafts without a live DB.
+let scoutSearchProfileRepository: SearchProfileRepository =
+  defaultSearchProfileRepository;
+export function _setScoutSearchProfileRepositoryForTesting(
+  repo: SearchProfileRepository | null,
+): void {
+  scoutSearchProfileRepository = repo ?? defaultSearchProfileRepository;
 }
 
 type DiscoverAgentsEnqueuer = (
@@ -273,7 +290,11 @@ export const scoutsRouter = router({
       if (!scout) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
       }
-      const draft = draftScoutEmail(scout);
+      // Resolve the buyer identity so the reviewed draft is signed + paced
+      // exactly like the email the worker will send.
+      const profile = await scoutSearchProfileRepository.getOrCreate();
+      const sender = resolveSender(profile, currentSenderName());
+      const draft = draftScoutEmail(scout, sender);
       const { items } = await scoutAgentRepository.list({
         outcodes: scout.outcodes,
       });

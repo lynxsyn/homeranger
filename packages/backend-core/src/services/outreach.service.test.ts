@@ -12,6 +12,7 @@ import type {
   ScoutRecord,
   ScoutRepository,
 } from "../repositories/scout.repository.js";
+import type { SearchProfileRepository } from "../repositories/search-profile.repository.js";
 import { ComplianceError } from "../lib/compliance/compliance-guard.js";
 import type {
   EmailProvider,
@@ -392,11 +393,33 @@ describe("makeDefaultScoutDraftLoader", () => {
     } as ScoutRecord;
   }
 
+  // A fake profile repo so the loader never touches the DB. `overrides` shape
+  // the buyer identity woven into the sign-off + urgency.
+  function profileRepo(
+    overrides: Partial<{
+      firstName: string;
+      lastName: string;
+      phone: string;
+      urgency: string;
+    }> = {},
+  ): SearchProfileRepository {
+    return {
+      getOrCreate: vi.fn().mockResolvedValue({
+        firstName: "",
+        lastName: "",
+        phone: "",
+        urgency: "active",
+        ...overrides,
+      }),
+    } as unknown as SearchProfileRepository;
+  }
+
   it("builds a location-named subject + a draftScoutEmail body", async () => {
     const getById = vi.fn().mockResolvedValue(scoutRecord());
-    const load = makeDefaultScoutDraftLoader({
-      getById,
-    } as unknown as ScoutRepository);
+    const load = makeDefaultScoutDraftLoader(
+      { getById } as unknown as ScoutRepository,
+      profileRepo(),
+    );
     const draft = await load("scout-7");
     expect(getById).toHaveBeenCalledWith("scout-7");
     expect(draft?.subject).toBe("A private buyer looking in Conwy County");
@@ -405,18 +428,41 @@ describe("makeDefaultScoutDraftLoader", () => {
     );
   });
 
+  it("signs + paces the body from the buyer profile", async () => {
+    const load = makeDefaultScoutDraftLoader(
+      { getById: vi.fn().mockResolvedValue(scoutRecord()) } as unknown as ScoutRepository,
+      profileRepo({
+        firstName: "Jane",
+        lastName: "Whitfield",
+        phone: "07700 900123",
+        urgency: "ready",
+      }),
+    );
+    const draft = await load("scout-7");
+    expect(draft?.bodyText).toContain(
+      "Many thanks,\nJane Whitfield\n07700 900123",
+    );
+    expect(draft?.bodyText).toContain("I'm in a strong position to proceed");
+  });
+
   it("falls back to a generic subject for a blank location", async () => {
-    const load = makeDefaultScoutDraftLoader({
-      getById: vi.fn().mockResolvedValue(scoutRecord({ location: "" })),
-    } as unknown as ScoutRepository);
+    const load = makeDefaultScoutDraftLoader(
+      {
+        getById: vi.fn().mockResolvedValue(scoutRecord({ location: "" })),
+      } as unknown as ScoutRepository,
+      profileRepo(),
+    );
     const draft = await load("scout-7");
     expect(draft?.subject).toBe("A private buyer looking in your area");
   });
 
   it("returns null when the scout is gone", async () => {
-    const load = makeDefaultScoutDraftLoader({
-      getById: vi.fn().mockResolvedValue(null),
-    } as unknown as ScoutRepository);
+    const load = makeDefaultScoutDraftLoader(
+      {
+        getById: vi.fn().mockResolvedValue(null),
+      } as unknown as ScoutRepository,
+      profileRepo(),
+    );
     expect(await load("ghost")).toBeNull();
   });
 });

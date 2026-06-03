@@ -35,6 +35,10 @@ import {
   type ScoutRepository,
 } from "../repositories/scout.repository.js";
 import {
+  searchProfileRepository as defaultSearchProfileRepository,
+  type SearchProfileRepository,
+} from "../repositories/search-profile.repository.js";
+import {
   getOutreachEmailConfig,
   currentSenderName,
   type EmailProvider,
@@ -42,6 +46,7 @@ import {
 } from "../lib/email/email-provider.js";
 import { draftOutreach, type OutreachDraft } from "../lib/outreach/draft.js";
 import { draftScoutEmail } from "../lib/scouts/scout-brief.js";
+import { resolveSender } from "@homeranger/shared";
 import { signUnsubscribeToken } from "../lib/outreach/unsubscribe-token.js";
 
 /**
@@ -64,18 +69,24 @@ export type ScoutDraftLoader = (scoutId: string) => Promise<ScoutDraft | null>;
  */
 export function makeDefaultScoutDraftLoader(
   scoutRepository: ScoutRepository,
+  searchProfileRepository: SearchProfileRepository = defaultSearchProfileRepository,
 ): ScoutDraftLoader {
   return async (scoutId: string): Promise<ScoutDraft | null> => {
     const scout = await scoutRepository.getById(scoutId);
     if (!scout) {
       return null;
     }
+    // Resolve the buyer's identity (Settings "Your details") so the sent email
+    // is signed + paced personally; the RESEND_FROM display name is the
+    // fallback sign-off name when the profile has no name yet.
+    const profile = await searchProfileRepository.getOrCreate();
+    const sender = resolveSender(profile, currentSenderName());
     const location = scout.location.trim();
     return {
       subject: location
         ? `A private buyer looking in ${location}`
         : "A private buyer looking in your area",
-      bodyText: draftScoutEmail(scout, currentSenderName()),
+      bodyText: draftScoutEmail(scout, sender),
     };
   };
 }

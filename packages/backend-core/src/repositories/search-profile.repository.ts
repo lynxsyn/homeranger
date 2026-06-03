@@ -26,6 +26,11 @@ const PROFILE_SELECT = Prisma.validator<Prisma.SearchProfileSelect>()({
   maxPricePence: true,
   outcodes: true,
   requiredTenure: true,
+  // Buyer identity — signs + paces outreach (Settings "Your details").
+  firstName: true,
+  lastName: true,
+  phone: true,
+  urgency: true,
   createdAt: true,
   updatedAt: true,
   // preferenceEmbedding is Unsupported("vector(1024)") — raw access only.
@@ -41,6 +46,12 @@ export interface UpdateSearchProfileInput {
   maxPricePence?: number | null;
   outcodes?: string[];
   requiredTenure?: Tenure | null;
+  // Buyer identity (Settings "Your details"). Stored NOT NULL with "" defaults,
+  // so a null/undefined clears to "" rather than NULL.
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  urgency?: string;
 }
 
 function toVectorLiteral(embedding: number[]): string {
@@ -118,6 +129,10 @@ export class SearchProfileRepository {
         ...(input.requiredTenure !== undefined
           ? { requiredTenure: input.requiredTenure }
           : {}),
+        ...(input.firstName !== undefined ? { firstName: input.firstName } : {}),
+        ...(input.lastName !== undefined ? { lastName: input.lastName } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone } : {}),
+        ...(input.urgency !== undefined ? { urgency: input.urgency } : {}),
       },
       select: PROFILE_SELECT,
     });

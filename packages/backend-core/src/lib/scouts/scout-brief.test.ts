@@ -156,12 +156,45 @@ describe("draftScoutEmail", () => {
     expect(email).not.toContain("auction lots");
   });
 
-  it("signs off with the sender's name when one is given", () => {
-    expect(draftScoutEmail(brief(), "Bryan").endsWith("Many thanks,\nBryan")).toBe(
-      true,
-    );
+  it("signs off with the resolved sender name when one is given", () => {
+    expect(
+      draftScoutEmail(brief(), { name: "Bryan", phone: null, urgency: null }).endsWith(
+        "Many thanks,\nBryan",
+      ),
+    ).toBe(true);
     // No name (null / undefined) → the bare "Many thanks" closing.
     expect(draftScoutEmail(brief(), null).endsWith("Many thanks")).toBe(true);
     expect(draftScoutEmail(brief()).endsWith("Many thanks")).toBe(true);
+  });
+
+  it("appends the buyer's phone to the sign-off when set", () => {
+    const email = draftScoutEmail(brief(), {
+      name: "Jane Whitfield",
+      phone: "07700 900123",
+      urgency: null,
+    });
+    expect(email.endsWith("Many thanks,\nJane Whitfield\n07700 900123")).toBe(true);
+  });
+
+  it("injects the urgency line, replacing the default closing sentence", () => {
+    const ready = draftScoutEmail(brief(), {
+      name: "Jane",
+      phone: null,
+      urgency: "ready",
+    });
+    expect(ready).toContain("I'm in a strong position to proceed");
+    expect(ready).not.toContain("Happy to move quickly for the right place.");
+  });
+
+  it("keeps the relaxed default closing for browsing / unset urgency", () => {
+    const browsing = draftScoutEmail(brief(), {
+      name: "Jane",
+      phone: null,
+      urgency: "browsing",
+    });
+    expect(browsing).toContain("Happy to move quickly for the right place.");
+    expect(draftScoutEmail(brief())).toContain(
+      "Happy to move quickly for the right place.",
+    );
   });
 });

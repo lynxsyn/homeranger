@@ -1,0 +1,112 @@
+/**
+ * UserMenu unit tests — the account avatar + dropdown. A mocked `preferences.get`
+ * feeds the avatar initials + header; react-router's MemoryRouter supplies the
+ * active route. Asserts: avatar glyph vs initials, the menu opens with Listings /
+ * Searches / Settings / Theme, the active route is marked, navigation delegates
+ * to `onNavigate`, and the theme row reports + toggles the theme.
+ */
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+
+const { profileQueryMock } = vi.hoisted(() => ({ profileQueryMock: vi.fn() }));
+
+vi.mock("../lib/trpc", () => ({
+  trpc: { preferences: { get: { useQuery: profileQueryMock } } },
+}));
+
+import { UserMenu } from "./UserMenu";
+
+function withProfile(overrides: Record<string, unknown> = {}) {
+  profileQueryMock.mockReturnValue({
+    data: { firstName: "", lastName: "", phone: "", urgency: "active", ...overrides },
+  });
+}
+
+function renderMenu(
+  props: Partial<React.ComponentProps<typeof UserMenu>> = {},
+  path = "/listings",
+) {
+  const onNavigate = props.onNavigate ?? vi.fn();
+  const onToggleTheme = props.onToggleTheme ?? vi.fn();
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <UserMenu
+        theme={props.theme ?? "light"}
+        onNavigate={onNavigate}
+        onToggleTheme={onToggleTheme}
+      />
+    </MemoryRouter>,
+  );
+  return { onNavigate, onToggleTheme };
+}
+
+beforeEach(() => {
+  profileQueryMock.mockReset();
+  withProfile();
+});
+
+describe("UserMenu avatar", () => {
+  it("shows a user glyph (no initials) for a blank profile", () => {
+    renderMenu();
+    const avatar = screen.getByTestId("account-avatar");
+    expect(avatar).toHaveTextContent("");
+    expect(avatar.querySelector("svg")).toBeInTheDocument();
+  });
+
+  it("shows initials once the name is filled in", () => {
+    withProfile({ firstName: "Jane", lastName: "Whitfield" });
+    renderMenu();
+    expect(screen.getByTestId("account-avatar")).toHaveTextContent("JW");
+  });
+});
+
+describe("UserMenu dropdown", () => {
+  it("is closed until the avatar is clicked, then lists the nav + theme", () => {
+    renderMenu();
+    expect(screen.queryByTestId("account-menu")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("account-avatar"));
+    const menu = screen.getByTestId("account-menu");
+    expect(within(menu).getByTestId("nav-listings")).toHaveTextContent("Listings");
+    expect(within(menu).getByTestId("nav-scouts")).toHaveTextContent("Searches");
+    expect(within(menu).getByTestId("nav-settings")).toHaveTextContent("Settings");
+    expect(within(menu).getByTestId("theme-toggle")).toHaveTextContent("Theme");
+  });
+
+  it("marks the active route (Searches at /scouts)", () => {
+    renderMenu({}, "/scouts");
+    fireEvent.click(screen.getByTestId("account-avatar"));
+    expect(screen.getByTestId("nav-scouts")).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("nav-listings")).toHaveAttribute(
+      "aria-current",
+      "false",
+    );
+  });
+
+  it("delegates navigation to onNavigate with the route, then closes", () => {
+    const { onNavigate } = renderMenu();
+    fireEvent.click(screen.getByTestId("account-avatar"));
+    fireEvent.click(screen.getByTestId("nav-settings"));
+    expect(onNavigate).toHaveBeenCalledWith("/settings");
+    expect(screen.queryByTestId("account-menu")).not.toBeInTheDocument();
+  });
+
+  it("shows the name + urgency in the header once filled in", () => {
+    withProfile({ firstName: "Jane", lastName: "Whitfield", urgency: "ready" });
+    renderMenu();
+    fireEvent.click(screen.getByTestId("account-avatar"));
+    const menu = screen.getByTestId("account-menu");
+    expect(menu).toHaveTextContent("Jane Whitfield");
+    expect(menu).toHaveTextContent("Ready to move");
+  });
+});
+
+describe("UserMenu theme row", () => {
+  it("reports the current theme and toggles it", () => {
+    const { onToggleTheme } = renderMenu({ theme: "dark" });
+    fireEvent.click(screen.getByTestId("account-avatar"));
+    expect(screen.getByTestId("theme-state")).toHaveTextContent("Dark");
+    fireEvent.click(screen.getByTestId("theme-toggle"));
+    expect(onToggleTheme).toHaveBeenCalledTimes(1);
+  });
+});

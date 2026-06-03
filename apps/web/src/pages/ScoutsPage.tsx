@@ -22,6 +22,9 @@ import {
   SCOUT_CONDITIONS,
   SCOUT_LAND_OPTIONS,
   SCOUT_SALE_METHODS,
+  resolveSender,
+  signatureBlock,
+  urgencyLine,
 } from "@homeranger/shared";
 import type {
   ScoutStatus,
@@ -29,6 +32,7 @@ import type {
   ScoutCondition,
   ScoutLandOption,
   ScoutSaleMethod,
+  ResolvedSender,
 } from "@homeranger/shared";
 import { trpc } from "../lib/trpc";
 import { Icon } from "../components/Icon";
@@ -116,9 +120,10 @@ function gbpShort(pounds: number | null): string | null {
 /**
  * Deterministic client-side twin of backend-core's `draftScoutEmail` — keeps
  * the editor preview in lock-step with the email the agent actually sends.
- * Takes the editor form (pounds), so the preview updates as you type.
+ * Takes the editor form (pounds) + the resolved buyer/sender identity, so the
+ * preview updates as you type and reflects your Settings sign-off + urgency.
  */
-function draftScoutEmail(form: ScoutForm, senderName?: string | null): string {
+function draftScoutEmail(form: ScoutForm, sender?: ResolvedSender | null): string {
   // Mirror backend-core's draftScoutEmail exactly: trim the location, and only
   // count a positive integer min-beds (a "0" or blank shows no beds clause).
   const loc = (form.location || "your area").split(/[,—–-]/)[0].trim();
@@ -172,13 +177,21 @@ function draftScoutEmail(form: ScoutForm, senderName?: string | null): string {
 
   const body = (conditionLine + landLine + auctionLine).trim();
 
+  // Mirror the backend: the urgency line replaces the default closing sentence;
+  // the sign-off is the shared signature block (name + phone).
+  const uLine = urgencyLine(sender?.urgency);
+  const closing =
+    "If anything's coming up that fits — including pre-market or off-portal — " +
+    "I'd be glad to hear from you before it reaches the portals." +
+    (uLine ? ` ${uLine}` : " Happy to move quickly for the right place.");
+
   return (
     `Hello,\n\n` +
     `I'm a private buyer searching in ${locationPhrase} for a ${beds}${types}${price}.\n\n` +
     (taste ? `In short: ${taste}\n\n` : "") +
     (body ? `${body}\n\n` : "") +
-    `If anything's coming up that fits — including pre-market or off-portal — I'd be glad to hear from you before it reaches the portals. Happy to move quickly for the right place.\n\n` +
-    (senderName ? `Many thanks,\n${senderName}` : `Many thanks`)
+    `${closing}\n\n` +
+    signatureBlock(sender?.name, sender?.phone)
   );
 }
 
@@ -272,7 +285,7 @@ function StatusPill({ status, onToggle }: StatusPillProps) {
         e.stopPropagation();
         onToggle();
       }}
-      title={active ? "Pause this scout" : "Resume this scout"}
+      title={active ? "Pause this search" : "Resume this search"}
     >
       <Icon name={active ? "pause" : "play"} size={13} />
       {active ? "Active" : "Paused"}
@@ -583,9 +596,12 @@ function ScoutEditor({
   onClose,
 }: ScoutEditorProps) {
   const [form, setForm] = useState<ScoutForm>(initial);
-  // The sender's name (from RESEND_FROM) so the preview signs off exactly like
-  // the sent email does.
-  const { data: sender } = trpc.outreach.senderName.useQuery();
+  // Resolve the sign-off identity exactly like the backend: the buyer's profile
+  // (Settings "Your details") wins, with the RESEND_FROM display name as the
+  // fallback name — so the preview signs off + paces just like the sent email.
+  const { data: senderName } = trpc.outreach.senderName.useQuery();
+  const { data: profile } = trpc.preferences.get.useQuery();
+  const resolvedSender = resolveSender(profile ?? {}, senderName?.name);
   const [showPreview, setShowPreview] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
 
@@ -629,15 +645,15 @@ function ScoutEditor({
         className="modal"
         role="dialog"
         aria-modal="true"
-        aria-label={isNew ? "New scout" : "Edit scout"}
+        aria-label={isNew ? "New search" : "Edit search"}
         data-testid="scout-editor"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="modal__head">
           <div>
-            <span className="eyebrow">{isNew ? "New scout" : "Edit scout"}</span>
+            <span className="eyebrow">{isNew ? "New search" : "Edit search"}</span>
             <h2 className="modal__title">
-              {isNew ? "What are you looking for?" : form.name || "Edit scout"}
+              {isNew ? "What are you looking for?" : form.name || "Edit search"}
             </h2>
           </div>
           <button
@@ -652,7 +668,7 @@ function ScoutEditor({
 
         <div className="modal__body">
           <label className="hs-field">
-            <span>Scout name</span>
+            <span>Search name</span>
             <input
               ref={nameRef}
               className="hs-input"
@@ -764,7 +780,7 @@ function ScoutEditor({
             </button>
             {showPreview && (
               <pre className="preview__body" data-testid="scout-email-preview">
-                {draftScoutEmail(form, sender?.name)}
+                {draftScoutEmail(form, resolvedSender)}
               </pre>
             )}
           </div>
@@ -794,7 +810,7 @@ function ScoutEditor({
               disabled={!valid || busy}
               onClick={() => onSave(form)}
             >
-              {saving ? "Saving…" : isNew ? "Create scout" : "Save changes"}
+              {saving ? "Saving…" : isNew ? "Create search" : "Save changes"}
             </Button>
           </div>
         </div>
@@ -832,7 +848,7 @@ function ConfirmPause({ scout, pausing, onCancel, onConfirm }: ConfirmPauseProps
         className="modal modal--confirm"
         role="dialog"
         aria-modal="true"
-        aria-label="Pause scout"
+        aria-label="Pause search"
         data-testid="scout-pause-confirm"
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -840,7 +856,7 @@ function ConfirmPause({ scout, pausing, onCancel, onConfirm }: ConfirmPauseProps
           <div className="confirm-mark">
             <Icon name="pause" size={22} />
           </div>
-          <h2 className="confirm-title">Pause this scout?</h2>
+          <h2 className="confirm-title">Pause this search?</h2>
           <p className="confirm-text">
             HomeRanger will stop reaching out to new agents and stop pulling in new
             listings for <b>{scout.name}</b>. No message is sent to anyone — your
@@ -858,7 +874,7 @@ function ConfirmPause({ scout, pausing, onCancel, onConfirm }: ConfirmPauseProps
             disabled={pausing}
             onClick={onConfirm}
           >
-            {pausing ? "Pausing…" : "Pause scout"}
+            {pausing ? "Pausing…" : "Pause search"}
           </Button>
         </div>
       </div>
@@ -984,7 +1000,7 @@ function LaunchModal({ scout, onClose }: LaunchModalProps) {
         <div className="modal__head">
           <div>
             <span className="eyebrow">
-              <Icon name="rocket" size={13} /> Launch scout
+              <Icon name="rocket" size={13} /> Launch search
             </span>
             <h2 className="modal__title">{scout.name}</h2>
           </div>
@@ -1246,9 +1262,9 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
     <main>
       <div className="page-head page-head--row">
         <div>
-          <h1 className="t-h1">Scouts</h1>
+          <h1 className="t-h1">Searches</h1>
           <p>
-            Each scout works a patch for you — where to look, what kind of home, and
+            Each search works a patch for you — where to look, what kind of home, and
             the taste that shapes every message it sends to local agents.
           </p>
         </div>
@@ -1260,14 +1276,14 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
             data-testid="new-scout"
             onClick={() => setEditing({ kind: "new" })}
           >
-            New scout
+            New search
           </Button>
         </div>
       </div>
 
       {isError ? (
         <div className="empty" role="alert">
-          <p>Couldn&rsquo;t load your scouts.</p>
+          <p>Couldn&rsquo;t load your searches.</p>
           <Button
             variant="secondary"
             size="sm"
@@ -1280,13 +1296,13 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
         </div>
       ) : isLoading ? (
         <div className="empty" aria-busy="true">
-          <p>Loading scouts…</p>
+          <p>Loading searches…</p>
         </div>
       ) : (
         <>
           <div className="controls">
             <span className="count" data-testid="scouts-count">
-              <b>{scouts.length}</b> scouts · <b className="green">{activeCount}</b>{" "}
+              <b>{scouts.length}</b> searches · <b className="green">{activeCount}</b>{" "}
               active
             </span>
           </div>
@@ -1296,13 +1312,13 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
               <div className="empty-mark">
                 <Icon name="search" size={26} />
               </div>
-              <p>No scouts yet. Create one to start scouting.</p>
+              <p>No searches yet. Create one to start searching.</p>
               <Button
                 variant="secondary"
                 icon="search"
                 onClick={() => setEditing({ kind: "new" })}
               >
-                New scout
+                New search
               </Button>
             </div>
           ) : (

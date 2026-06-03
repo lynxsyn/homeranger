@@ -7,6 +7,7 @@
 @import "./styles/layout.css";
 @import "./styles/scouts.css";
 @import "./styles/interest.css";
+@import "./styles/settings.css";
 
 /*
  * Screen-reader-only utility — used for table <caption>s and visually-hidden
@@ -24,42 +25,163 @@
   border: 0;
 }
 
-/* ---- Topbar navigation -----------------------------------------------------
-   The handoff design is a single Listings screen; homeranger is multi-page
-   (Listings · Scouts), so the topbar carries a small nav styled with the design
-   tokens. Grouped left with the logo; theme toggle stays right. */
-.topbar__left {
+/* ---- Topbar account chrome -------------------------------------------------
+   Navigation + the theme toggle live in the avatar dropdown (UserMenu); the bar
+   is just the clickable logo (left) and the avatar (right). Ported from the
+   claude.ai/design handoff (project/app/styles.css). */
+
+/* Brand lockup as a button — click to return to Listings. */
+.brand-btn {
   display: inline-flex;
   align-items: center;
-  gap: 22px;
-  min-width: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  border-radius: var(--r-sm);
 }
-.app-nav {
-  display: inline-flex;
-  align-items: center;
+.brand-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+/* Header avatar (account) — initials once filled, a user glyph until then. */
+.avatar-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--r-full);
+  border: 1px solid var(--border-strong);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.avatar-btn:hover {
+  border-color: var(--accent);
+}
+.avatar-btn:active {
+  transform: translateY(0.5px);
+}
+.avatar-btn[aria-current="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.avatar-btn svg {
+  color: var(--ink-2);
+}
+
+/* Account dropdown popover. */
+.usermenu {
+  position: relative;
+}
+.usermenu__pop {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 60;
+  min-width: 232px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 7px;
+  overflow: hidden;
+  animation: um-in var(--dur) var(--ease);
+}
+@keyframes um-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.um-head {
+  padding: 9px 11px 11px;
+  display: flex;
+  flex-direction: column;
   gap: 2px;
 }
-.app-nav a {
+.um-name {
+  font-family: var(--font-display);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-body);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.um-sub {
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.um-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.um-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 11px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
   font-family: var(--font-sans);
   font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--ink-2);
-  padding: 7px 12px;
-  border-radius: var(--r-sm);
+  font-weight: var(--fw-medium);
+  color: var(--ink-1);
   transition:
     background var(--dur-fast) var(--ease),
     color var(--dur-fast) var(--ease);
 }
-.app-nav a:hover {
+.um-item > span:first-of-type {
+  flex: 1;
+}
+.um-item svg {
+  color: var(--ink-3);
+}
+.um-item:hover {
   background: var(--surface-2);
-  color: var(--ink-1);
 }
-.app-nav a.active {
-  color: var(--accent-ink);
+.um-item.is-active {
   background: var(--accent-soft);
+  color: var(--accent-ink);
 }
-@media (max-width: 520px) {
-  .app-nav a {
-    padding: 7px 9px;
-  }
+.um-item.is-active svg {
+  color: var(--accent-ink);
+}
+.um-item .um-check {
+  color: var(--accent);
+}
+.um-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 7px 4px;
+}
+.um-theme .um-theme-state {
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+  font-weight: var(--fw-semibold);
 }

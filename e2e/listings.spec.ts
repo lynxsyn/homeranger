@@ -135,6 +135,8 @@ test("the theme toggle flips <html data-theme> and persists across reload", asyn
   const html = page.locator("html");
   await expect(html).toHaveAttribute("data-theme", "light");
 
+  // The theme toggle now lives in the account dropdown — open it first.
+  await page.getByTestId("account-avatar").click();
   await page.getByTestId("theme-toggle").click();
   await expect(html).toHaveAttribute("data-theme", "dark");
 

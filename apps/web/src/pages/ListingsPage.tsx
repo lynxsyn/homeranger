@@ -703,7 +703,7 @@ export function ListingsPage({
         <div className="scout-filter" data-testid="scout-filter-banner">
           <div className="sf-left">
             <span className="sf-eyebrow">
-              <Icon name="search" size={13} /> Scout
+              <Icon name="search" size={13} /> Search
             </span>
             <span className="sf-name">{scoutFilter.name}</span>
             {scoutFilter.outcodes.length > 0 && (

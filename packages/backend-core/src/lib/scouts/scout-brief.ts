@@ -14,6 +14,11 @@
  *     is empty. `maxPricePence` is PENCE here (the wire/storage unit); the design
  *     worked in pounds, so we divide by 100 before formatting.
  */
+import {
+  signatureBlock,
+  urgencyLine,
+  type ResolvedSender,
+} from "@homeranger/shared";
 import { resolveLocationToOutcodes } from "../geo/uk-locations.js";
 
 /**
@@ -72,7 +77,7 @@ function joinTypes(types: string[]): string {
  */
 export function draftScoutEmail(
   scout: ScoutBriefInput,
-  senderName?: string | null,
+  sender?: ResolvedSender | null,
 ): string {
   // `loc` is the first comma/dash-delimited segment; the design uses it as the
   // fallback location when the full string is blank.
@@ -121,12 +126,21 @@ export function draftScoutEmail(
 
   const body = (conditionLine + landLine + auctionLine).trim();
 
+  // The buyer's urgency line REPLACES the default closing sentence; "browsing"
+  // or an unset urgency keeps the relaxed default (so an empty profile reads
+  // identically to the pre-profile draft).
+  const uLine = urgencyLine(sender?.urgency);
+  const closing =
+    "If anything's coming up that fits — including pre-market or off-portal — " +
+    "I'd be glad to hear from you before it reaches the portals." +
+    (uLine ? ` ${uLine}` : " Happy to move quickly for the right place.");
+
   return (
     `Hello,\n\n` +
     `I'm a private buyer searching in ${locationPhrase} for a ${beds}${types}${price}.\n\n` +
     (taste ? `In short: ${taste}\n\n` : "") +
     (body ? `${body}\n\n` : "") +
-    `If anything's coming up that fits — including pre-market or off-portal — I'd be glad to hear from you before it reaches the portals. Happy to move quickly for the right place.\n\n` +
-    (senderName ? `Many thanks,\n${senderName}` : `Many thanks`)
+    `${closing}\n\n` +
+    signatureBlock(sender?.name, sender?.phone)
   );
 }

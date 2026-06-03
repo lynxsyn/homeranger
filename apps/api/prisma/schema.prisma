@@ -252,6 +252,14 @@ model SearchProfile {
   maxPricePence       Int?
   outcodes            String[]                     @default([])
   requiredTenure      Tenure?
+  // Buyer identity (the operator's own details) — used to sign + pace outreach
+  // emails. firstName/lastName form the sign-off name (falls back to the
+  // RESEND_FROM display name when blank); phone is appended when set; urgency
+  // (browsing|active|ready|soon) selects the closing "how soon" line.
+  firstName           String                       @default("")
+  lastName            String                       @default("")
+  phone               String                       @default("")
+  urgency             String                       @default("active")
   preferenceEmbedding Unsupported("vector(1024)")?
   createdAt           DateTime                     @default(now()) @db.Timestamptz(6)
   updatedAt           DateTime                     @updatedAt @db.Timestamptz(6)

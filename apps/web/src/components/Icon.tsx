@@ -35,6 +35,9 @@ import {
   Power,
   Loader2,
   Rocket,
+  Settings,
+  User,
+  Phone,
   type LucideIcon,
 } from "lucide-react";
 
@@ -68,6 +71,9 @@ const ICONS: Record<string, LucideIcon> = {
   power: Power,
   loader: Loader2,
   rocket: Rocket,
+  settings: Settings,
+  user: User,
+  phone: Phone,
 };
 
 export interface IconProps {
