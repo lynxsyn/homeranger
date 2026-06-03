@@ -26,9 +26,12 @@ resource "cloudflare_ruleset" "custom_waf" {
 
   rules = [
     {
-      expression  = "(http.host ne \"${var.app_hostname}\")"
+      # Allow the apex AND www (www is 301'd to the apex by the dynamic_redirect
+      # ruleset in www.tf, which runs before this phase — but allow it here too
+      # so the redirect is never pre-empted by this block).
+      expression  = "(http.host ne \"${var.app_hostname}\" and http.host ne \"www.${var.app_hostname}\")"
       action      = "block"
-      description = "Block direct origin IP / unknown-host access (homeranger.app only)"
+      description = "Block direct origin IP / unknown-host access (homeranger.app + www only)"
       enabled     = true
     },
     {
