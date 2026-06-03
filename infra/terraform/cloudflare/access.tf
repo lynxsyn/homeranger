@@ -1,9 +1,11 @@
 # ── Cloudflare Zero Trust Access for the homeranger app ──
-# A self-hosted Access application fronting homeranger.app (the same
-# hostname the tunnel serves). Cloudflare challenges the request, mints a JWT,
-# and stamps it as the `Cf-Access-Jwt-Assertion` header on every proxied
-# request — which the api verifies in-process (jose) against the team JWKS,
-# asserting iss/aud and `email == ALLOWED_USER_EMAIL`.
+# A self-hosted Access application fronting homeranger.app (the same hostname the
+# tunnel serves). It is now the EDGE ALLOWLIST: Cloudflare challenges the request
+# and only the allowed emails (var.owner_email + var.second_user_email) get
+# through to the app. In-app authentication is SUPABASE (the SPA signs in and the
+# api verifies the Supabase JWT) — so the app is double-gated (CF Access at the
+# edge, Supabase in-app). The api no longer verifies the CF Access JWT; CF Access
+# just decides WHO reaches the app, keeping it off the public internet.
 #
 # cloudflare/cloudflare v5 resource names (pinned 5.19.1 in versions.tf):
 #   - application = cloudflare_zero_trust_access_application
@@ -19,19 +21,18 @@ resource "cloudflare_zero_trust_access_service_token" "post_release_verify" {
   name       = "homeranger-post-release-verify"
 }
 
-# Human (browser) access: the owner authenticates interactively via the team
-# IdP / one-time PIN and the verified `email` claim must equal var.owner_email.
+# Human (browser) access: the allowed users authenticate interactively via the
+# team IdP / one-time PIN; only these emails pass the edge (then sign in with
+# Supabase in-app). Add more users by extending this allowlist. An empty
+# second_user_email collapses to just the owner.
 resource "cloudflare_zero_trust_access_policy" "homeranger_owner_allow" {
   account_id = var.account_id
-  name       = "Allow owner — homeranger"
+  name       = "Allow users — homeranger"
   decision   = "allow"
-  include = [
-    {
-      email = {
-        email = var.owner_email
-      }
-    },
-  ]
+  include = concat(
+    [{ email = { email = var.owner_email } }],
+    var.second_user_email != "" ? [{ email = { email = var.second_user_email } }] : [],
+  )
 }
 
 # Headless (service-token) access for post-release-verify probes. A service

@@ -42,6 +42,16 @@ resource "cloudflare_ai_gateway" "homeranger" {
   rate_limiting_interval = 0
   rate_limiting_limit    = 0
 
+  # Log-retention fields declared to MATCH the Cloudflare defaults the gateway is
+  # created with, so `tofu plan` converges. Left unset, provider v5.19.1
+  # serialises them as JSON null on UPDATE, the API keeps its defaults, and every
+  # apply re-shows an in-place "drift" that never converges. Pinning them = stable
+  # plans. Logs are kept (collect_logs=true, zdr=false — the analytics this exists
+  # for); the gateway retains up to log_management entries, oldest deleted first.
+  zdr                     = false
+  log_management          = 100000
+  log_management_strategy = "DELETE_OLDEST"
+
   # Unauthenticated by default. The gateway URL embeds the account id but stores
   # NO provider key (the app sends its own ANTHROPIC_API_KEY), so the only
   # exposure is log/quota pollution by someone who learns the URL — acceptable
