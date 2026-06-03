@@ -89,6 +89,15 @@ vi.mock("../lib/trpc", () => ({
     locations: {
       suggest: { useQuery: locationsSuggestMock },
     },
+    preferences: {
+      // The editor preview resolves the sign-off from the buyer profile +
+      // the RESEND_FROM fallback; a blank profile → falls back to "Bryan".
+      get: {
+        useQuery: () => ({
+          data: { firstName: "", lastName: "", phone: "", urgency: "active" },
+        }),
+      },
+    },
     outreach: {
       senderName: { useQuery: () => ({ data: { name: "Bryan" } }) },
       killSwitch: {
@@ -247,7 +256,7 @@ describe("ScoutsPage states", () => {
       refetch: vi.fn(),
     });
     render(<ScoutsPage onViewHomes={vi.fn()} />);
-    expect(screen.getByText(/loading scouts/i)).toBeInTheDocument();
+    expect(screen.getByText(/loading searches/i)).toBeInTheDocument();
     expect(screen.queryByTestId("scout-card")).not.toBeInTheDocument();
   });
 
@@ -260,7 +269,7 @@ describe("ScoutsPage states", () => {
       refetch,
     });
     render(<ScoutsPage onViewHomes={vi.fn()} />);
-    expect(screen.getByRole("alert")).toHaveTextContent(/couldn.t load your scouts/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/couldn.t load your searches/i);
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });

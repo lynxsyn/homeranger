@@ -1,11 +1,13 @@
 /**
- * App shell — the HomeRanger topbar (logo + primary nav + tagline + theme
- * toggle) over the routed content, all inside the `.app` max-width container.
+ * App shell — the HomeRanger topbar (clickable logo + the account avatar) over
+ * the routed content, all inside the `.app` max-width container.
  *
- * `/listings` is the listings table; `/scouts` is the saved-search scout
- * manager; `/` redirects to listings. A scout's "View homes" link sets
- * `scoutFilter` and navigates to `/listings`, which then fetches + banners the
- * scout's outcodes; clicking the Listings nav link clears the filter so manual
+ * Navigation + the theme toggle live in the avatar dropdown (UserMenu): the bar
+ * is just the logo and the avatar. `/listings` is the listings table; `/scouts`
+ * is the saved-search manager (labelled "Searches" in the menu — the route stays
+ * internal); `/settings` is the operator's "Your details"; `/` redirects to
+ * listings. A search's "View homes" link sets `scoutFilter` and navigates to
+ * `/listings`; any menu navigation (or the logo) clears the filter so manual
  * navigation always shows the full list.
  *
  * The theme (`light`/`dark`) persists to `localStorage` under `hs-theme` and is
@@ -15,18 +17,24 @@
  * apps/web is moduleResolution=bundler → relative imports carry NO `.js`.
  */
 import { useEffect, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { ListingsPage } from "./pages/ListingsPage";
 import { ScoutsPage } from "./pages/ScoutsPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import type { ScoutFilter } from "./pages/ScoutsPage";
-import { Button, Logo } from "./components/ui";
+import { Logo } from "./components/ui";
+import { UserMenu } from "./components/UserMenu";
 import { useStored } from "./lib/useStored";
 
-function ThemeToggle() {
+export function App() {
+  // A search's "View homes" pushes its outcodes into the Listings view; any menu
+  // navigation (or clicking the logo) clears it.
+  const [scoutFilter, setScoutFilter] = useState<ScoutFilter | null>(null);
   const [theme, setTheme] = useStored<"light" | "dark">("hs-theme", "light", [
     "light",
     "dark",
   ]);
+  const navigate = useNavigate();
 
   // Reflect the theme onto <html data-theme> (index.html applies the stored
   // value pre-paint; this keeps it in sync on every toggle).
@@ -34,23 +42,12 @@ function ThemeToggle() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  const isDark = theme === "dark";
-  return (
-    <Button
-      variant="ghost"
-      icon={isDark ? "sun" : "moon"}
-      data-testid="theme-toggle"
-      aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
-      onClick={() => setTheme(isDark ? "light" : "dark")}
-    />
-  );
-}
-
-export function App() {
-  // A scout's "View homes" pushes its outcodes into the Listings view; manual
-  // navigation to /listings clears it (see the Listings NavLink onClick).
-  const [scoutFilter, setScoutFilter] = useState<ScoutFilter | null>(null);
-  const navigate = useNavigate();
+  // Menu navigation always shows the full set: clear any active scout filter,
+  // then route.
+  function goTo(to: string) {
+    setScoutFilter(null);
+    navigate(to);
+  }
 
   function viewScoutHomes(filter: ScoutFilter) {
     setScoutFilter(filter);
@@ -60,24 +57,21 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="topbar__left">
+        <button
+          type="button"
+          className="brand-btn"
+          data-testid="brand-home"
+          aria-label="HomeRanger — listings"
+          onClick={() => goTo("/listings")}
+        >
           <Logo size={30} />
-          <nav className="app-nav" aria-label="Primary">
-            <NavLink
-              to="/listings"
-              data-testid="nav-listings"
-              onClick={() => setScoutFilter(null)}
-            >
-              Listings
-            </NavLink>
-            <NavLink to="/scouts" data-testid="nav-scouts">
-              Scouts
-            </NavLink>
-          </nav>
-        </div>
+        </button>
         <div className="topbar__right">
-          <span className="tagline">Found before it&rsquo;s listed</span>
-          <ThemeToggle />
+          <UserMenu
+            theme={theme}
+            onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+            onNavigate={goTo}
+          />
         </div>
       </header>
 
@@ -96,6 +90,7 @@ export function App() {
           path="/scouts"
           element={<ScoutsPage onViewHomes={viewScoutHomes} />}
         />
+        <Route path="/settings" element={<SettingsPage />} />
       </Routes>
     </div>
   );

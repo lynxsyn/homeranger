@@ -56,3 +56,51 @@ describe("searchProfileRepository preference embedding (raw pgvector round-trip)
     ).rejects.toThrow(/1024 dimensions/);
   });
 });
+
+describe("searchProfileRepository buyer identity (Settings 'Your details')", () => {
+  it("defaults the identity fields on first getOrCreate", async () => {
+    const profile = await searchProfileRepository.getOrCreate();
+    expect(profile.firstName).toBe("");
+    expect(profile.lastName).toBe("");
+    expect(profile.phone).toBe("");
+    expect(profile.urgency).toBe("active");
+  });
+
+  it("round-trips firstName / lastName / phone / urgency through update", async () => {
+    await searchProfileRepository.getOrCreate();
+    const updated = await searchProfileRepository.update({
+      firstName: "Jane",
+      lastName: "Whitfield",
+      phone: "07700 900123",
+      urgency: "ready",
+    });
+    expect(updated).toMatchObject({
+      firstName: "Jane",
+      lastName: "Whitfield",
+      phone: "07700 900123",
+      urgency: "ready",
+    });
+
+    // Persisted on the singleton — a fresh read sees the same identity.
+    const reread = await searchProfileRepository.getOrCreate();
+    expect(reread).toMatchObject({
+      firstName: "Jane",
+      lastName: "Whitfield",
+      phone: "07700 900123",
+      urgency: "ready",
+    });
+  });
+
+  it("leaves identity untouched when the update omits it", async () => {
+    await searchProfileRepository.update({
+      firstName: "Jane",
+      urgency: "soon",
+    });
+    const after = await searchProfileRepository.update({
+      freeTextPreferences: "Bright garden flat",
+    });
+    expect(after.firstName).toBe("Jane");
+    expect(after.urgency).toBe("soon");
+    expect(after.freeTextPreferences).toBe("Bright garden flat");
+  });
+});

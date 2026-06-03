@@ -38,7 +38,7 @@ export function Logo({ size = 30, showWord = true, light = false }: LogoProps) {
           }}
         >
           Home
-          <span style={{ color: light ? "#BFE3CE" : "var(--accent)" }}>Scout</span>
+          <span style={{ color: light ? "#BFE3CE" : "var(--accent)" }}>Ranger</span>
         </span>
       )}
     </span>

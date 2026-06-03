@@ -25,6 +25,7 @@ import {
   _setScoutComplianceGuardForTesting,
   _setScoutAgentRepositoryForTesting,
   _setScoutListingRepositoryForTesting,
+  _setScoutSearchProfileRepositoryForTesting,
   _setDiscoverAgentsEnqueuerForTesting,
   _setScoutOutreachSendEnqueuerForTesting,
 } from "../scouts.router.js";
@@ -32,6 +33,10 @@ import {
   AgentRepository,
   type AgentRecord,
 } from "../../repositories/agent.repository.js";
+import {
+  SearchProfileRepository,
+  type SearchProfileRecord,
+} from "../../repositories/search-profile.repository.js";
 import { ListingRepository } from "../../repositories/listing.repository.js";
 import {
   ComplianceError,
@@ -51,6 +56,34 @@ function makeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
     updatedAt: new Date("2026-01-01"),
     ...overrides,
   } as AgentRecord;
+}
+
+function makeProfile(
+  overrides: Partial<SearchProfileRecord> = {},
+): SearchProfileRecord {
+  const now = new Date("2026-01-01T00:00:00.000Z");
+  return {
+    id: "00000000-0000-0000-0000-000000000001",
+    freeTextPreferences: "",
+    minBedrooms: null,
+    maxPricePence: null,
+    outcodes: [],
+    requiredTenure: null,
+    firstName: "",
+    lastName: "",
+    phone: "",
+    urgency: "active",
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+/** Inject a fake profile repo so reviewDrafts resolves a sender without a DB. */
+function injectProfile(overrides: Partial<SearchProfileRecord> = {}): void {
+  const repo = new SearchProfileRepository();
+  vi.spyOn(repo, "getOrCreate").mockResolvedValue(makeProfile(overrides));
+  _setScoutSearchProfileRepositoryForTesting(repo);
 }
 
 function makeScout(overrides: Partial<ScoutRecord> = {}): ScoutRecord {
@@ -83,6 +116,7 @@ afterEach(() => {
   _setScoutComplianceGuardForTesting(null);
   _setScoutAgentRepositoryForTesting(null);
   _setScoutListingRepositoryForTesting(null);
+  _setScoutSearchProfileRepositoryForTesting(null);
   _setDiscoverAgentsEnqueuerForTesting(null);
   _setScoutOutreachSendEnqueuerForTesting(null);
   vi.restoreAllMocks();
@@ -367,6 +401,7 @@ describe("scoutsRouter.reviewDrafts", () => {
       email: "blocked@conwy-estates.co.uk",
     });
     injectAgents([eligible, blocked]);
+    injectProfile();
     // reserve:false precheck: the first passes, the second is SUPPRESSED.
     injectGuard(async (agentId) => {
       if (agentId === blocked.id) {
@@ -402,10 +437,37 @@ describe("scoutsRouter.reviewDrafts", () => {
     ]);
   });
 
+  it("signs + paces the reviewed draft from the buyer profile (Settings)", async () => {
+    const fake = injectRepo();
+    vi.spyOn(fake, "getById").mockResolvedValue(
+      makeScout({ location: "Conwy County", outcodes: ["LL30"] }),
+    );
+    injectAgents([]);
+    injectProfile({
+      firstName: "Jane",
+      lastName: "Whitfield",
+      phone: "07700 900123",
+      urgency: "ready",
+    });
+
+    const result = await authedCaller.scouts.reviewDrafts({
+      id: "00000000-0000-7000-8000-000000000001",
+    });
+
+    // The sign-off carries the buyer's name + phone; the urgency injects its
+    // line, replacing the relaxed default — exactly what the worker will send.
+    expect(result.draft).toContain("Many thanks,\nJane Whitfield\n07700 900123");
+    expect(result.draft).toContain("I'm in a strong position to proceed");
+    expect(result.draft).not.toContain(
+      "Happy to move quickly for the right place.",
+    );
+  });
+
   it("calls the guard with reserve:false (a review never consumes a token)", async () => {
     const fake = injectRepo();
     vi.spyOn(fake, "getById").mockResolvedValue(makeScout({ outcodes: ["LL30"] }));
     injectAgents([makeAgent()]);
+    injectProfile();
     const assertCanSend = vi.fn().mockResolvedValue(undefined);
     _setScoutComplianceGuardForTesting({
       assertCanSend,
@@ -424,6 +486,7 @@ describe("scoutsRouter.reviewDrafts", () => {
     const fake = injectRepo();
     vi.spyOn(fake, "getById").mockResolvedValue(makeScout({ outcodes: ["LL30"] }));
     injectAgents([makeAgent()]);
+    injectProfile();
     injectGuard(async () => {
       throw new Error("redis down");
     });

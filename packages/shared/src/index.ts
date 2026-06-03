@@ -16,6 +16,9 @@ export * from "./pagination.js";
 // Listing list/filter/sort input contract (drives listingsRouter.list).
 export * from "./listing-query.js";
 
+// Buyer-identity + outreach-urgency helpers (Settings "Your details").
+export * from "./profile.js";
+
 // SearchProfile update contract (drives preferencesRouter.update + the form).
 export * from "./preferences.js";
 

@@ -171,7 +171,7 @@ test("scout launch golden path: launch → discover → review → approve → g
   expect(scoutNameFrom(await res.json())).toBe(SCOUT_NAME);
 
   await page.goto("/scouts");
-  await expect(page.getByRole("heading", { name: "Scouts" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Searches" })).toBeVisible();
   const card = page.locator(
     `[data-testid="scout-card"][data-scout-name="${SCOUT_NAME}"]`,
   );

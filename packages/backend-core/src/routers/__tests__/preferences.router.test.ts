@@ -21,6 +21,10 @@ function makeProfile(overrides: Partial<SearchProfileRecord> = {}): SearchProfil
     maxPricePence: 60_000_000,
     outcodes: ["SE1"],
     requiredTenure: null,
+    firstName: "",
+    lastName: "",
+    phone: "",
+    urgency: "active",
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -72,6 +76,48 @@ describe("preferencesRouter.update", () => {
       outcodes: ["SE1", "SE16"],
     });
     expect(trigger).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards the buyer identity fields (Settings 'Your details')", async () => {
+    const updated = makeProfile({
+      firstName: "Jane",
+      lastName: "Whitfield",
+      phone: "07700 900123",
+      urgency: "ready",
+    });
+    const fake = new SearchProfileRepository();
+    const updateSpy = vi.spyOn(fake, "update").mockResolvedValue(updated);
+    _setSearchProfileRepositoryForTesting(fake);
+    _setProfileChangeTriggerForTesting(vi.fn().mockResolvedValue(0));
+
+    const result = await authedCaller.preferences.update({
+      firstName: "Jane",
+      lastName: "Whitfield",
+      phone: "07700 900123",
+      urgency: "ready",
+    });
+
+    expect(result).toEqual(updated);
+    expect(updateSpy.mock.calls[0]![0]).toMatchObject({
+      firstName: "Jane",
+      lastName: "Whitfield",
+      phone: "07700 900123",
+      urgency: "ready",
+    });
+  });
+
+  it("rejects an unknown urgency (strict schema)", async () => {
+    const fake = new SearchProfileRepository();
+    vi.spyOn(fake, "update").mockResolvedValue(makeProfile());
+    _setSearchProfileRepositoryForTesting(fake);
+    _setProfileChangeTriggerForTesting(vi.fn().mockResolvedValue(0));
+
+    await expect(
+      authedCaller.preferences.update({
+        // @ts-expect-error — "whenever" is not a valid urgency
+        urgency: "whenever",
+      }),
+    ).rejects.toThrow();
   });
 
   it("still returns the updated profile when the backfill trigger throws", async () => {

@@ -45,7 +45,7 @@ test("scout golden path: create → live email preview → pause-confirm → lin
   page,
 }) => {
   await page.goto("/scouts");
-  await expect(page.getByRole("heading", { name: "Scouts" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Searches" })).toBeVisible();
 
   // 1. Open the editor.
   await page.getByTestId("new-scout").click();
