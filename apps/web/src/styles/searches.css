@@ -262,6 +262,20 @@
 .sc-link svg:last-child {
   transition: transform var(--dur-fast) var(--ease);
 }
+/* Muted variant — the secondary "View agents" link reads quieter than the
+   accent "View homes" link sitting beside it. */
+.sc-link.cc-link--muted {
+  color: var(--ink-2);
+}
+.sc-link.cc-link--muted svg {
+  color: var(--ink-3);
+}
+.sc-link.cc-link--muted:hover {
+  color: var(--ink-1);
+}
+.sc-link.cc-link--muted:hover svg {
+  color: var(--ink-1);
+}
 @media (max-width: 560px) {
   .sc-foot {
     flex-wrap: wrap;

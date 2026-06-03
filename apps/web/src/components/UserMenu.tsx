@@ -1,14 +1,14 @@
 /**
- * UserMenu — the top-right account avatar + dropdown that consolidates the app's
- * navigation and theme toggle (a faithful port of the claude.ai/design handoff,
- * project/app/settings.jsx). The top bar is now just the logo + this avatar;
- * clicking the avatar opens a tidy menu: Listings, Searches, Settings, and a
- * Theme row with the sun/moon toggle.
+ * UserMenu — the top-right account avatar + dropdown (a faithful port of the
+ * claude.ai/design handoff, project/app/settings.jsx). Primary navigation now
+ * lives in the topbar's editorial tabs (Listings / Searches / Agents); the
+ * avatar dropdown carries only the account-scoped surface: Settings, a Theme row
+ * with the sun/moon toggle, and Sign out.
  *
  * The avatar shows the buyer's initials once their details are filled in (a user
  * glyph until then), read from the single SearchProfile via `preferences.get`.
  * The menu header shows their name + current urgency. Navigation is delegated to
- * `onNavigate` (the App clears any search filter, then routes) so manual nav
+ * `onNavigate` (the App clears any drill-in filter, then routes) so manual nav
  * always lands on the full set; active item is derived from the current route.
  *
  * apps/web is moduleResolution=bundler → relative imports carry NO `.js`.
@@ -20,11 +20,9 @@ import { trpc } from "../lib/trpc";
 import { useAuth } from "../lib/auth";
 import { Icon } from "./Icon";
 
-/** The user-facing nav. Routes stay internal (`/searches`), labels are the brand
- *  copy ("Searches"). Order matches the design's dropdown. */
+/** The account-scoped menu items. Listings/Searches/Agents are topbar tabs now,
+ *  so only Settings lives in the dropdown. */
 const NAV = [
-  { label: "Listings", icon: "home", to: "/listings", testid: "nav-listings" },
-  { label: "Searches", icon: "search", to: "/searches", testid: "nav-searches" },
   { label: "Settings", icon: "settings", to: "/settings", testid: "nav-settings" },
 ] as const;
 

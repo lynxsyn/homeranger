@@ -1,0 +1,280 @@
+/* HomeRanger — Agents screen styles. Ported from the claude.ai/design handoff
+   (project/app/styles.css), the agents-specific classes only. The design system
+   (tokens.css / components.css / layout.css) supplies the rest — `.controls`,
+   `.empty`, `.empty-mark`, `.tablewrap`, `table.listings`, `.foot-note`, `.sf-oc`
+   are all reused.
+
+   Loaded after searches.css via an @import in src/index.css. */
+
+/* ---- Agents: metrics strip ----------------------------------------------- */
+.ag-metrics {
+  display: flex;
+  margin-bottom: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.ag-metric {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 16px;
+}
+.ag-metric + .ag-metric {
+  border-left: 1px solid var(--border);
+}
+.agm-ic {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--accent);
+}
+.agm-val {
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-h3);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink-1);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.agm-label {
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+}
+@media (max-width: 600px) {
+  .ag-metrics {
+    flex-wrap: wrap;
+  }
+  .ag-metric {
+    flex: 1 1 50%;
+  }
+  .ag-metric:nth-child(3),
+  .ag-metric:nth-child(4) {
+    border-top: 1px solid var(--border);
+  }
+  .ag-metric:nth-child(3) {
+    border-left: 0;
+  }
+}
+
+/* ---- Agents: status filter chips ----------------------------------------- */
+.statusfilter {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sf-chip {
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  padding: 6px 13px;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.sf-chip:hover {
+  border-color: var(--ink-3);
+  color: var(--ink-1);
+}
+.sf-chip.is-on {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-color: transparent;
+  font-weight: var(--fw-semibold);
+}
+
+/* Count + info tip group on the right of the controls row. */
+.ctrl-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* ---- Agents: table cells ------------------------------------------------- */
+.cell-agent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.cell-agent .at {
+  min-width: 0;
+}
+.cell-agent b {
+  font-weight: var(--fw-semibold);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cell-agent small {
+  display: block;
+  color: var(--ink-3);
+  font-size: var(--fs-caption);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 30ch;
+}
+.agent-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+.cov-cell {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+.cov-scout {
+  color: var(--ink-3);
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 20ch;
+}
+.homes-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: flex-end;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+}
+.homes-cell svg {
+  color: var(--ink-3);
+}
+.homes-cell.na {
+  color: var(--ink-3);
+}
+@media (max-width: 760px) {
+  .agents-table .col-cov {
+    display: none;
+  }
+}
+
+/* ---- Agents: thread-status pills ----------------------------------------- */
+.thread-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: var(--r-full);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.thread-status .ts-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-full);
+  background: currentColor;
+}
+.thread-status--replied {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.thread-status--awaiting {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.thread-status--queued {
+  background: var(--info-soft);
+  color: var(--info);
+}
+.thread-status--opted {
+  background: var(--surface-3);
+  color: var(--ink-2);
+}
+
+/* ---- Info tip ------------------------------------------------------------ */
+.infotip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+.infotip__btn {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  border-radius: var(--r-full);
+  transition:
+    color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.infotip__btn:hover,
+.infotip__btn.is-open {
+  color: var(--accent);
+  background: var(--surface-2);
+}
+.infotip__btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.infotip__pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 80;
+  width: max-content;
+  max-width: 268px;
+  background: var(--surface);
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+  padding: 11px 13px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-regular);
+  line-height: 1.55;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: normal;
+  text-align: left;
+  opacity: 1;
+}
+.infotip__pop--left {
+  left: -6px;
+}
+.infotip__pop--right {
+  right: -6px;
+}
+.infotip__pop b {
+  color: var(--ink-1);
+  font-weight: var(--fw-semibold);
+}

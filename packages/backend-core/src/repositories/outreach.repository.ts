@@ -224,6 +224,41 @@ export class OutreachRepository {
     });
   }
 
+  /**
+   * The latest NON-`closed` thread status per agent. Backs the Agents screen's
+   * status column (PR1 agentsRouter). For each agentId, picks the status of its
+   * MOST-RECENT open thread (most recent activity first, then most recently
+   * created as a tiebreak when `lastMessageAt` is still NULL). An agent whose
+   * threads are all `closed` (opted-out) or who has no thread at all is ABSENT
+   * from the Map (the router treats absence as "queued"). An empty id list
+   * returns an empty Map (no query). One `IN (...)` query, reduced to first-seen
+   * per agentId, so there is no N+1.
+   */
+  async latestStatusByAgentIds(
+    agentIds: string[],
+  ): Promise<Map<string, OutreachThreadStatus>> {
+    if (agentIds.length === 0) {
+      return new Map();
+    }
+    const threads = await prisma.outreachThread.findMany({
+      where: { agentId: { in: agentIds }, status: { not: "closed" } },
+      // NULLS LAST: a real activity timestamp must outrank a never-sent thread
+      // (Postgres defaults DESC to NULLS FIRST, which would let an `active`
+      // thread with no lastMessageAt eclipse a timestamped replied/awaiting one).
+      orderBy: [{ lastMessageAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
+      select: { agentId: true, status: true },
+    });
+    const latest = new Map<string, OutreachThreadStatus>();
+    for (const thread of threads) {
+      // findMany returns most-recent first, so the FIRST row seen per agentId is
+      // its latest open thread. Later rows for the same agent are ignored.
+      if (!latest.has(thread.agentId)) {
+        latest.set(thread.agentId, thread.status);
+      }
+    }
+    return latest;
+  }
+
   async createOutboundMessage(
     input: CreateOutboundMessageInput,
     tx?: Prisma.TransactionClient,

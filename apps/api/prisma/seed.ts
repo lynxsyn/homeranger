@@ -50,8 +50,87 @@ async function main(): Promise<void> {
     outcodes: [],
   });
 
+  // PR1: seed a small demo agent pool so the /agents screen (+ its E2E) has data
+  // with STATUS VARIETY (one replied, one awaiting, one queued, one opted out).
+  // The status is derived server-side from each agent's optedOut flag + its
+  // latest non-closed OutreachThread, so we set the thread status explicitly.
+  //
+  // Outcode choice: the agents cover the SE1/SE16 London patch (so agents.spec's
+  // "View agents" drill-in from a Bermondsey search resolves a non-empty subset)
+  // plus a DEDICATED `DEMO1` tag. The search golden-path spec keys SE1/SE16 on
+  // homes (listing-row), never on AGENT counts, and the launch spec uses the
+  // synthetic ZZ7/ZZ8 (discovery-created, cleaned by outcode), so seeding agents
+  // into SE1/SE16/DEMO1 cannot collide with any existing agent-count assertion or
+  // be swept by the launch spec's per-outcode cleanup.
+  const DEMO_OUTCODES = ["SE1", "SE16", "DEMO1"];
+  const demoAgents = [
+    {
+      email: "hello@demo-replied.co.uk",
+      agencyName: "Demo Replied Estates",
+      threadStatus: "replied" as const,
+      lastContactedAt: new Date("2026-05-20T09:00:00.000Z"),
+    },
+    {
+      email: "hello@demo-awaiting.co.uk",
+      agencyName: "Demo Awaiting Lettings",
+      threadStatus: "awaiting_reply" as const,
+      lastContactedAt: new Date("2026-05-25T09:00:00.000Z"),
+    },
+    {
+      email: "hello@demo-queued.co.uk",
+      agencyName: "Demo Queued Homes",
+      // `active` thread → the design "queued" status (first send pending).
+      threadStatus: "active" as const,
+      lastContactedAt: null,
+    },
+    {
+      email: "hello@demo-optedout.co.uk",
+      agencyName: "Demo Opted-out Property",
+      // optedOut takes precedence; no open thread needed.
+      threadStatus: null,
+      optedOut: true,
+      lastContactedAt: new Date("2026-04-10T09:00:00.000Z"),
+    },
+  ];
+
+  for (const demo of demoAgents) {
+    const agent = await prisma.agent.upsert({
+      where: { email: demo.email },
+      create: {
+        email: demo.email,
+        agencyName: demo.agencyName,
+        mailboxType: "corporate_subscriber",
+        coveredOutcodes: DEMO_OUTCODES,
+        lastContactedAt: demo.lastContactedAt,
+        optedOut: demo.optedOut ?? false,
+      },
+      update: {
+        agencyName: demo.agencyName,
+        mailboxType: "corporate_subscriber",
+        coveredOutcodes: DEMO_OUTCODES,
+        lastContactedAt: demo.lastContactedAt,
+        optedOut: demo.optedOut ?? false,
+      },
+      select: { id: true },
+    });
+    // Idempotent thread state: clear this demo agent's threads, then create the
+    // one that yields the intended status (re-running the seed never piles up).
+    await prisma.outreachThread.deleteMany({ where: { agentId: agent.id } });
+    if (demo.threadStatus) {
+      await prisma.outreachThread.create({
+        data: {
+          agentId: agent.id,
+          subject: "Off-market enquiry",
+          status: demo.threadStatus,
+          lastMessageAt: demo.lastContactedAt,
+        },
+      });
+    }
+  }
+
   console.log(
-    `Seeded ${LISTING_FIXTURES.length} listing fixtures + the search profile.`,
+    `Seeded ${LISTING_FIXTURES.length} listing fixtures + the search profile` +
+      ` + ${demoAgents.length} demo agents (outcodes ${DEMO_OUTCODES.join(", ")}).`,
   );
 }
 

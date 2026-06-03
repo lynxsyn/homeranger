@@ -11,6 +11,7 @@ import { listingsRouter } from "./listings.router.js";
 import { preferencesRouter } from "./preferences.router.js";
 import { outreachRouter } from "./outreach.router.js";
 import { searchesRouter } from "./searches.router.js";
+import { agentsRouter } from "./agents.router.js";
 import { locationsRouter } from "./locations.router.js";
 
 export const appRouter = router({
@@ -25,6 +26,7 @@ export const appRouter = router({
   preferences: preferencesRouter,
   outreach: outreachRouter,
   searches: searchesRouter,
+  agents: agentsRouter,
   locations: locationsRouter,
 });
 

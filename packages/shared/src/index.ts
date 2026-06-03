@@ -30,3 +30,6 @@ export * from "./searches.js";
 
 // Outreach control contracts (drives outreachRouter.killSwitch toggle).
 export * from "./outreach.js";
+
+// Agents list/stats input contracts (drives agentsRouter list + stats).
+export * from "./agents.js";

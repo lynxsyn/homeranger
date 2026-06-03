@@ -705,14 +705,7 @@ export function ListingsPage({
 
   return (
     <main>
-      <div className="page-head">
-        <h1 className="t-h1">Listings</h1>
-        <p>
-          Homes your agents have sent in — read from their emails, scored against
-          your taste, and linked back to the source. Found before it&rsquo;s
-          listed.
-        </p>
-      </div>
+      <h1 className="sr-only">Listings</h1>
 
       {searchFilter && (
         <div className="search-filter" data-testid="search-filter-banner">

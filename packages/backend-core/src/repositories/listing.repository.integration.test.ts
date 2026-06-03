@@ -100,6 +100,41 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
       }
     });
 
+    it("countByAgentEmails groups listings by agentEmail and omits unmatched/null emails", async () => {
+      const seller = "test-seller@example.com";
+      const other = "test-other@example.com";
+      // Two listings attributed to `seller`, one to `other`, one with NO agent.
+      await listingRepository.upsertByAddress({
+        ...baseUpsert(`test-${TEST_PREFIX}-cba-1`),
+        agentEmail: seller,
+      });
+      await listingRepository.upsertByAddress({
+        ...baseUpsert(`test-${TEST_PREFIX}-cba-2`),
+        agentEmail: seller,
+      });
+      await listingRepository.upsertByAddress({
+        ...baseUpsert(`test-${TEST_PREFIX}-cba-3`),
+        agentEmail: other,
+      });
+      await listingRepository.upsertByAddress(
+        baseUpsert(`test-${TEST_PREFIX}-cba-null`),
+      );
+
+      const counts = await listingRepository.countByAgentEmails([
+        seller,
+        other,
+        "test-nobody@example.com",
+      ]);
+      expect(counts.get(seller)).toBe(2);
+      expect(counts.get(other)).toBe(1);
+      // An email with no listings is ABSENT (the caller defaults it to 0); the
+      // NULL-agentEmail listing is never counted.
+      expect(counts.has("test-nobody@example.com")).toBe(false);
+
+      // An empty email list short-circuits to an empty Map (no query).
+      expect((await listingRepository.countByAgentEmails([])).size).toBe(0);
+    });
+
     it("vectorTopK applies a price + beds pre-filter before ranking", async () => {
       const cheap = await listingRepository.upsertByAddress({
         ...baseUpsert(`test-${TEST_PREFIX}-cheap`),
