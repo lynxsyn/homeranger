@@ -45,17 +45,18 @@ resources:
   # let Flux reconcile. The api/web/processor pods are unaffected if the
   # scheduler image is briefly absent.
   - scheduler-deployment.yaml
-  # Live edge: the Cloudflare Tunnel connector (app.homeranger.app +
+  # Live edge: the Cloudflare Tunnel connector (homeranger.app +
   # hooks.homeranger.app). The tunnel + ingress config + DNS CNAMEs are
   # Terraform-managed (infra/terraform/cloudflare); this is just the in-cluster
   # connector that dials out and pulls its config via TUNNEL_TOKEN. The token
   # secret is SOPS-encrypted and decrypted in-cluster by Flux.
   - cloudflared-secret.enc.yaml
   - cloudflared.yaml
-  # Flux image-automation (auto-bump from GHCR) stays DEFERRED — M4 ships on
-  # static :0.4.0 tags. Two unmet cluster prereqs block enabling it: (1)
-  # image-automation.yaml's ImageUpdateAutomation uses apiVersion v1beta1, but
-  # this cluster only serves v1 / v1beta2; (2) a ghcr-pull-secret-flux must exist
-  # in flux-system so the ImageRepository can scan the private GHCR. A later
-  # milestone fixes the apiVersion + creates that secret, then uncomments this.
-  # - image-automation.yaml
+  # Flux image-automation — auto-bumps the $imagepolicy-marked image tags in
+  # base from GHCR and pushes the bump to main, so a release tag rolls out
+  # hands-off (no manual manifest edit). Both former blockers are resolved:
+  # (1) the ImageUpdateAutomation now uses v1beta2 (served by this cluster);
+  # (2) ghcr-pull-secret-flux exists in flux-system for the GHCR scan. The
+  # ImageUpdateAutomation pushes via GitRepository/homeranger, whose
+  # homeranger-git-deploy-key is a read-WRITE deploy key.
+  - image-automation.yaml
