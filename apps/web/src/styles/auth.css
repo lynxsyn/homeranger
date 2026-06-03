@@ -1,0 +1,126 @@
+/* Auth gate — the SignInPage (sign in / create account) + the account-menu
+   email/sign-out chrome. Built on the same design tokens as the rest of the app
+   (warm-paper surfaces, evergreen accent, [data-theme] light/dark). */
+
+.auth {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 28px 26px 24px;
+}
+
+.auth-brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+
+.auth-title {
+  text-align: center;
+  margin: 0;
+}
+
+.auth-sub {
+  text-align: center;
+  margin: -6px 0 6px;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.auth-field > span {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--ink-2);
+}
+.auth-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink-1);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+.auth-field input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.auth-card .btn {
+  width: 100%;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.auth-error {
+  font-size: var(--fs-sm);
+  color: var(--danger, #b3261e);
+  margin: 0;
+}
+.auth-confirm {
+  font-size: var(--fs-sm);
+  color: var(--accent-ink);
+  margin: 0;
+}
+
+.auth-toggle {
+  align-self: center;
+  margin-top: 4px;
+  background: transparent;
+  border: 0;
+  padding: 6px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--accent-ink);
+}
+.auth-toggle:hover {
+  text-decoration: underline;
+}
+
+/* Brief logo-only splash while the Supabase session resolves. */
+.auth-loading {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+}
+
+/* Account-menu email line + the sign-out item. */
+.um-email {
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.um-signout {
+  color: var(--ink-2);
+}
+.um-signout:hover {
+  color: var(--ink-1);
+}

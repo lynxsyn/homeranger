@@ -19,7 +19,7 @@
  *
  * apps/web is moduleResolution=bundler → relative imports carry NO `.js`.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@homeranger/backend-core";
 import type { ScoutFilter } from "./ScoutsPage";
@@ -605,20 +605,6 @@ function InterestBar({ count, onReview, onClear }: InterestBarProps) {
   );
 }
 
-/* ---- Interest persistence ------------------------------------------------ */
-const INTEREST_KEY = "hs-interested";
-
-/** Read the bookmarked listing ids from localStorage, tolerating bad data. */
-function readInterested(): string[] {
-  try {
-    const raw = localStorage.getItem(INTEREST_KEY);
-    const parsed = raw == null ? [] : JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
 /* ---- Screen -------------------------------------------------------------- */
 export interface ListingsPageProps {
   /** When set, the list is scoped to a scout's outcodes + a banner is shown. */
@@ -636,19 +622,46 @@ export function ListingsPage({
     "cards",
   ]);
   const [sort, setSort] = useState<SortState>({ key: "score", dir: "desc" });
-  const [interested, setInterested] = useState<string[]>(readInterested);
   const [followUp, setFollowUp] = useState(false);
 
+  // Saved ("interested") listings are now persisted PER USER on the server (was
+  // localStorage hs-interested) so they survive across devices + sessions. Seed
+  // the local optimistic set once from the server, then toggle optimistically +
+  // persist via save/unsave. interestedRows still intersects with the loaded
+  // page (same behaviour as before — only loaded homes can be drafted).
+  const utils = trpc.useUtils();
+  const { data: savedRows } = trpc.listings.saved.useQuery();
+  const saveMut = trpc.listings.save.useMutation();
+  const unsaveMut = trpc.listings.unsave.useMutation();
+  const [interested, setInterested] = useState<string[]>([]);
+  const seeded = useRef(false);
   useEffect(() => {
-    try {
-      localStorage.setItem(INTEREST_KEY, JSON.stringify(interested));
-    } catch {
-      // Best-effort persistence; ignore quota/availability errors.
+    if (!seeded.current && savedRows) {
+      setInterested(savedRows.map((r) => r.id));
+      seeded.current = true;
     }
-  }, [interested]);
+  }, [savedRows]);
 
   function toggleInterest(id: string) {
-    setInterested((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+    const on = interested.includes(id);
+    setInterested((s) => (on ? s.filter((x) => x !== id) : [...s, id]));
+    const mutation = on ? unsaveMut : saveMut;
+    mutation.mutate(
+      { listingId: id },
+      { onSettled: () => void utils.listings.saved.invalidate() },
+    );
+  }
+
+  // Clear the whole interest set — locally AND on the server (so a reload does
+  // not resurrect the cleared bookmarks). Used by the bar's "Clear" + after a
+  // follow-up send.
+  function clearInterest() {
+    const ids = interested;
+    setInterested([]);
+    for (const id of ids) {
+      unsaveMut.mutate({ listingId: id });
+    }
+    void utils.listings.saved.invalidate();
   }
 
   // No manual filters: fetch the page ordered by match score (server attaches
@@ -846,7 +859,7 @@ export function ListingsPage({
             <InterestBar
               count={interestedRows.length}
               onReview={() => setFollowUp(true)}
-              onClear={() => setInterested([])}
+              onClear={clearInterest}
             />
           )}
 
@@ -855,7 +868,7 @@ export function ListingsPage({
               rows={interestedRows}
               onClose={() => setFollowUp(false)}
               onSent={() => {
-                setInterested([]);
+                clearInterest();
                 setFollowUp(false);
               }}
             />

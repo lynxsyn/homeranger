@@ -299,7 +299,8 @@ interface ScoutCardProps {
   onOpen: (scout: Scout) => void;
   onToggle: (scout: Scout) => void;
   onViewHomes: (scout: Scout) => void;
-  onLaunch: (scout: Scout) => void;
+  /** Operator-only — undefined for non-operators (the Launch control is hidden). */
+  onLaunch?: (scout: Scout) => void;
 }
 
 function ScoutCard({ scout, onOpen, onToggle, onViewHomes, onLaunch }: ScoutCardProps) {
@@ -320,23 +321,25 @@ function ScoutCard({ scout, onOpen, onToggle, onViewHomes, onLaunch }: ScoutCard
         <div className="sc-head">
           <h3 className="sc-name">{scout.name}</h3>
           <div className="sc-controls">
-            <button
-              type="button"
-              className="sc-launch"
-              data-testid="scout-launch"
-              disabled={!canViewHomes}
-              title={
-                canViewHomes
-                  ? "Launch — find agents and prepare outreach"
-                  : "Add a place with target outcodes first"
-              }
-              onClick={(e) => {
-                e.stopPropagation();
-                onLaunch(scout);
-              }}
-            >
-              <Icon name="rocket" size={14} /> Launch
-            </button>
+            {onLaunch && (
+              <button
+                type="button"
+                className="sc-launch"
+                data-testid="scout-launch"
+                disabled={!canViewHomes}
+                title={
+                  canViewHomes
+                    ? "Launch — find agents and prepare outreach"
+                    : "Add a place with target outcodes first"
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLaunch(scout);
+                }}
+              >
+                <Icon name="rocket" size={14} /> Launch
+              </button>
+            )}
             <StatusPill status={scout.status} onToggle={() => onToggle(scout)} />
             <span className="sc-edit" aria-hidden="true">
               <Icon name="sliders-horizontal" size={16} />
@@ -1171,6 +1174,11 @@ export interface ScoutsPageProps {
 export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
   const utils = trpc.useUtils();
   const { data, isLoading, isError, refetch } = trpc.scouts.list.useQuery();
+  // The launch → discover → guarded-send outreach loop is operator-only (it
+  // cold-emails on the shared sending domain under one warmup budget). Hide its
+  // controls for non-operators; the backend also enforces this (FORBIDDEN).
+  const { data: me } = trpc.auth.me.useQuery();
+  const isOperator = me?.isOperator ?? false;
 
   const [editing, setEditing] = useState<EditingState>(null);
   const [pausing, setPausing] = useState<Scout | null>(null);
@@ -1269,7 +1277,7 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
           </p>
         </div>
         <div className="page-head__actions">
-          <KillSwitch />
+          {isOperator && <KillSwitch />}
           <Button
             variant="primary"
             icon="search"
@@ -1330,7 +1338,7 @@ export function ScoutsPage({ onViewHomes }: ScoutsPageProps) {
                   onOpen={(s) => setEditing({ kind: "edit", scout: s })}
                   onToggle={requestToggle}
                   onViewHomes={viewHomes}
-                  onLaunch={setLaunching}
+                  onLaunch={isOperator ? setLaunching : undefined}
                 />
               ))}
             </div>

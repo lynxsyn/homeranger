@@ -57,6 +57,15 @@ vi.mock("../lib/trpc", () => ({
       scouts: { list: { invalidate: invalidateMock } },
       outreach: { killSwitch: { get: { invalidate: killSwitchInvalidateMock } } },
     }),
+    // The page gates the operator-only launch UI on auth.me.isOperator; default
+    // the tests to the operator so the existing launch/kill-switch tests apply.
+    auth: {
+      me: {
+        useQuery: () => ({
+          data: { id: "u1", email: "dev@homeranger.local", isOperator: true },
+        }),
+      },
+    },
     scouts: {
       list: { useQuery: listQueryMock },
       create: { useMutation: () => ({ mutate: createMutateMock, isPending: false }) },
