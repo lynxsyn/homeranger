@@ -19,6 +19,7 @@ import {
   type SuppressionEntryRepository,
 } from "../repositories/suppression-entry.repository.js";
 import { resolveLocationToOutcodes } from "../lib/geo/uk-locations.js";
+import { emailDomain, emailLocalPart } from "../lib/email/email-domain.js";
 import type { AgentDiscoveryProvider } from "../lib/discovery/agent-discovery.provider.js";
 
 /** Free webmail domains — a mailbox here is `individual` (PECR: not cold-emailable). */
@@ -78,13 +79,62 @@ export function classifyMailboxType(email: string): MailboxType {
   return FREE_MAIL_DOMAINS.has(domain) ? "individual" : "corporate_subscriber";
 }
 
+/** Generic agency inboxes, best-first — preferred over a named person's mailbox. */
+const GENERIC_LOCALPARTS = [
+  "info",
+  "hello",
+  "enquiries",
+  "enquiry",
+  "sales",
+  "office",
+  "contact",
+  "admin",
+  "mail",
+  "team",
+];
+
+/**
+ * Pick the ONE mailbox to keep for an agency (a set of same-domain emails), so a
+ * 3-inbox agency (conwy@/lettings@/rhos@ at fletcherpoole.com) becomes a single
+ * cold contact. Priority, best-first:
+ *   1. a local-part matching the search location (e.g. "conwy@" for a Conwy
+ *      search) — most likely the relevant branch.
+ *   2. a generic agency inbox (info@/hello@/enquiries@/sales@…) — reaches the
+ *      agency rather than one named person.
+ *   3. the shortest local-part (tie-break toward the simplest address).
+ *   4. first seen (stable).
+ * `emails` are same-domain, already lower-cased + deduped; never empty.
+ */
+export function pickBestEmail(emails: string[], regionLabel: string): string {
+  const tokens = (regionLabel ?? "")
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((t) => t.length >= 3);
+  const rank = (email: string): { loc: number; gen: number; len: number } => {
+    const local = emailLocalPart(email) ?? email;
+    const loc = tokens.some((t) => local.includes(t)) ? 0 : 1;
+    const gi = GENERIC_LOCALPARTS.indexOf(local);
+    return { loc, gen: gi === -1 ? GENERIC_LOCALPARTS.length : gi, len: local.length };
+  };
+  return emails.reduce((best, cur) => {
+    const b = rank(best);
+    const c = rank(cur);
+    if (c.loc !== b.loc) return c.loc < b.loc ? cur : best;
+    if (c.gen !== b.gen) return c.gen < b.gen ? cur : best;
+    if (c.len !== b.len) return c.len < b.len ? cur : best;
+    return best; // full tie — keep the earlier (stable)
+  });
+}
+
 export interface AgentDiscoveryResult {
   /** Candidates returned by the provider. */
   discovered: number;
   /** Candidates upserted as Agents (incl. individuals, which the guard blocks). */
   upserted: number;
-  /** Candidates skipped (already suppressed). */
+  /** Candidates skipped (intra-batch dupe / malformed / already suppressed). */
   skipped: number;
+  /** Extra same-agency mailboxes dropped by per-domain collapse (kept one each). */
+  collapsed: number;
 }
 
 export interface AgentDiscoveryService {
@@ -131,7 +181,7 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
           region: regionName,
         }),
       );
-      return { discovered: 0, upserted: 0, skipped: 0 };
+      return { discovered: 0, upserted: 0, skipped: 0, collapsed: 0 };
     }
     return this.runDiscovery({ region: regionName, outcodes });
   }
@@ -159,7 +209,7 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
           scope: "discovery.outcodes.empty",
         }),
       );
-      return { discovered: 0, upserted: 0, skipped: 0 };
+      return { discovered: 0, upserted: 0, skipped: 0, collapsed: 0 };
     }
     // The provider takes `region` for its query CONTEXT — the web-search string.
     // Prefer the search's human place-name label (e.g. "Conwy County"): a search
@@ -185,10 +235,17 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
 
     let upserted = 0;
     let skipped = 0;
-    // `skipped` folds: intra-batch duplicates, malformed (unknown) addresses, and
-    // already-suppressed contacts — so `discovered === upserted + skipped` holds
-    // regardless of whether the provider deduped.
+    let collapsed = 0;
+    // `skipped` folds intra-batch duplicates, malformed (unknown) addresses, and
+    // already-suppressed contacts. `collapsed` counts extra same-agency mailboxes
+    // dropped by per-domain collapse. So discovered === upserted + skipped +
+    // collapsed regardless of whether the provider deduped.
     const seen = new Set<string>();
+    // Corporate candidates are grouped by agency domain and collapsed to ONE best
+    // mailbox each (a 3-inbox agency = one cold contact). Individuals are NOT
+    // grouped — a free-mail domain (gmail.com) is not "one agency" but many
+    // unrelated people — so each is upserted as-is (the guard blocks them anyway).
+    const byDomain = new Map<string, { email: string; agencyName: string | null }[]>();
     for (const candidate of candidates) {
       const email = candidate.email.trim().toLowerCase();
       if (seen.has(email)) {
@@ -206,13 +263,38 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
         skipped += 1;
         continue;
       }
+      if (mailboxType === "individual") {
+        await this.agentRepository.upsertByEmail({
+          email,
+          agencyName: candidate.agencyName,
+          mailboxType,
+          coveredOutcodes: outcodes,
+        });
+        upserted += 1;
+        continue;
+      }
+      // corporate_subscriber — defer to the per-domain collapse below.
+      const domain = emailDomain(email)!; // corporate ⇒ a real domain
+      const group = byDomain.get(domain) ?? [];
+      group.push({ email, agencyName: candidate.agencyName });
+      byDomain.set(domain, group);
+    }
+
+    // Collapse each agency domain to its single best mailbox.
+    for (const group of byDomain.values()) {
+      const bestEmail = pickBestEmail(
+        group.map((g) => g.email),
+        region,
+      );
+      const chosen = group.find((g) => g.email === bestEmail) ?? group[0]!;
       await this.agentRepository.upsertByEmail({
-        email,
-        agencyName: candidate.agencyName,
-        mailboxType,
+        email: chosen.email,
+        agencyName: chosen.agencyName,
+        mailboxType: "corporate_subscriber",
         coveredOutcodes: outcodes,
       });
       upserted += 1;
+      collapsed += group.length - 1;
     }
 
     console.info(
@@ -223,9 +305,10 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
         discovered: candidates.length,
         upserted,
         skipped,
+        collapsed,
       }),
     );
-    return { discovered: candidates.length, upserted, skipped };
+    return { discovered: candidates.length, upserted, skipped, collapsed };
   }
 }
 

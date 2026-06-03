@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DefaultAgentDiscoveryService,
   classifyMailboxType,
+  pickBestEmail,
   getAgentDiscoveryService,
   _setAgentDiscoveryServiceForTesting,
 } from "./agent-discovery.service.js";
@@ -90,7 +91,7 @@ describe("AgentDiscoveryService.discoverRegion", () => {
     expect(h.upsertByEmail).toHaveBeenCalledWith(
       expect.objectContaining({ email: "joe@gmail.com", mailboxType: "individual" }),
     );
-    expect(result).toEqual({ discovered: 2, upserted: 2, skipped: 0 });
+    expect(result).toEqual({ discovered: 2, upserted: 2, skipped: 0, collapsed: 0 });
   });
 
   it("skips already-suppressed emails (never re-sourced)", async () => {
@@ -106,7 +107,7 @@ describe("AgentDiscoveryService.discoverRegion", () => {
     expect(h.upsertByEmail).toHaveBeenCalledWith(
       expect.objectContaining({ email: "info@a.co.uk" }),
     );
-    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1 });
+    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1, collapsed: 0 });
   });
 
   it("skips a malformed (unknown) address — never persisted", async () => {
@@ -121,7 +122,7 @@ describe("AgentDiscoveryService.discoverRegion", () => {
     expect(h.upsertByEmail).toHaveBeenCalledWith(
       expect.objectContaining({ email: "info@a.co.uk" }),
     );
-    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1 });
+    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1, collapsed: 0 });
   });
 
   it("dedups duplicate emails within a batch (counted once)", async () => {
@@ -133,14 +134,14 @@ describe("AgentDiscoveryService.discoverRegion", () => {
     });
     const result = await h.service.discoverRegion("Conwy County");
     expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1 });
+    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1, collapsed: 0 });
   });
 
   it("is a no-op for an unsupported region (provider not called)", async () => {
     const h = makeHarness({ agents: [] });
     const result = await h.service.discoverRegion("Atlantis");
     expect(h.discover).not.toHaveBeenCalled();
-    expect(result).toEqual({ discovered: 0, upserted: 0, skipped: 0 });
+    expect(result).toEqual({ discovered: 0, upserted: 0, skipped: 0, collapsed: 0 });
   });
 });
 
@@ -166,7 +167,7 @@ describe("AgentDiscoveryService.discoverByOutcodes", () => {
         coveredOutcodes: ["LL30", "LL31"],
       }),
     );
-    expect(result).toEqual({ discovered: 2, upserted: 2, skipped: 0 });
+    expect(result).toEqual({ discovered: 2, upserted: 2, skipped: 0, collapsed: 0 });
   });
 
   it("uses the place-name regionLabel as the provider query (not the raw outcodes)", async () => {
@@ -228,21 +229,104 @@ describe("AgentDiscoveryService.discoverByOutcodes", () => {
     });
     const result = await h.service.discoverByOutcodes(["LL30"]);
     expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1 });
+    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1, collapsed: 0 });
   });
 
   it("is a no-op for an empty outcode set (provider not called)", async () => {
     const h = makeHarness({ agents: [] });
     const result = await h.service.discoverByOutcodes([]);
     expect(h.discover).not.toHaveBeenCalled();
-    expect(result).toEqual({ discovered: 0, upserted: 0, skipped: 0 });
+    expect(result).toEqual({ discovered: 0, upserted: 0, skipped: 0, collapsed: 0 });
   });
 
   it("is a no-op when every outcode is blank (provider not called)", async () => {
     const h = makeHarness({ agents: [] });
     const result = await h.service.discoverByOutcodes(["", "   "]);
     expect(h.discover).not.toHaveBeenCalled();
-    expect(result).toEqual({ discovered: 0, upserted: 0, skipped: 0 });
+    expect(result).toEqual({ discovered: 0, upserted: 0, skipped: 0, collapsed: 0 });
+  });
+});
+
+describe("pickBestEmail", () => {
+  it("prefers a local-part matching the search location", () => {
+    expect(
+      pickBestEmail(
+        ["lettings@fp.com", "conwy@fp.com", "rhos@fp.com"],
+        "Conwy County",
+      ),
+    ).toBe("conwy@fp.com");
+  });
+
+  it("prefers a generic agency inbox when nothing matches the location", () => {
+    expect(
+      pickBestEmail(["jane.doe@fp.com", "info@fp.com", "sales@fp.com"], "Bath"),
+    ).toBe("info@fp.com");
+  });
+
+  it("falls back to the shortest local-part, then first-seen on a full tie", () => {
+    expect(pickBestEmail(["alexander@fp.com", "amy@fp.com"], "Bath")).toBe(
+      "amy@fp.com",
+    );
+    expect(pickBestEmail(["bob@fp.com", "ann@fp.com"], "Bath")).toBe("bob@fp.com");
+  });
+});
+
+describe("AgentDiscoveryService per-domain collapse", () => {
+  it("collapses several mailboxes at one agency to a single best contact", async () => {
+    const h = makeHarness({
+      agents: [
+        { email: "lettings@fletcherpoole.com", agencyName: "Fletcher & Poole" },
+        { email: "conwy@fletcherpoole.com", agencyName: "Fletcher & Poole" },
+        { email: "rhos@fletcherpoole.com", agencyName: "Fletcher & Poole" },
+      ],
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+    // One agency = one upsert; the location-matching mailbox wins.
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
+    expect(h.upsertByEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "conwy@fletcherpoole.com" }),
+    );
+    expect(result).toEqual({
+      discovered: 3,
+      upserted: 1,
+      skipped: 0,
+      collapsed: 2,
+    });
+  });
+
+  it("keeps distinct agencies separate (different domains are not collapsed)", async () => {
+    const h = makeHarness({
+      agents: [
+        { email: "info@agency-a.co.uk", agencyName: "A" },
+        { email: "info@agency-b.co.uk", agencyName: "B" },
+      ],
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({
+      discovered: 2,
+      upserted: 2,
+      skipped: 0,
+      collapsed: 0,
+    });
+  });
+
+  it("never collapses free-mail individuals (each is a distinct person)", async () => {
+    const h = makeHarness({
+      agents: [
+        { email: "jane@gmail.com", agencyName: "Jane (sole trader)" },
+        { email: "john@gmail.com", agencyName: "John (sole trader)" },
+      ],
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+    // gmail.com is not "one agency" — both kept (the guard blocks the sends).
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({
+      discovered: 2,
+      upserted: 2,
+      skipped: 0,
+      collapsed: 0,
+    });
   });
 });
 

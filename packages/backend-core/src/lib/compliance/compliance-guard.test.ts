@@ -12,6 +12,7 @@ import type { SuppressionEntryRepository } from "../../repositories/suppression-
 import type { WarmupStateRepository } from "../../repositories/warmup-state.repository.js";
 import type { EmailEventRepository } from "../../repositories/email-event.repository.js";
 import type { OutreachRepository } from "../../repositories/outreach.repository.js";
+import type { AgentRepository } from "../../repositories/agent.repository.js";
 
 const CONFIG: ComplianceGuardConfig = {
   bounceRate: 0.02,
@@ -20,6 +21,7 @@ const CONFIG: ComplianceGuardConfig = {
   complaintMinSample: 50,
   windowHours: 24,
   warmupWindowSeconds: 86_400,
+  domainCooldownSeconds: 2_592_000, // 30 days
 };
 
 function corporateAgent(overrides: Partial<AgentForGuard> = {}): AgentForGuard {
@@ -39,6 +41,8 @@ interface HarnessOpts {
   sends?: number;
   eventCounts?: Partial<Record<EmailEventType, number>>;
   token?: ConsumeTokenResult;
+  /** true ⇒ another agent at the same domain was contacted within the window. */
+  domainContacted?: boolean;
 }
 
 interface Harness {
@@ -48,6 +52,7 @@ interface Harness {
   countByTypeSince: ReturnType<typeof vi.fn>;
   countOutboundSince: ReturnType<typeof vi.fn>;
   consumeToken: ReturnType<typeof vi.fn>;
+  wasDomainContactedSince: ReturnType<typeof vi.fn>;
 }
 
 function makeHarness(opts: HarnessOpts = {}): Harness {
@@ -74,6 +79,9 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
       retryAfterSeconds: 0,
     },
   );
+  const wasDomainContactedSince = vi
+    .fn()
+    .mockResolvedValue(opts.domainContacted ?? false);
 
   const guard = new DefaultComplianceGuard({
     suppressionEntryRepository: {
@@ -88,6 +96,9 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     outreachRepository: {
       countOutboundSince,
     } as unknown as OutreachRepository,
+    agentRepository: {
+      wasDomainContactedSince,
+    } as unknown as AgentRepository,
     consumeToken,
     config: CONFIG,
     now: () => new Date("2026-06-02T12:00:00Z"),
@@ -100,6 +111,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     countByTypeSince,
     countOutboundSince,
     consumeToken,
+    wasDomainContactedSince,
   };
 }
 
@@ -138,44 +150,75 @@ describe("ComplianceGuard.assertCanSend — gates", () => {
     ).rejects.toMatchObject({ code: "SUPPRESSED", retryable: false });
   });
 
-  it("gate 4: trips the breaker when bounce rate > 2% (>= min sample)", async () => {
+  it("gate 4: blocks when another mailbox at the same agency domain was contacted recently", async () => {
+    const h = makeHarness({ domainContacted: true });
+    await expect(
+      h.guard.assertCanSend(
+        corporateAgent({ email: "lettings@fletcherpoole.com" }),
+      ),
+    ).rejects.toMatchObject({
+      code: "DOMAIN_RECENTLY_CONTACTED",
+      trpcCode: "FORBIDDEN",
+      retryable: false,
+    });
+  });
+
+  it("gate 4: queries the agent's domain, excludes the agent itself, within the cooldown window", async () => {
+    const h = makeHarness();
+    await h.guard.assertCanSend(
+      corporateAgent({ id: "agent-9", email: "conwy@fletcherpoole.com" }),
+    );
+    expect(h.wasDomainContactedSince).toHaveBeenCalledTimes(1);
+    const [domain, since, excludeId] = h.wasDomainContactedSince.mock.calls[0]!;
+    expect(domain).toBe("fletcherpoole.com");
+    expect(excludeId).toBe("agent-9");
+    // 30-day window before the frozen now (2026-06-02T12:00:00Z).
+    expect((since as Date).toISOString()).toBe("2026-05-03T12:00:00.000Z");
+  });
+
+  it("gate 4: a clear agency domain passes (no other recent contact)", async () => {
+    const h = makeHarness({ domainContacted: false });
+    await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();
+  });
+
+  it("gate 5: trips the breaker when bounce rate > 2% (>= min sample)", async () => {
     const h = makeHarness({ sends: 60, eventCounts: { bounced: 2 } }); // 3.3%
     await expect(
       h.guard.assertCanSend(corporateAgent()),
     ).rejects.toMatchObject({ code: "CIRCUIT_OPEN", trpcCode: "FORBIDDEN" });
   });
 
-  it("gate 4: trips the breaker when complaint rate > 0.1% (>= min sample)", async () => {
+  it("gate 5: trips the breaker when complaint rate > 0.1% (>= min sample)", async () => {
     const h = makeHarness({ sends: 60, eventCounts: { complained: 1 } }); // 1.67%
     await expect(
       h.guard.assertCanSend(corporateAgent()),
     ).rejects.toMatchObject({ code: "CIRCUIT_OPEN" });
   });
 
-  it("gate 4: recovers — bounce rate below 2% does NOT trip", async () => {
+  it("gate 5: recovers — bounce rate below 2% does NOT trip", async () => {
     const h = makeHarness({ sends: 60, eventCounts: { bounced: 1 } }); // 1.67%
     await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();
   });
 
-  it("gate 4: recovers — complaint rate below 0.1% does NOT trip", async () => {
+  it("gate 5: recovers — complaint rate below 0.1% does NOT trip", async () => {
     // 60 sends, 0 complaints (and 0 bounces) → both rates 0 → breaker closed.
     const h = makeHarness({ sends: 60, eventCounts: { complained: 0 } });
     await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();
   });
 
-  it("gate 4: does NOT trip on a tiny sample (below min-sample), even at 50% bounce", async () => {
+  it("gate 5: does NOT trip on a tiny sample (below min-sample), even at 50% bounce", async () => {
     const h = makeHarness({ sends: 2, eventCounts: { bounced: 1 } }); // 50% but n=2
     await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();
   });
 
-  it("gate 5: blocks when the manual kill-switch is set", async () => {
+  it("gate 6: blocks when the manual kill-switch is set", async () => {
     const h = makeHarness({ killSwitch: true });
     await expect(
       h.guard.assertCanSend(corporateAgent()),
     ).rejects.toMatchObject({ code: "KILL_SWITCH", trpcCode: "FORBIDDEN" });
   });
 
-  it("gate 6: warm-up cap exhausted → deferred with retryAfterSeconds (TOO_MANY_REQUESTS, retryable)", async () => {
+  it("gate 7: warm-up cap exhausted → deferred with retryAfterSeconds (TOO_MANY_REQUESTS, retryable)", async () => {
     const h = makeHarness({
       token: {
         allowed: false,
@@ -194,7 +237,7 @@ describe("ComplianceGuard.assertCanSend — gates", () => {
     });
   });
 
-  it("gate 6: Redis unavailable (fail-closed) → distinct RATE_LIMIT_UNAVAILABLE, retryable", async () => {
+  it("gate 7: Redis unavailable (fail-closed) → distinct RATE_LIMIT_UNAVAILABLE, retryable", async () => {
     const h = makeHarness({
       token: {
         allowed: false,

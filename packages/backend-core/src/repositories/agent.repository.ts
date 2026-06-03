@@ -159,6 +159,36 @@ export class AgentRepository {
       select: { id: true },
     });
   }
+
+  /**
+   * True when ANOTHER agent (id != excludeAgentId) sharing this email `domain`
+   * was contacted at/after `since`. Powers the ComplianceGuard per-domain
+   * cooldown: one agency (email domain) gets at most one cold approach per
+   * window, even across the several mailboxes discovery may surface for it. The
+   * `@`-prefixed `endsWith` makes "fletcherpoole.com" match only true mailboxes
+   * at that host (never "notfletcherpoole.com"). A blank domain returns false.
+   * Opted-out agents still count — opting out doesn't un-contact them, and we
+   * never want a second approach to the same agency regardless.
+   */
+  async wasDomainContactedSince(
+    domain: string,
+    since: Date,
+    excludeAgentId: string,
+  ): Promise<boolean> {
+    const d = domain.trim().toLowerCase();
+    if (!d) {
+      return false;
+    }
+    const hit = await prisma.agent.findFirst({
+      where: {
+        id: { not: excludeAgentId },
+        lastContactedAt: { gte: since },
+        email: { endsWith: `@${d}` },
+      },
+      select: { id: true },
+    });
+    return hit !== null;
+  }
 }
 
 const defaultAgentRepository = new AgentRepository();
