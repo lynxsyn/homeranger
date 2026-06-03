@@ -23,13 +23,7 @@ variable "mail_subdomain" {
 variable "app_hostname" {
   description = "Public app hostname served via the Cloudflare Tunnel."
   type        = string
-  default     = "app.homeranger.app"
-}
-
-variable "webhook_hostname" {
-  description = "Public hostname for the Resend inbound/event webhooks (M4). Dedicated host that maps to the same homeranger-api Service through the tunnel but is NOT behind the Cloudflare Access app — the webhook routes authenticate via Svix signature verification at the API layer. Mirrors Doxus's edge-public api.doxus.app pattern."
-  type        = string
-  default     = "hooks.homeranger.app"
+  default     = "homeranger.app"
 }
 
 variable "tunnel_secret" {

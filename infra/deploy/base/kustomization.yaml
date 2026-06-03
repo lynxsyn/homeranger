@@ -45,8 +45,8 @@ resources:
   # let Flux reconcile. The api/web/processor pods are unaffected if the
   # scheduler image is briefly absent.
   - scheduler-deployment.yaml
-  # Live edge: the Cloudflare Tunnel connector (homeranger.app +
-  # hooks.homeranger.app). The tunnel + ingress config + DNS CNAMEs are
+  # Live edge: the Cloudflare Tunnel connector (the apex homeranger.app;
+  # webhooks are a /webhooks path on it). The tunnel + ingress config + DNS CNAMEs are
   # Terraform-managed (infra/terraform/cloudflare); this is just the in-cluster
   # connector that dials out and pulls its config via TUNNEL_TOKEN. The token
   # secret is SOPS-encrypted and decrypted in-cluster by Flux.

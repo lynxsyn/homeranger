@@ -5,7 +5,7 @@ output "zone_id" {
 
 output "tunnel_id" {
   value       = cloudflare_zero_trust_tunnel_cloudflared.homeranger.id
-  description = "Cloudflare Tunnel ID for app.homeranger.app"
+  description = "Cloudflare Tunnel ID for homeranger.app"
 }
 
 # Retrieve the tunnel connector token via:

@@ -1,12 +1,14 @@
 # ── Custom WAF (M4) ──
-# Mirrors doxus-infra/terraform/cloudflare/waf.tf, scoped to homeranger's two
-# public hostnames (app + webhook). Two load-bearing rules for M4:
+# Mirrors doxus-infra/terraform/cloudflare/waf.tf, scoped to homeranger's
+# single public hostname (the apex, var.app_hostname). Two load-bearing rules:
 #
-#   1. Origin-IP / unknown-host block — any request whose Host is NOT one of
-#      homeranger's published hostnames is dropped at the edge, so the tunnel
-#      origin is never reachable by raw IP or a spoofed Host. The Resend
-#      webhook host (var.webhook_hostname) is in the allowlist so inbound
-#      webhooks pass through to the api.
+#   1. Origin-IP / unknown-host block — any request whose Host is NOT
+#      homeranger.app is dropped at the edge, so the tunnel origin is never
+#      reachable by raw IP or a spoofed Host. The Resend webhooks are no longer
+#      a separate host: they live at homeranger.app/webhooks (a path on this
+#      same apex, tunnel-routed to the api and Access-bypassed in access.tf), so
+#      they pass this rule like any other apex request — no allowlist entry for
+#      a webhook host is needed anymore.
 #   2. /metrics block — the api (and processor, in-cluster) expose Prometheus
 #      metrics; the public edge must never serve them (leaks queue depths,
 #      route names, error counts). In-cluster scrapes hit the Service directly
@@ -24,9 +26,9 @@ resource "cloudflare_ruleset" "custom_waf" {
 
   rules = [
     {
-      expression  = "(http.host ne \"${var.app_hostname}\") and (http.host ne \"${var.webhook_hostname}\")"
+      expression  = "(http.host ne \"${var.app_hostname}\")"
       action      = "block"
-      description = "Block direct origin IP / unknown-host access (homeranger hostnames only)"
+      description = "Block direct origin IP / unknown-host access (homeranger.app only)"
       enabled     = true
     },
     {

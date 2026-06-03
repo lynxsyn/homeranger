@@ -48,7 +48,8 @@ resource "cloudflare_dns_record" "resend_return_path_mx" {
 
 # --- Inbound mail (Resend inbound parse) ---
 # MX on the apex routes inbound replies to Resend's inbound, which POSTs them to
-# the /webhooks/resend/inbound handler (hooks.homeranger.app, Svix-verified).
+# the handler at homeranger.app/webhooks/resend/inbound (a path on the apex,
+# Access-bypassed in access.tf, Svix-verified).
 resource "cloudflare_dns_record" "resend_inbound_mx" {
   zone_id  = var.zone_id
   name     = var.mail_subdomain

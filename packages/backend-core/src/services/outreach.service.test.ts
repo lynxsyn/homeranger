@@ -472,6 +472,23 @@ describe("getOutreachConfig", () => {
   it("defaults the follow-up cadence to 72h", () => {
     expect(getOutreachConfig().followupCadenceHours).toBe(72);
   });
+  it("defaults the unsubscribe base URL to the apex (homeranger.app, no app. subdomain)", () => {
+    // The app moved onto the apex; the one-click unsubscribe path is
+    // Access-bypassed there so mail clients reach it without the login wall.
+    vi.stubEnv("UNSUBSCRIBE_BASE_URL", "");
+    expect(getOutreachConfig().unsubscribeBaseUrl).toBe(
+      "https://homeranger.app/api/outreach/unsubscribe",
+    );
+  });
+  it("honours UNSUBSCRIBE_BASE_URL when set, overriding the apex default", () => {
+    vi.stubEnv(
+      "UNSUBSCRIBE_BASE_URL",
+      "https://staging.example/api/outreach/unsubscribe",
+    );
+    expect(getOutreachConfig().unsubscribeBaseUrl).toBe(
+      "https://staging.example/api/outreach/unsubscribe",
+    );
+  });
 });
 
 describe("getOutreachService (lazy singleton)", () => {

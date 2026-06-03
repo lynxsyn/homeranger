@@ -166,7 +166,10 @@ export interface OutreachConfig {
 export function getOutreachConfig(): OutreachConfig {
   const unsubscribeBaseUrl =
     process.env.UNSUBSCRIBE_BASE_URL?.trim() ||
-    "https://app.homeranger.app/api/outreach/unsubscribe";
+    // The app now lives on the apex (homeranger.app); this one-click unsubscribe
+    // path is Access-bypassed there (infra/terraform/cloudflare/access.tf) so
+    // mail clients reach it without the login wall — still HMAC-token-verified.
+    "https://homeranger.app/api/outreach/unsubscribe";
   const followupCadenceHours = Number.parseInt(
     process.env.OUTREACH_FOLLOWUP_HOURS ?? "72",
     10,
