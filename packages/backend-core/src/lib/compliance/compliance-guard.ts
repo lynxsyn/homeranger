@@ -13,8 +13,9 @@
  * send blocked by an earlier gate never burns a token):
  *   1. PECR — mailboxType must be corporate_subscriber (individual/unknown ⇒ no
  *      lawful basis to send at all). 2. agent opt-out. 3. global suppression.
- *   4. circuit breaker (bounce/complaint rate over the rolling window).
- *   5. manual kill-switch. 6. warm-up daily cap (token bucket; fail-closed).
+ *   4. per-domain cooldown (one agency = one cold approach per window).
+ *   5. circuit breaker (bounce/complaint rate over the rolling window).
+ *   6. manual kill-switch. 7. warm-up daily cap (token bucket; fail-closed).
  *
  * `reserve`: the worker send path calls with reserve:true (CONSUMES a token,
  * authoritative); the router precheck calls with reserve:false (PEEKS, never
@@ -43,6 +44,11 @@ import {
   type OutreachRepository,
 } from "../../repositories/outreach.repository.js";
 import {
+  agentRepository,
+  type AgentRepository,
+} from "../../repositories/agent.repository.js";
+import { emailDomain } from "../email/email-domain.js";
+import {
   consumeToken as defaultConsumeToken,
   type ConsumeTokenInput,
   type ConsumeTokenResult,
@@ -53,6 +59,7 @@ export type ComplianceCode =
   | "PECR_NON_CORPORATE"
   | "OPTED_OUT"
   | "SUPPRESSED"
+  | "DOMAIN_RECENTLY_CONTACTED"
   | "CIRCUIT_OPEN"
   | "KILL_SWITCH"
   | "WARMUP_CAP_EXCEEDED"
@@ -123,6 +130,8 @@ export interface ComplianceGuardConfig {
   windowHours: number;
   /** Warm-up token-bucket window, in seconds (default 86400 = 1 day). */
   warmupWindowSeconds: number;
+  /** Per-domain cooldown, in seconds — one agency, one cold approach per window. */
+  domainCooldownSeconds: number;
 }
 
 function numEnv(name: string, fallback: number): number {
@@ -143,6 +152,8 @@ export function getComplianceGuardConfig(): ComplianceGuardConfig {
     complaintMinSample: intEnv("BREAKER_COMPLAINT_MIN_SAMPLE", 200),
     windowHours: numEnv("BREAKER_WINDOW_HOURS", 24),
     warmupWindowSeconds: intEnv("WARMUP_WINDOW_SECONDS", 86_400),
+    // 30 days by default — an agency contacted once isn't re-approached for a month.
+    domainCooldownSeconds: intEnv("DOMAIN_COOLDOWN_DAYS", 30) * 86_400,
   };
 }
 
@@ -151,6 +162,7 @@ export interface ComplianceGuardDependencies {
   warmupStateRepository?: WarmupStateRepository;
   emailEventRepository?: EmailEventRepository;
   outreachRepository?: OutreachRepository;
+  agentRepository?: AgentRepository;
   consumeToken?: (input: ConsumeTokenInput) => Promise<ConsumeTokenResult>;
   config?: ComplianceGuardConfig;
   now?: () => Date;
@@ -161,6 +173,7 @@ export class DefaultComplianceGuard implements ComplianceGuard {
   private readonly warmupStateRepository: WarmupStateRepository;
   private readonly emailEventRepository: EmailEventRepository;
   private readonly outreachRepository: OutreachRepository;
+  private readonly agentRepository: AgentRepository;
   private readonly consumeToken: (
     input: ConsumeTokenInput,
   ) => Promise<ConsumeTokenResult>;
@@ -175,6 +188,7 @@ export class DefaultComplianceGuard implements ComplianceGuard {
     this.emailEventRepository =
       deps.emailEventRepository ?? emailEventRepository;
     this.outreachRepository = deps.outreachRepository ?? outreachRepository;
+    this.agentRepository = deps.agentRepository ?? agentRepository;
     this.consumeToken = deps.consumeToken ?? defaultConsumeToken;
     this.config = deps.config ?? getComplianceGuardConfig();
     this.now = deps.now ?? (() => new Date());
@@ -211,10 +225,36 @@ export class DefaultComplianceGuard implements ComplianceGuard {
       });
     }
 
-    // Gate 4 — reputation circuit breaker (bounce/complaint rate over window).
+    // Gate 4 — per-domain cooldown. One agency (email domain) gets at most one
+    // cold approach per window, even across the several mailboxes discovery may
+    // surface for it. Peek-only (no token), so a domain-blocked send fails fast
+    // without burning warm-up budget. Excludes the agent itself — re-contacting
+    // the SAME mailbox is the follow-up cadence's job, not this gate. Free-mail
+    // never reaches here (PECR gate 1 already blocked it as `individual`).
+    const domain = emailDomain(agent.email);
+    if (domain) {
+      const domainSince = new Date(
+        this.now().getTime() - this.config.domainCooldownSeconds * 1000,
+      );
+      if (
+        await this.agentRepository.wasDomainContactedSince(
+          domain,
+          domainSince,
+          agent.id,
+        )
+      ) {
+        this.block(agent.id, "DOMAIN_RECENTLY_CONTACTED", {
+          retryable: false,
+          trpcCode: "FORBIDDEN",
+          message: "another contact at this agency was emailed recently",
+        });
+      }
+    }
+
+    // Gate 5 — reputation circuit breaker (bounce/complaint rate over window).
     await this.assertBreakerClosed(agent.id);
 
-    // Gate 5 — manual kill-switch (also reads the daily cap for gate 6).
+    // Gate 6 — manual kill-switch (also reads the daily cap for gate 7).
     const warmup = await this.warmupStateRepository.getOrCreate();
     if (warmup.killSwitch) {
       this.block(agent.id, "KILL_SWITCH", {
@@ -223,7 +263,7 @@ export class DefaultComplianceGuard implements ComplianceGuard {
       });
     }
 
-    // Gate 6 — warm-up daily cap (token bucket). LAST, so a send blocked above
+    // Gate 7 — warm-up daily cap (token bucket). LAST, so a send blocked above
     // never burns a token. reserve:true consumes (worker); false peeks (router).
     const token = await this.consumeToken({
       key: `outreach:warmup:${this.windowKey()}`,
@@ -270,7 +310,7 @@ export class DefaultComplianceGuard implements ComplianceGuard {
   }
 
   /**
-   * Gate 4. rate = events ÷ attempted sends over the trailing window. Each gate
+   * Gate 5. rate = events ÷ attempted sends over the trailing window. Each gate
    * is evaluated ONLY at/above its min-sample floor — below it the warm-up cap +
    * kill-switch are the safety net, not a hair-trigger statistical breaker (a
    * single bounce at n=2 is meaningless). Never divides by zero.

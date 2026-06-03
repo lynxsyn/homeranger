@@ -60,3 +60,49 @@ describe("agentRepository.list cursor pagination (uuid7 id keyset)", () => {
     expect(new Set(seen).size).toBe(total); // no overlap / no duplicate
   });
 });
+
+describe("agentRepository.wasDomainContactedSince (per-domain cooldown)", () => {
+  it("finds a recently-contacted sibling mailbox, excluding self, stale, and other domains", async () => {
+    const now = new Date();
+    const since = new Date(now.getTime() - 24 * 3_600_000); // 1 day ago
+
+    const a = await agentRepository.upsertByEmail({
+      email: "test-conwy@fp.example",
+      agencyName: "Fletcher & Poole",
+    });
+    const b = await agentRepository.upsertByEmail({
+      email: "test-lettings@fp.example",
+      agencyName: "Fletcher & Poole",
+    });
+    const other = await agentRepository.upsertByEmail({
+      email: "test-info@other.example",
+      agencyName: "Other Agency",
+    });
+    // a (same domain as b) + other (different domain) are contacted; b is not.
+    await agentRepository.markContacted(a.id, now);
+    await agentRepository.markContacted(other.id, now);
+
+    // b's domain has a recently-contacted sibling (a) → blocked.
+    expect(
+      await agentRepository.wasDomainContactedSince("fp.example", since, b.id),
+    ).toBe(true);
+    // Excluding a itself (the only contacted mailbox at fp.example) → clear.
+    expect(
+      await agentRepository.wasDomainContactedSince("fp.example", since, a.id),
+    ).toBe(false);
+    // A future `since` makes a's contact stale → clear.
+    const future = new Date(now.getTime() + 3_600_000);
+    expect(
+      await agentRepository.wasDomainContactedSince("fp.example", future, b.id),
+    ).toBe(false);
+    // other.example's only contacted mailbox is `other` itself → excluding it, clear
+    // (and fp.example's contacts never leak across the domain boundary).
+    expect(
+      await agentRepository.wasDomainContactedSince(
+        "other.example",
+        since,
+        other.id,
+      ),
+    ).toBe(false);
+  });
+});
