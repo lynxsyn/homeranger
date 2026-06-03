@@ -8,7 +8,7 @@ import { TRPCError } from "@trpc/server";
 import { appRouter } from "../index.js";
 
 const authedCaller = appRouter.createCaller({
-  user: { email: "dev@homeranger.local" },
+  user: { id: "00000000-0000-0000-0000-0000000000de", email: "dev@homeranger.local" },
 });
 const anonCaller = appRouter.createCaller({ user: null });
 

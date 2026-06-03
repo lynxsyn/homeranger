@@ -30,6 +30,10 @@ import {
   ListingScoreRepository,
   _setListingScoreRepositoryForTesting,
 } from "../../repositories/listing-score.repository.js";
+import {
+  SavedListingRepository,
+  _setSavedListingRepositoryForTesting,
+} from "../../repositories/saved-listing.repository.js";
 
 function makeRow(overrides: Partial<ListingRecord> = {}): ListingRecord {
   const now = new Date("2026-01-01T00:00:00.000Z");
@@ -58,13 +62,21 @@ function makeRow(overrides: Partial<ListingRecord> = {}): ListingRecord {
   };
 }
 
-/** Caller authenticated as the dev user. */
-const authedCaller = appRouter.createCaller({ user: { email: "dev@homeranger.local" } });
+/** Caller authenticated as the dev operator. */
+const authedCaller = appRouter.createCaller({
+  user: { id: "00000000-0000-0000-0000-0000000000de", email: "dev@homeranger.local" },
+});
+/** A non-operator signed-in user → their own saved-listings namespace. */
+const PARTNER_ID = "33333333-3333-4333-8333-333333333333";
+const partnerCaller = appRouter.createCaller({
+  user: { id: PARTNER_ID, email: "partner@homeranger.test" },
+});
 
 afterEach(() => {
   _setListingRepositoryForTesting(null);
   _setPhotoAnalysisRepositoryForTesting(null);
   _setListingScoreRepositoryForTesting(null);
+  _setSavedListingRepositoryForTesting(null);
   vi.restoreAllMocks();
 });
 
@@ -333,6 +345,61 @@ describe("listingsRouter.expand", () => {
         id: "00000000-0000-7000-8000-0000000000ff",
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("listingsRouter.saved / save / unsave", () => {
+  function injectSavedRepo(): SavedListingRepository {
+    const fake = new SavedListingRepository();
+    _setSavedListingRepositoryForTesting(fake);
+    return fake;
+  }
+
+  it("hydrates the user's saved listing ids into rows (saved order) with scores", async () => {
+    const saved = injectSavedRepo();
+    const a = makeRow({ id: "00000000-0000-7000-8000-00000000d001" });
+    const b = makeRow({ id: "00000000-0000-7000-8000-00000000d002" });
+    // Saved newest-first = [b, a]; getByIds returns them in arbitrary order.
+    const idsSpy = vi
+      .spyOn(saved, "listSavedListingIds")
+      .mockResolvedValue([b.id, a.id]);
+    const fakeListings = new ListingRepository();
+    vi.spyOn(fakeListings, "getByIds").mockResolvedValue([a, b]);
+    _setListingRepositoryForTesting(fakeListings);
+    injectScoreRepo(new Map([[b.id, 0.7]]));
+
+    const result = await partnerCaller.listings.saved();
+
+    expect(idsSpy).toHaveBeenCalledWith(PARTNER_ID);
+    // Re-ordered to the saved order (b before a); scores merged.
+    expect(result.map((r) => r.id)).toEqual([b.id, a.id]);
+    expect(result[0]!.combinedScore).toBe(0.7);
+    expect(result[1]!.combinedScore).toBeNull();
+  });
+
+  it("save/unsave forward the listingId + owner key to the repo", async () => {
+    const saved = injectSavedRepo();
+    const saveSpy = vi.spyOn(saved, "save").mockResolvedValue(true);
+    const unsaveSpy = vi.spyOn(saved, "unsave").mockResolvedValue(true);
+    const listingId = "00000000-0000-7000-8000-00000000d010";
+
+    expect(await partnerCaller.listings.save({ listingId })).toEqual({
+      saved: true,
+    });
+    expect(await authedCaller.listings.unsave({ listingId })).toEqual({
+      saved: false,
+    });
+
+    // Non-operator → their id; operator → null namespace.
+    expect(saveSpy).toHaveBeenCalledWith(PARTNER_ID, listingId);
+    expect(unsaveSpy).toHaveBeenCalledWith(null, listingId);
+  });
+
+  it("rejects an anonymous caller with UNAUTHORIZED", async () => {
+    const anon = appRouter.createCaller({ user: null });
+    await expect(anon.listings.saved()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
   });
 });
 

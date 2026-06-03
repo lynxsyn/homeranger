@@ -72,7 +72,8 @@ export function makeDefaultScoutDraftLoader(
   searchProfileRepository: SearchProfileRepository = defaultSearchProfileRepository,
 ): ScoutDraftLoader {
   return async (scoutId: string): Promise<ScoutDraft | null> => {
-    const scout = await scoutRepository.getById(scoutId);
+    // The outreach loop is operator-driven (operator namespace = null owner).
+    const scout = await scoutRepository.getById(scoutId, null);
     if (!scout) {
       return null;
     }

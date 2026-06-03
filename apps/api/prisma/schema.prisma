@@ -1,4 +1,11 @@
-// homeranger data model — single-user, no tenant scoping, no RLS.
+// homeranger data model — multi-user via Supabase Auth identity (the verified
+// JWT `sub` is the owner key). Per-user data is scoped by a nullable `userId`
+// column: `userId IS NULL` is the OPERATOR / default namespace (the legacy
+// single-user rows + everything the backend automation engine reads), while
+// every authenticated non-operator user gets their own `userId` namespace.
+// There is still NO Postgres RLS — ownership is enforced in the repository
+// layer by the resolved owner key (ownerKeyFor(ctx.user)); Supabase is used for
+// AUTHENTICATION only, the data stays in this self-hosted pgvector Postgres.
 // Conventions mirror Doxus control-plane-api/prisma/schema.prisma exactly:
 //   • id String @id @default(uuid(7)) @db.Uuid
 //   • timestamps @db.Timestamptz(6)
@@ -177,6 +184,7 @@ model Listing {
   sourceRecords ListingSourceRecord[]
   photoAnalyses PhotoAnalysis[]
   scores        ListingScore[]
+  savedBy       SavedListing[]
 
   @@index([outcode])
   @@index([postcode])
@@ -247,6 +255,11 @@ model ListingScore {
 // listingRepository.vectorTopK. Declared Unsupported (raw SQL read/write).
 model SearchProfile {
   id                  String                       @id @default(uuid(7)) @db.Uuid
+  // Owner key. NULL = the operator/default profile (the legacy singleton row +
+  // what the outreach + AI-matching engine reads). A non-operator authenticated
+  // user gets their own row keyed by their Supabase user id. Unique so each
+  // owner has exactly one profile (the NULL singleton is unique by its fixed id).
+  userId              String?                      @unique @db.Uuid
   freeTextPreferences String                       @default("")
   minBedrooms         Int?
   maxPricePence       Int?
@@ -392,6 +405,9 @@ model WarmupState {
 // the wire boundary.
 model Scout {
   id            String      @id @default(uuid(7)) @db.Uuid
+  // Owner key. NULL = the operator's scouts (the legacy single-user rows); a
+  // non-operator authenticated user's scouts carry their Supabase user id.
+  userId        String?     @db.Uuid
   name          String
   location      String      @default("")
   outcodes      String[]    @default([])
@@ -408,4 +424,25 @@ model Scout {
 
   @@index([status])
   @@index([updatedAt(sort: Desc)])
+  @@index([userId])
+}
+
+// A user's saved ("interested") listing — the per-user bookmark that backs the
+// listings "Interest" feature. The Listing catalogue itself is GLOBAL + shared
+// (de-duplicated across all users); SavedListing is the per-owner overlay that
+// records which homes a given user has kept. `userId` follows the same nullable
+// owner-key convention as Scout/SearchProfile (NULL = operator). Uniqueness of
+// (owner, listing) is enforced by a COALESCE-based unique index created in the
+// raw migration (Prisma cannot express a NULL-safe expression index), so the
+// operator's NULL-namespaced saves are also deduped per listing.
+model SavedListing {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  userId    String?  @db.Uuid
+  listingId String   @db.Uuid
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([listingId])
 }

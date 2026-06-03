@@ -8,7 +8,9 @@
  * silently corrupt.
  *
  * homeranger simplifications vs Doxus: no Sentry middleware wrapper, no
- * tenant/role procedures (single user, no tenant scoping per M3 AC#1).
+ * tenant/role procedures. Multi-user via Supabase Auth: `ctx.user` is the
+ * verified Supabase identity `{ id, email }` (see context.ts); per-user data is
+ * scoped in the repository layer by `ownerKeyFor(ctx.user)`, not by RLS.
  */
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
@@ -25,8 +27,8 @@ export const publicProcedure = t.procedure;
 
 /**
  * Guards on `ctx.user`. Throws `TRPCError UNAUTHORIZED` when the request
- * carried no valid Cloudflare Access identity. On success, narrows `ctx.user`
- * to non-null for downstream resolvers.
+ * carried no valid Supabase identity. On success, narrows `ctx.user` to
+ * non-null for downstream resolvers.
  */
 export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
   if (!ctx.user) {

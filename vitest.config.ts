@@ -121,6 +121,10 @@ export default defineConfig({
         // Its pure helpers (resolveScoutOutcodes / draftScoutEmail in
         // lib/scouts/scout-brief.ts) are unit-covered and NOT excluded.
         "packages/backend-core/src/repositories/scout.repository.ts",
+        // Multi-user saved-listings overlay — Prisma I/O (save/unsave/list),
+        // exercised by the saved-listing integration test, not unit. Same
+        // rationale as the M2–M8 repository excludes above.
+        "packages/backend-core/src/repositories/saved-listing.repository.ts",
       ],
       thresholds: {
         // Floor with deliberate HEADROOM, not floor(measured). Measured M3 is

@@ -35,6 +35,7 @@ import {
   scoutUpdateInputSchema,
 } from "@homeranger/shared";
 import { protectedProcedure, router } from "../trpc.js";
+import { ownerKeyFor } from "../lib/auth/supabase-auth.js";
 import {
   scoutRepository,
   type ScoutRecord,
@@ -169,15 +170,32 @@ function scoutNotFound(error: unknown): never {
   throw error;
 }
 
+/**
+ * The outreach loop (launch → discover → review → guarded send) is the
+ * OPERATOR's compliance-governed engine: it cold-emails estate agents on the
+ * shared sending domain under one global warmup budget + kill-switch + sign-off
+ * profile. Multi-user does NOT fan that out — a non-operator can manage their
+ * own searches/listings/settings but cannot drive sends. These procedures
+ * assert the caller is the operator (owner key null) before doing anything.
+ */
+function assertOperator(user: { id: string; email: string } | null): void {
+  if (ownerKeyFor(user) !== null) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Outreach is operator-only",
+    });
+  }
+}
+
 export const scoutsRouter = router({
-  list: protectedProcedure.query(async (): Promise<ScoutRow[]> => {
-    return scoutRepository.list();
+  list: protectedProcedure.query(async ({ ctx }): Promise<ScoutRow[]> => {
+    return scoutRepository.list(ownerKeyFor(ctx.user));
   }),
 
   getById: protectedProcedure
     .input(scoutByIdInputSchema)
-    .query(async ({ input }): Promise<ScoutRow> => {
-      const row = await scoutRepository.getById(input.id);
+    .query(async ({ ctx, input }): Promise<ScoutRow> => {
+      const row = await scoutRepository.getById(input.id, ownerKeyFor(ctx.user));
       if (!row) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
       }
@@ -186,50 +204,57 @@ export const scoutsRouter = router({
 
   create: protectedProcedure
     .input(scoutCreateInputSchema)
-    .mutation(async ({ input }): Promise<ScoutRow> => {
-      return scoutRepository.create({
-        name: input.name,
-        location: input.location,
-        types: input.types,
-        condition: input.condition,
-        land: input.land,
-        saleMethods: input.saleMethods,
-        minBedrooms: input.minBedrooms ?? null,
-        maxPricePence: input.maxPricePence ?? null,
-        keywords: input.keywords,
-        status: input.status,
-      });
+    .mutation(async ({ ctx, input }): Promise<ScoutRow> => {
+      return scoutRepository.create(
+        {
+          name: input.name,
+          location: input.location,
+          types: input.types,
+          condition: input.condition,
+          land: input.land,
+          saleMethods: input.saleMethods,
+          minBedrooms: input.minBedrooms ?? null,
+          maxPricePence: input.maxPricePence ?? null,
+          keywords: input.keywords,
+          status: input.status,
+        },
+        ownerKeyFor(ctx.user),
+      );
     }),
 
   update: protectedProcedure
     .input(scoutUpdateInputSchema)
-    .mutation(async ({ input }): Promise<ScoutRow> => {
-      // Pre-check existence so a missing id maps to NOT_FOUND (rather than a
-      // raw Prisma P2025 surfacing as INTERNAL_SERVER_ERROR).
-      const existing = await scoutRepository.getById(input.id);
+    .mutation(async ({ ctx, input }): Promise<ScoutRow> => {
+      const ownerId = ownerKeyFor(ctx.user);
+      // Pre-check existence (scoped to the owner) so a missing/foreign id maps
+      // to NOT_FOUND rather than a raw Prisma P2025 → INTERNAL_SERVER_ERROR.
+      const existing = await scoutRepository.getById(input.id, ownerId);
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
       }
-      return scoutRepository.update({
-        id: input.id,
-        name: input.name,
-        location: input.location,
-        types: input.types,
-        condition: input.condition,
-        land: input.land,
-        saleMethods: input.saleMethods,
-        minBedrooms: input.minBedrooms ?? null,
-        maxPricePence: input.maxPricePence ?? null,
-        keywords: input.keywords,
-        status: input.status,
-      });
+      return scoutRepository.update(
+        {
+          id: input.id,
+          name: input.name,
+          location: input.location,
+          types: input.types,
+          condition: input.condition,
+          land: input.land,
+          saleMethods: input.saleMethods,
+          minBedrooms: input.minBedrooms ?? null,
+          maxPricePence: input.maxPricePence ?? null,
+          keywords: input.keywords,
+          status: input.status,
+        },
+        ownerId,
+      );
     }),
 
   delete: protectedProcedure
     .input(scoutByIdInputSchema)
-    .mutation(async ({ input }): Promise<{ id: string }> => {
+    .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
       try {
-        return await scoutRepository.delete(input.id);
+        return await scoutRepository.delete(input.id, ownerKeyFor(ctx.user));
       } catch (error) {
         return scoutNotFound(error);
       }
@@ -237,9 +262,13 @@ export const scoutsRouter = router({
 
   setStatus: protectedProcedure
     .input(scoutSetStatusInputSchema)
-    .mutation(async ({ input }): Promise<ScoutRow> => {
+    .mutation(async ({ ctx, input }): Promise<ScoutRow> => {
       try {
-        return await scoutRepository.setStatus(input.id, input.status);
+        return await scoutRepository.setStatus(
+          input.id,
+          input.status,
+          ownerKeyFor(ctx.user),
+        );
       } catch (error) {
         return scoutNotFound(error);
       }
@@ -254,8 +283,9 @@ export const scoutsRouter = router({
    */
   launch: protectedProcedure
     .input(scoutByIdInputSchema)
-    .mutation(async ({ input }): Promise<ScoutLaunchResult> => {
-      const scout = await scoutRepository.getById(input.id);
+    .mutation(async ({ ctx, input }): Promise<ScoutLaunchResult> => {
+      assertOperator(ctx.user);
+      const scout = await scoutRepository.getById(input.id, null);
       if (!scout) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
       }
@@ -285,14 +315,15 @@ export const scoutsRouter = router({
    */
   reviewDrafts: protectedProcedure
     .input(scoutByIdInputSchema)
-    .query(async ({ input }): Promise<ScoutReviewDraftsResult> => {
-      const scout = await scoutRepository.getById(input.id);
+    .query(async ({ ctx, input }): Promise<ScoutReviewDraftsResult> => {
+      assertOperator(ctx.user);
+      const scout = await scoutRepository.getById(input.id, null);
       if (!scout) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
       }
       // Resolve the buyer identity so the reviewed draft is signed + paced
-      // exactly like the email the worker will send.
-      const profile = await scoutSearchProfileRepository.getOrCreate();
+      // exactly like the email the worker will send (operator profile = null).
+      const profile = await scoutSearchProfileRepository.getOrCreate(null);
       const sender = resolveSender(profile, currentSenderName());
       const draft = draftScoutEmail(scout, sender);
       const { items } = await scoutAgentRepository.list({
@@ -342,7 +373,8 @@ export const scoutsRouter = router({
    */
   approveSends: protectedProcedure
     .input(scoutApproveSendsInputSchema)
-    .mutation(async ({ input }): Promise<ScoutApproveSendsResult> => {
+    .mutation(async ({ ctx, input }): Promise<ScoutApproveSendsResult> => {
+      assertOperator(ctx.user);
       for (const agentId of input.agentIds) {
         await scoutOutreachSendEnqueuer({
           // Scope the key to (scout, agent) so a generic outreach:send to the
@@ -362,8 +394,8 @@ export const scoutsRouter = router({
    */
   stats: protectedProcedure
     .input(scoutByIdInputSchema)
-    .query(async ({ input }): Promise<ScoutStatsResult> => {
-      const scout = await scoutRepository.getById(input.id);
+    .query(async ({ ctx, input }): Promise<ScoutStatsResult> => {
+      const scout = await scoutRepository.getById(input.id, ownerKeyFor(ctx.user));
       if (!scout) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
       }
