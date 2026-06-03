@@ -90,8 +90,8 @@ describe("scoutRepository CRUD round-trip (real pgvector)", () => {
     expect(updated.types).toEqual(["Flat"]);
     expect(updated.minBedrooms).toBeNull();
     expect(updated.maxPricePence).toBeNull();
-    // outcodes re-resolved from the explicit-outcode text, deduped + uppercased.
-    expect(updated.outcodes).toEqual(["SE16", "SE1"]);
+    // outcodes re-resolved from the explicit-outcode text, deduped + sorted.
+    expect(updated.outcodes).toEqual(["SE1", "SE16"]);
 
     // SET STATUS — active → paused.
     const paused = await scoutRepository.setStatus(created.id, "paused");
@@ -107,7 +107,7 @@ describe("scoutRepository CRUD round-trip (real pgvector)", () => {
     const created = await scoutRepository.create(
       baseInput({ name: `${NAME_PREFIX}explicit`, location: "SE16, SE1" }),
     );
-    expect(created.outcodes).toEqual(["SE16", "SE1"]);
+    expect(created.outcodes).toEqual(["SE1", "SE16"]);
   });
 
   it("orders list by updatedAt desc (most recently touched first)", async () => {

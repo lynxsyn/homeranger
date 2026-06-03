@@ -26,7 +26,7 @@ describe("makeDiscoverAgentsHandler", () => {
       } as unknown as AgentDiscoveryService,
     });
     await handler({ data: { outcodes: ["LL30", "LL31"] } });
-    expect(discoverByOutcodes).toHaveBeenCalledWith(["LL30", "LL31"]);
+    expect(discoverByOutcodes).toHaveBeenCalledWith(["LL30", "LL31"], undefined);
     expect(discoverRegion).not.toHaveBeenCalled();
   });
 
@@ -42,7 +42,8 @@ describe("makeDiscoverAgentsHandler", () => {
       } as unknown as AgentDiscoveryService,
     });
     await handler({ data: { regionName: "Conwy County", outcodes: ["LL30"] } });
-    expect(discoverByOutcodes).toHaveBeenCalledWith(["LL30"]);
+    // The place-name label is forwarded so it can drive the discovery query.
+    expect(discoverByOutcodes).toHaveBeenCalledWith(["LL30"], "Conwy County");
     expect(discoverRegion).not.toHaveBeenCalled();
   });
 

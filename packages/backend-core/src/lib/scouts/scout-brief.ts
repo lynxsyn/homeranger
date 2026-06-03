@@ -2,10 +2,10 @@
  * Pure scout-brief helpers (M8) — UNIT-COVERED (not coverage-excluded):
  *
  *   - resolveScoutOutcodes(location): the outcodes a scout targets, derived
- *     SERVER-SIDE from its free-text `location`. The union of (a) explicit
- *     outcodes parsed out of the text and (b) the curated region-name → outcode
- *     map (lib/geo/uk-regions.ts), applied to the whole string AND each
- *     comma/dash-delimited segment. Deduped, stable order. The scout form has NO
+ *     SERVER-SIDE from its free-text `location`. Delegates to the bundled UK
+ *     location index (lib/geo/uk-locations.ts): the union of explicit
+ *     postcodes/outcodes in the text and any county / unitary / district /
+ *     country / town named in it. Deduped, sorted. The scout form has NO
  *     outcodes field — this is the only place they come from.
  *
  *   - draftScoutEmail(scout): a faithful port of the design's `draftEmail`
@@ -14,64 +14,19 @@
  *     is empty. `maxPricePence` is PENCE here (the wire/storage unit); the design
  *     worked in pounds, so we divide by 100 before formatting.
  */
-import { regionToOutcodes } from "../geo/uk-regions.js";
-
-/**
- * A UK outcode: 1–2 letters, 1–2 digits, an optional trailing letter
- * (e.g. SE1, SE16, EC1A, LL30). Word-bounded so it does not grab fragments of
- * longer tokens. Case-insensitive on the way in; we upper-case the captures.
- */
-const OUTCODE_PATTERN = /\b[A-Z]{1,2}\d{1,2}[A-Z]?\b/gi;
-
-/** Split a location string into the segments a region name might live in. */
-function segmentsOf(location: string): string[] {
-  return location
-    .split(/[,—–-]/)
-    .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0);
-}
+import { resolveLocationToOutcodes } from "../geo/uk-locations.js";
 
 /**
  * Resolve a scout's free-text `location` to the set of outcodes it targets.
- *
- * Two independent sources, unioned:
- *   1. Explicit outcodes written into the text (uppercased), e.g. "SE16, SE1".
- *   2. Curated region names anywhere in the text — matched against the WHOLE
- *      string and each comma/dash-delimited segment (so "Snowdonia, Gwynedd"
- *      resolves Gwynedd's outcodes off the second segment).
- *
- * The result is deduped with a stable, first-seen order (parsed-outcodes first
- * in text order, then region outcodes in map order). An unknown / blank
- * location yields `[]` — the caller treats "no outcodes" as "nothing to
- * target", never an error.
+ * Delegates to the bundled UK location index (lib/geo/uk-locations.ts): the
+ * union of explicit postcodes/outcodes in the text and any county / unitary /
+ * district / country / town / postcode-area named in it (the whole string AND
+ * each comma/dash segment). Deduped + sorted. An unknown / blank location
+ * yields `[]` — the caller treats "no outcodes" as "nothing to target", never
+ * an error. UK-wide via the index, not the old North-Wales curated seed.
  */
 export function resolveScoutOutcodes(location: string): string[] {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  const add = (code: string): void => {
-    const value = code.trim().toUpperCase();
-    if (value.length > 0 && !seen.has(value)) {
-      seen.add(value);
-      ordered.push(value);
-    }
-  };
-
-  // (a) explicit outcodes parsed out of the text (in text order).
-  for (const match of location.matchAll(OUTCODE_PATTERN)) {
-    add(match[0]);
-  }
-
-  // (b) region names — whole string first, then each segment.
-  for (const code of regionToOutcodes(location)) {
-    add(code);
-  }
-  for (const segment of segmentsOf(location)) {
-    for (const code of regionToOutcodes(segment)) {
-      add(code);
-    }
-  }
-
-  return ordered;
+  return resolveLocationToOutcodes(location);
 }
 
 /** The fields draftScoutEmail reads off a scout row (a structural subset). */

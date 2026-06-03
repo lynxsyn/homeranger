@@ -74,6 +74,35 @@
 }
 .hs-search .hs-input { padding-left: 38px; }
 
+/* ---- Location type-ahead ------------------------------------------------- */
+.hs-typeahead { position: relative; }
+.hs-typeahead__list {
+  position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0;
+  margin: 0; padding: 4px; list-style: none;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+  max-height: 288px; overflow-y: auto;
+}
+.hs-typeahead__list li { margin: 0; }
+.hs-typeahead__opt {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  width: 100%; text-align: left; cursor: pointer;
+  padding: 8px 10px; border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--ink-1);
+  font-family: var(--font-sans); font-size: var(--fs-body);
+  transition: background-color var(--dur-fast) var(--ease);
+}
+/* The active row (keyboard + hover) is the affordance — focus stays on the
+   combobox input per the aria-activedescendant pattern, so options are never
+   tab-focused (tabIndex=-1) and need no :focus style. */
+.hs-typeahead__opt.is-active,
+.hs-typeahead__opt:hover { background: var(--surface-3); }
+.hs-typeahead__label { font-weight: var(--fw-semibold); }
+.hs-typeahead__hint {
+  font-size: var(--fs-label); color: var(--ink-3); white-space: nowrap;
+}
+
 /* ---- Chips (metadata pills) --------------------------------------------- */
 .hs-chip {
   display: inline-flex; align-items: center; gap: 6px;

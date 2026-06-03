@@ -28,6 +28,10 @@ export default defineConfig({
         "**/__tests__/**",
         "**/prisma/**",
         "**/dist/**",
+        // The bundled UK outcode index is GENERATED data (a single JSON string
+        // constant — see scripts/build-uk-outcodes.mts), not logic. The resolver
+        // that reads it (lib/geo/uk-locations.ts) IS unit-covered + not excluded.
+        "packages/backend-core/src/lib/geo/data/uk-outcodes.data.ts",
         // index barrels carry no logic.
         "**/index.ts",
         "apps/*/src/index.ts",

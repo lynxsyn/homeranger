@@ -10,6 +10,7 @@ import { listingsRouter } from "./listings.router.js";
 import { preferencesRouter } from "./preferences.router.js";
 import { outreachRouter } from "./outreach.router.js";
 import { scoutsRouter } from "./scouts.router.js";
+import { locationsRouter } from "./locations.router.js";
 
 export const appRouter = router({
   /** Unauthenticated liveness probe usable through the tRPC client. */
@@ -22,6 +23,7 @@ export const appRouter = router({
   preferences: preferencesRouter,
   outreach: outreachRouter,
   scouts: scoutsRouter,
+  locations: locationsRouter,
 });
 
 export type AppRouter = typeof appRouter;

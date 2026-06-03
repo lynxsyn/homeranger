@@ -308,7 +308,7 @@ describe("scoutsRouter.launch", () => {
     expect(enqueue).toHaveBeenCalledWith({
       idempotencyKey:
         "discover:agents:scout:00000000-0000-7000-8000-000000000001",
-      payload: { outcodes: ["LL30", "LL31"] },
+      payload: { regionName: "Conwy County", outcodes: ["LL30", "LL31"] },
     });
   });
 

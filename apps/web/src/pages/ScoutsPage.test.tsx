@@ -29,6 +29,7 @@ const {
   killSwitchGetMock,
   killSwitchToggleMock,
   killSwitchToggleStateMock,
+  locationsSuggestMock,
 } = vi.hoisted(() => ({
   listQueryMock: vi.fn(),
   invalidateMock: vi.fn(),
@@ -47,6 +48,7 @@ const {
   killSwitchGetMock: vi.fn(),
   killSwitchToggleMock: vi.fn(),
   killSwitchToggleStateMock: { isPending: false },
+  locationsSuggestMock: vi.fn(),
 }));
 
 vi.mock("../lib/trpc", () => ({
@@ -83,6 +85,9 @@ vi.mock("../lib/trpc", () => ({
         }),
       },
       stats: { useQuery: statsQueryMock },
+    },
+    locations: {
+      suggest: { useQuery: locationsSuggestMock },
     },
     outreach: {
       killSwitch: {
@@ -216,6 +221,9 @@ beforeEach(() => {
   statsQueryMock.mockClear();
   killSwitchGetMock.mockClear();
   killSwitchToggleMock.mockClear();
+  locationsSuggestMock.mockClear();
+  // Default: no location suggestions (the editor renders without a dropdown).
+  locationsSuggestMock.mockReturnValue({ data: [] });
   launchStateMock.isPending = false;
   launchStateMock.isSuccess = true;
   launchStateMock.isError = false;
@@ -437,6 +445,53 @@ describe("ScoutsPage editor", () => {
     fireEvent.click(snowdonia);
     fireEvent.click(screen.getByTestId("scout-delete"));
     expect(deleteMutateMock).toHaveBeenCalledWith({ id: "scout-snowdonia" });
+  });
+
+  it("suggests UK locations as you type and fills the field on pick", () => {
+    withScouts();
+    locationsSuggestMock.mockReturnValue({
+      data: [
+        {
+          label: "Conwy",
+          kind: "district",
+          outcodes: ["LL30", "LL31", "LL32"],
+          hint: "District · 16 outcodes",
+        },
+        {
+          label: "Llandudno",
+          kind: "place",
+          outcodes: ["LL30"],
+          hint: "Town/area · 3 outcodes",
+        },
+      ],
+    });
+    render(<ScoutsPage onViewHomes={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("new-scout"));
+    const editor = screen.getByTestId("scout-editor");
+    const input = within(editor).getByTestId("scout-location");
+
+    // Typing opens the suggestion list (one row per suggestion, kind tagged).
+    fireEvent.change(input, { target: { value: "Conw" } });
+    const list = within(editor).getByTestId("scout-location-suggestions");
+    const opts = within(list).getAllByTestId("scout-location-suggestion");
+    expect(opts).toHaveLength(2);
+    expect(opts[0]).toHaveTextContent("Conwy");
+    expect(opts[0]).toHaveTextContent("16 outcodes");
+    expect(opts[0]).toHaveAttribute("data-kind", "district");
+
+    // ARIA combobox wiring: the input points at the listbox + the active option.
+    expect(input).toHaveAttribute("aria-controls", list.id);
+    expect(input).toHaveAttribute("aria-activedescendant", `${list.id}-opt-0`);
+    const options = list.querySelectorAll('[role="option"]');
+    expect(options[0]).toHaveAttribute("aria-selected", "true");
+    expect(options[0]).toHaveAttribute("id", `${list.id}-opt-0`);
+
+    // Picking a suggestion stores its canonical label + closes the list.
+    fireEvent.mouseDown(opts[0]);
+    expect(input).toHaveValue("Conwy");
+    expect(
+      within(editor).queryByTestId("scout-location-suggestions"),
+    ).not.toBeInTheDocument();
   });
 });
 

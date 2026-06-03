@@ -36,3 +36,6 @@ infra/deploy/**/secret.example.yaml.filled
 # direnv — committed .envrc is tracked; local cache + per-project tool state are not
 .direnv/
 .state/
+
+# Claude Code local runtime artifacts (scheduled-task locks, etc.)
+.claude/

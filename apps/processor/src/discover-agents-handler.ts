@@ -23,7 +23,7 @@ export function makeDiscoverAgentsHandler(deps: DiscoverAgentsHandlerDeps) {
     const { outcodes, regionName } = job.data;
     try {
       if (outcodes && outcodes.length > 0) {
-        await deps.agentDiscoveryService.discoverByOutcodes(outcodes);
+        await deps.agentDiscoveryService.discoverByOutcodes(outcodes, regionName);
       } else {
         await deps.agentDiscoveryService.discoverRegion(regionName ?? "");
       }
