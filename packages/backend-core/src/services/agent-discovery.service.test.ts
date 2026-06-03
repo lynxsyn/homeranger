@@ -169,6 +169,45 @@ describe("AgentDiscoveryService.discoverByOutcodes", () => {
     expect(result).toEqual({ discovered: 2, upserted: 2, skipped: 0 });
   });
 
+  it("uses the place-name regionLabel as the provider query (not the raw outcodes)", async () => {
+    // The scout-launch fix: a web search for "LL30, LL31" finds nothing, so the
+    // scout's human place name ("Conwy County") MUST drive the provider query —
+    // while the explicit outcodes still get stamped on the discovered agents.
+    const h = makeHarness({
+      agents: [{ email: "info@conwy-estates.co.uk", agencyName: "Conwy Estates" }],
+    });
+    await h.service.discoverByOutcodes(["LL30", "LL31"], "Conwy County");
+    expect(h.discover).toHaveBeenCalledWith({
+      region: "Conwy County",
+      outcodes: ["LL30", "LL31"],
+    });
+    expect(h.upsertByEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ coveredOutcodes: ["LL30", "LL31"] }),
+    );
+  });
+
+  it("falls back to the joined outcodes when no regionLabel is supplied", async () => {
+    const h = makeHarness({
+      agents: [{ email: "info@a.co.uk", agencyName: "A" }],
+    });
+    await h.service.discoverByOutcodes(["LL30", "LL31"]);
+    expect(h.discover).toHaveBeenCalledWith({
+      region: "LL30, LL31",
+      outcodes: ["LL30", "LL31"],
+    });
+  });
+
+  it("treats a blank regionLabel as absent and falls back to the outcodes", async () => {
+    const h = makeHarness({
+      agents: [{ email: "info@a.co.uk", agencyName: "A" }],
+    });
+    await h.service.discoverByOutcodes(["LL30"], "   ");
+    expect(h.discover).toHaveBeenCalledWith({
+      region: "LL30",
+      outcodes: ["LL30"],
+    });
+  });
+
   it("normalises + dedups the outcode set (case + blanks + dupes)", async () => {
     const h = makeHarness({
       agents: [{ email: "info@a.co.uk", agencyName: "A" }],

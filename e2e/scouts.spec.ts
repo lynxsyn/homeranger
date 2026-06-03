@@ -97,3 +97,41 @@ test("scout golden path: create → live email preview → pause-confirm → lin
   await page.getByTestId("scout-filter-clear").click();
   await expect(page.getByTestId("scout-filter-banner")).toHaveCount(0);
 });
+
+test("location type-ahead: typing a county suggests it (real index) and resolves outcodes", async ({
+  page,
+}) => {
+  const TA_NAME = `E2E Scout TA ${RUN_ID}`;
+  await page.goto("/scouts");
+  await page.getByTestId("new-scout").click();
+  const editor = page.getByTestId("scout-editor");
+  await expect(editor).toBeVisible();
+
+  await page.getByTestId("scout-name").fill(TA_NAME);
+
+  // Type a county name → the bundled UK index (via trpc.locations.suggest)
+  // surfaces it as a DISTRICT suggestion with a catchment hint.
+  await page.getByTestId("scout-location").fill("Conwy");
+  const suggestions = page.getByTestId("scout-location-suggestions");
+  await expect(suggestions).toBeVisible();
+  const conwy = suggestions
+    .locator('[data-testid="scout-location-suggestion"][data-kind="district"]')
+    .filter({ hasText: "Conwy" })
+    .first();
+  await expect(conwy).toBeVisible();
+  await expect(conwy).toContainText("outcodes");
+
+  // Picking it stores the canonical label + closes the list.
+  await conwy.click();
+  await expect(page.getByTestId("scout-location")).toHaveValue("Conwy");
+  await expect(suggestions).toHaveCount(0);
+
+  // Saving resolves "Conwy" → its outcodes server-side, so the card's Launch is
+  // enabled (Launch is disabled only when a scout resolved zero outcodes).
+  await page.getByTestId("scout-save").click();
+  const card = page.locator(
+    `[data-testid="scout-card"][data-scout-name="${TA_NAME}"]`,
+  );
+  await expect(card).toHaveCount(1);
+  await expect(card.getByTestId("scout-launch")).toBeEnabled();
+});

@@ -250,7 +250,10 @@ export const scoutsRouter = router({
       }
       await discoverAgentsEnqueuer({
         idempotencyKey: `discover:agents:scout:${scout.id}`,
-        payload: { outcodes: scout.outcodes },
+        // `regionName` is the scout's human place name — it drives the discovery
+        // web-search query ("estate agents in <location>, UK"); `outcodes` is what
+        // gets stamped onto the discovered agents so reviewDrafts can match them.
+        payload: { regionName: scout.location, outcodes: scout.outcodes },
       });
       return { enqueued: true, outcodes: scout.outcodes };
     }),

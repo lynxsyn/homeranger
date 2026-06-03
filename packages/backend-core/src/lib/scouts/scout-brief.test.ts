@@ -19,44 +19,42 @@ import {
 } from "./scout-brief.js";
 
 describe("resolveScoutOutcodes", () => {
-  it("resolves a region NAME to its curated outcodes", () => {
+  // resolveScoutOutcodes delegates to the bundled UK index (uk-locations.ts,
+  // exhaustively tested there). These assert the delegation + the scout-facing
+  // contract: a name/postcode location → its outcodes, UK-wide, deduped, sorted.
+  it("resolves a unitary/district NAME to its outcodes (UK-wide)", () => {
     const outcodes = resolveScoutOutcodes("Conwy County");
     expect(outcodes).toContain("LL30");
     expect(outcodes).toContain("LL22");
-    // Aliases resolve too.
+    // Welsh county name resolves too.
     expect(resolveScoutOutcodes("Anglesey")).toContain("LL58");
   });
 
-  it("resolves a region name off a comma/dash-delimited segment", () => {
-    // The whole string "Snowdonia, Gwynedd" is not a region, but the second
-    // segment "Gwynedd" is — segment-level matching must catch it.
+  it("resolves a name off a comma/dash-delimited segment", () => {
+    // The whole string "Snowdonia, Gwynedd" is not an area, but "Gwynedd" is.
     const outcodes = resolveScoutOutcodes("Snowdonia, Gwynedd");
     expect(outcodes).toContain("LL23");
     expect(outcodes).toContain("LL55");
   });
 
-  it("parses EXPLICIT outcodes out of free text (uppercased, word-bounded)", () => {
+  it("parses EXPLICIT outcodes out of free text (uppercased, sorted)", () => {
     const outcodes = resolveScoutOutcodes("se16, se1 and EC1A");
-    expect(outcodes).toEqual(["SE16", "SE1", "EC1A"]);
+    expect(outcodes).toEqual(["EC1A", "SE1", "SE16"]);
   });
 
-  it("unions parsed outcodes with region outcodes (across segments)", () => {
-    // "SW1A" is a parseable outcode; the second segment "Conwy County" is a
-    // region name — both sources contribute, parsed-first.
+  it("unions parsed outcodes with a named area (deduped, sorted)", () => {
     const outcodes = resolveScoutOutcodes("SW1A, Conwy County");
-    expect(outcodes[0]).toBe("SW1A"); // parsed first, in text order
-    expect(outcodes).toContain("LL30"); // region outcodes follow
+    expect(outcodes).toContain("SW1A"); // the parsed outcode
+    expect(outcodes).toContain("LL30"); // the named-area outcodes
+    expect([...outcodes].sort()).toEqual(outcodes); // sorted, stable
   });
 
-  it("dedups (parsed outcode that also appears in a region map is kept once)", () => {
-    // LL30 is both written explicitly AND in Conwy County's map.
+  it("keeps a parsed outcode once even when a named area also covers it", () => {
     const outcodes = resolveScoutOutcodes("LL30, Conwy County");
     expect(outcodes.filter((c) => c === "LL30")).toHaveLength(1);
-    // Parsed-first ordering: LL30 (parsed) leads the list.
-    expect(outcodes[0]).toBe("LL30");
   });
 
-  it("returns [] for an unknown region with no parseable outcodes", () => {
+  it("returns [] for an unknown location with no parseable outcodes", () => {
     expect(resolveScoutOutcodes("Atlantis")).toEqual([]);
     expect(resolveScoutOutcodes("")).toEqual([]);
     expect(resolveScoutOutcodes("   ")).toEqual([]);

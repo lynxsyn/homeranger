@@ -18,7 +18,7 @@ import {
   suppressionEntryRepository as defaultSuppressionEntryRepository,
   type SuppressionEntryRepository,
 } from "../repositories/suppression-entry.repository.js";
-import { regionToOutcodes } from "../lib/geo/uk-regions.js";
+import { resolveLocationToOutcodes } from "../lib/geo/uk-locations.js";
 import type { AgentDiscoveryProvider } from "../lib/discovery/agent-discovery.provider.js";
 
 /** Free webmail domains — a mailbox here is `individual` (PECR: not cold-emailable). */
@@ -92,9 +92,14 @@ export interface AgentDiscoveryService {
   /**
    * Discover by an EXPLICIT outcode set (PR3 scout-launch path) — the same
    * provider→classify→dedup→skip-suppressed→upsert pipeline as discoverRegion,
-   * but skipping the region→outcode resolution. Blank/empty ⇒ a no-op result.
+   * but skipping the region→outcode resolution. `regionLabel` (the scout's
+   * place name, e.g. "Conwy County") drives the provider's web-search query —
+   * a search for the raw outcodes finds nothing. Blank/empty ⇒ a no-op result.
    */
-  discoverByOutcodes(outcodes: string[]): Promise<AgentDiscoveryResult>;
+  discoverByOutcodes(
+    outcodes: string[],
+    regionLabel?: string,
+  ): Promise<AgentDiscoveryResult>;
 }
 
 export interface AgentDiscoveryDependencies {
@@ -116,7 +121,7 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
   }
 
   async discoverRegion(regionName: string): Promise<AgentDiscoveryResult> {
-    const outcodes = regionToOutcodes(regionName);
+    const outcodes = resolveLocationToOutcodes(regionName);
     if (outcodes.length === 0) {
       // Unsupported/blank region — nothing to target, never an error.
       console.info(
@@ -131,7 +136,10 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
     return this.runDiscovery({ region: regionName, outcodes });
   }
 
-  async discoverByOutcodes(outcodes: string[]): Promise<AgentDiscoveryResult> {
+  async discoverByOutcodes(
+    outcodes: string[],
+    regionLabel?: string,
+  ): Promise<AgentDiscoveryResult> {
     // Normalise + dedup the explicit outcode set (a scout supplies already-
     // resolved, upper-cased codes, but stay defensive against blanks/dupes).
     const seen = new Set<string>();
@@ -153,9 +161,13 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
       );
       return { discovered: 0, upserted: 0, skipped: 0 };
     }
-    // The provider takes `region` for its query context; with an explicit set the
-    // outcode list IS the context (no curated region name), so pass it joined.
-    return this.runDiscovery({ region: targets.join(", "), outcodes: targets });
+    // The provider takes `region` for its query CONTEXT — the web-search string.
+    // Prefer the scout's human place-name label (e.g. "Conwy County"): a search
+    // for the raw outcodes ("LL30, LL31, LL32") returns nothing. Fall back to the
+    // joined outcodes only when no label is supplied. Either way `outcodes` is
+    // what gets stamped onto the discovered agents' coveredOutcodes.
+    const region = regionLabel?.trim() || targets.join(", ");
+    return this.runDiscovery({ region, outcodes: targets });
   }
 
   /**

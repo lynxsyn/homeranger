@@ -13,7 +13,7 @@
  *
  * apps/web is moduleResolution=bundler → relative imports carry NO `.js`.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@homescout/backend-core";
@@ -418,6 +418,150 @@ function ChipSelect({ label, options, selected, onToggle, hint }: ChipSelectProp
   );
 }
 
+/* ---- Location type-ahead -------------------------------------------------- */
+/**
+ * The scout "Where" field, backed by the bundled UK location index via
+ * `trpc.locations.suggest`. As the operator types a county / town / region /
+ * postcode, suggestions appear (debounced); picking one stores its canonical
+ * label as the location — the server then resolves that to the scout's outcodes.
+ * The hint on each row shows the catchment size, so it's clear how wide a net a
+ * choice casts before saving. Keyboard: ↑/↓ to move, Enter to pick, Esc to close
+ * (Esc is swallowed so it doesn't also close the editor modal).
+ */
+function LocationTypeahead({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const [debounced, setDebounced] = useState(value);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), 150);
+    return () => clearTimeout(t);
+  }, [value]);
+
+  const q = debounced.trim();
+  const { data: suggestions } = trpc.locations.suggest.useQuery(
+    { q },
+    { enabled: q.length >= 2, staleTime: 60_000 },
+  );
+  const items = suggestions ?? [];
+  const showList = open && items.length > 0;
+
+  // Keep the highlighted row in range when an async result set shrinks.
+  useEffect(() => {
+    setActive((a) => Math.min(a, Math.max(0, items.length - 1)));
+  }, [items.length]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  function choose(label: string) {
+    onChange(label);
+    setOpen(false);
+  }
+
+  return (
+    <div className="hs-typeahead" ref={boxRef}>
+      <div className="hs-search">
+        <Icon name="search" size={16} />
+        <input
+          className="hs-input"
+          data-testid="scout-location"
+          placeholder="Hampstead, NW3 · or Snowdonia, Gwynedd"
+          value={value}
+          role="combobox"
+          aria-expanded={showList}
+          aria-autocomplete="list"
+          aria-controls={showList ? listId : undefined}
+          aria-activedescendant={
+            showList ? `${listId}-opt-${active}` : undefined
+          }
+          onChange={(e) => {
+            onChange(e.target.value);
+            setOpen(true);
+            setActive(0);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            // ArrowDown reopens a closed list for the current text (standard
+            // combobox affordance) before the open-state handlers run.
+            if (!showList) {
+              if (e.key === "ArrowDown" && items.length > 0) {
+                e.preventDefault();
+                setOpen(true);
+                setActive(0);
+              }
+              return;
+            }
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setActive((a) => Math.min(a + 1, items.length - 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setActive((a) => Math.max(a - 1, 0));
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              const s = items[active];
+              if (s) choose(s.label);
+            } else if (e.key === "Escape") {
+              e.stopPropagation();
+              setOpen(false);
+            }
+          }}
+        />
+      </div>
+      {showList && (
+        <ul
+          className="hs-typeahead__list"
+          data-testid="scout-location-suggestions"
+          id={listId}
+          role="listbox"
+        >
+          {items.map((s, i) => (
+            <li
+              key={`${s.kind}:${s.label}`}
+              id={`${listId}-opt-${i}`}
+              role="option"
+              aria-selected={i === active}
+            >
+              <button
+                type="button"
+                tabIndex={-1}
+                className={`hs-typeahead__opt${i === active ? " is-active" : ""}`}
+                data-testid="scout-location-suggestion"
+                data-kind={s.kind}
+                data-outcodes={s.outcodes.length}
+                onMouseEnter={() => setActive(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  choose(s.label);
+                }}
+              >
+                <span className="hs-typeahead__label">{s.label}</span>
+                <span className="hs-typeahead__hint">{s.hint}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /* ---- Editor modal --------------------------------------------------------- */
 interface ScoutEditorProps {
   initial: ScoutForm;
@@ -518,19 +662,13 @@ function ScoutEditor({
 
           <label className="hs-field">
             <span>Where</span>
-            <div className="hs-search">
-              <Icon name="search" size={16} />
-              <input
-                className="hs-input"
-                data-testid="scout-location"
-                placeholder="Hampstead, NW3 · or Snowdonia, Gwynedd"
-                value={form.location}
-                onChange={(e) => set("location", e.target.value)}
-              />
-            </div>
+            <LocationTypeahead
+              value={form.location}
+              onChange={(v) => set("location", v)}
+            />
             <p className="field-hint">
-              A place name, area or outcode. The agent finds the local estate agents
-              to write to.
+              Start typing a county, town, region or postcode — pick one and the
+              agent writes to its local estate agents.
             </p>
           </label>
 
