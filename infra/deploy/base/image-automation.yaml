@@ -135,11 +135,17 @@ spec:
       author:
         name: fluxcdbot
         email: fluxcdbot@users.noreply.github.com
+      # The `.Updated` template field was REMOVED in current Flux image-automation;
+      # it must use `.Changed` (see the doxus ImageUpdateAutomation, which is
+      # READY on this same cluster/Flux version). With `.Updated` the automation
+      # fails ("template uses removed '.Updated' field") and never commits the
+      # image-tag bump, silently blocking every release roll-out.
       messageTemplate: |
         chore(flux): update image tags [skip ci]
 
-        {{ range .Updated.Images }}- {{ . }}
-        {{ end }}
+        {{range .Changed.Changes}}
+        - {{.OldValue}} -> {{.NewValue}}
+        {{end}}
     push:
       branch: main
   update:
