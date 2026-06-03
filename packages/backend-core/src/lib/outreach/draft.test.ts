@@ -35,4 +35,15 @@ describe("draftOutreach", () => {
     expect(d.bodyHtml).toContain("A &amp; B &lt;Estates&gt;");
     expect(d.bodyHtml).not.toContain("<Estates>");
   });
+
+  it("uses no em dashes in the subject or body (AI tell)", () => {
+    const d = draftOutreach({
+      agencyName: "Acme Lettings",
+      coveredOutcodes: ["SW1A"],
+      profilePreferences: "3-bed garden flat",
+      unsubscribeUrl: "https://app.test/u?token=abc",
+    });
+    expect(d.subject).not.toContain("—");
+    expect(d.bodyText).not.toContain("—");
+  });
 });

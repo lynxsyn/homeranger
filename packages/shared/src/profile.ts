@@ -6,9 +6,10 @@
  *     the RESEND_FROM display name is the fallback (single source of truth for
  *     "who the email is from" stays the From header).
  *   - phone              → appended to the sign-off when set.
- *   - urgency            → selects the closing "how soon" line. Each level's
- *     `line` REPLACES the default closing sentence ("Happy to move quickly for
- *     the right place."); "browsing" keeps it relaxed with an empty line.
+ *   - urgency            → selects the closing "how soon" line. A level with a
+ *     non-empty `line` APPENDS it to the neutral base closing; "browsing" (and an
+ *     unset urgency) keep the relaxed base closing with no eager tail. Eager
+ *     "move quickly" copy lives only in the ready/soon lines.
  *
  * `label`/`note` drive the Settings UI only. `line`, `signatureBlock`, and
  * `urgencyLine` are EMAIL COPY and the SINGLE SOURCE OF TRUTH shared by the
@@ -24,7 +25,7 @@ export interface OutreachUrgencyLevel {
   label: string;
   /** Settings UI helper note under the label. */
   note: string;
-  /** The email closing line this level injects ("" → keep the default). */
+  /** The email closing line this level appends ("" → no tail; base closing stands). */
   line: string;
 }
 

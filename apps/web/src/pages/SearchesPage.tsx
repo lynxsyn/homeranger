@@ -144,7 +144,9 @@ function draftSearchEmail(form: SearchForm, sender?: ResolvedSender | null): str
     priceNum != null && Number.isFinite(priceNum) && priceNum > 0
       ? `, up to ${GBP_FULL.format(priceNum)}`
       : "";
-  const taste = form.keywords.trim();
+  // Mirror the backend: strip trailing punctuation so the free-text "what
+  // you're looking for" reads as one tidy sentence in the draft.
+  const taste = form.keywords.trim().replace(/[.!?,;\s]+$/, "");
 
   let conditionLine = "";
   if (
@@ -152,7 +154,7 @@ function draftSearchEmail(form: SearchForm, sender?: ResolvedSender | null): str
     form.condition.includes("Full renovation")
   ) {
     conditionLine =
-      "I'm glad to take on a renovation or full restoration — condition isn't a barrier. ";
+      "I'm glad to take on a renovation or full restoration; condition isn't a barrier. ";
   } else if (form.condition.includes("Some updating")) {
     conditionLine = "Some updating is fine. ";
   }
@@ -177,18 +179,18 @@ function draftSearchEmail(form: SearchForm, sender?: ResolvedSender | null): str
 
   const body = (conditionLine + landLine + auctionLine).trim();
 
-  // Mirror the backend: the urgency line replaces the default closing sentence;
-  // the sign-off is the shared signature block (name + phone).
+  // Mirror the backend: a set urgency line appends to the neutral base closing;
+  // browsing/unset stay relaxed (no eager tail). Sign-off = shared signature.
   const uLine = urgencyLine(sender?.urgency);
   const closing =
-    "If anything's coming up that fits — including pre-market or off-portal — " +
-    "I'd be glad to hear from you before it reaches the portals." +
-    (uLine ? ` ${uLine}` : " Happy to move quickly for the right place.");
+    "If anything's coming up that fits, including pre-market or off-portal " +
+    "listings, I'd be glad to hear from you before it reaches the portals." +
+    (uLine ? ` ${uLine}` : "");
 
   return (
     `Hello,\n\n` +
     `I'm a private buyer searching in ${locationPhrase} for a ${beds}${types}${price}.\n\n` +
-    (taste ? `In short: ${taste}\n\n` : "") +
+    (taste ? `To give you a feel for what I'm after: ${taste}.\n\n` : "") +
     (body ? `${body}\n\n` : "") +
     `${closing}\n\n` +
     signatureBlock(sender?.name, sender?.phone)

@@ -39,15 +39,15 @@ export function draftOutreach(input: OutreachDraftInput): OutreachDraft {
       : "your area";
   const prefs = input.profilePreferences?.trim();
 
-  const subject = "Buyer enquiry — pre-market & upcoming listings";
+  const subject = "Buyer enquiry: pre-market and upcoming listings";
 
   const lines = [
     `Hello ${greetingName},`,
     "",
-    `I'm a serious buyer actively searching in ${areas} and would value being kept in mind for suitable homes — including pre-market or upcoming instructions before they go live.`,
+    `I'm a serious buyer actively searching in ${areas} and would value being kept in mind for suitable homes, including pre-market or upcoming instructions before they go live.`,
     ...(prefs ? ["", `In brief, I'm looking for: ${prefs}.`] : []),
     "",
-    "If you have anything that might fit, a quick reply with the details (or a link) would be very welcome. Happy to move quickly for the right property.",
+    "If you have anything that might fit, a quick reply with the details (or a link) would be very welcome.",
     "",
     "Many thanks,",
     "HomeRanger (on behalf of the buyer)",
@@ -56,7 +56,7 @@ export function draftOutreach(input: OutreachDraftInput): OutreachDraft {
     ? [
         ...lines,
         "",
-        "—",
+        "--",
         `To stop receiving these emails, unsubscribe here: ${input.unsubscribeUrl}`,
       ].join("\n")
     : lines.join("\n");

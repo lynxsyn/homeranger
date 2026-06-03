@@ -245,6 +245,8 @@ describe("OutreachService.sendOutreach", () => {
     // ...and the one-click unsubscribe footer is re-appended.
     expect(sendArg.bodyText).toContain("unsubscribe here:");
     expect(sendArg.bodyText).toContain("unsub-token");
+    // ...with no em dash in the footer separator (AI tell).
+    expect(sendArg.bodyText).not.toContain("—");
     expect(sendArg.headers?.["List-Unsubscribe-Post"]).toBe(
       "List-Unsubscribe=One-Click",
     );
@@ -289,7 +291,7 @@ describe("OutreachService.sendOutreach", () => {
     const sendArg = h.send.mock.calls[0]![0] as SendEmailInput;
     // Generic subject (the draftOutreach default), not the search line.
     expect(sendArg.subject).toBe(
-      "Buyer enquiry — pre-market & upcoming listings",
+      "Buyer enquiry: pre-market and upcoming listings",
     );
   });
 

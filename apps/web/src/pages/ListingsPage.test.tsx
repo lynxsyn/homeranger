@@ -368,6 +368,11 @@ describe("ListingsPage interest + follow-ups", () => {
     expect(within(acme).getByText("2 homes")).toBeInTheDocument();
     // The title counts agents, not homes.
     expect(within(modal).getByText(/tell 2 agents you're interested/i)).toBeInTheDocument();
+    // The drafted note carries no AI tells: no em dash, no eager "move quickly".
+    for (const g of groups) {
+      expect(g).not.toHaveTextContent("—");
+      expect(g).not.toHaveTextContent("move quickly");
+    }
   });
 
   it("'Send' is a mock that flips to the sent success state", () => {
