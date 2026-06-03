@@ -310,7 +310,7 @@ export class DefaultComplianceGuard implements ComplianceGuard {
   }
 
   /**
-   * Gate 4. rate = events ÷ attempted sends over the trailing window. Each gate
+   * Gate 5. rate = events ÷ attempted sends over the trailing window. Each gate
    * is evaluated ONLY at/above its min-sample floor — below it the warm-up cap +
    * kill-switch are the safety net, not a hair-trigger statistical breaker (a
    * single bounce at n=2 is meaningless). Never divides by zero.

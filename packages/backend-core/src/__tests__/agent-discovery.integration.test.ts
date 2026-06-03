@@ -54,7 +54,12 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
 
     it("upserts agents with region outcodes + classified mailbox type, skipping suppressed", async () => {
       const result = await service.discoverRegion("Conwy County");
-      expect(result).toEqual({ discovered: 3, upserted: 2, skipped: 1 });
+      expect(result).toEqual({
+        discovered: 3,
+        upserted: 2,
+        skipped: 1,
+        collapsed: 0,
+      });
 
       const corp = await db.agent.findUnique({ where: { email: CORP_EMAIL } });
       expect(corp?.mailboxType).toBe("corporate_subscriber");
@@ -71,7 +76,12 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
 
     it("is idempotent — a re-run does not duplicate agents", async () => {
       const result = await service.discoverRegion("Conwy County");
-      expect(result).toEqual({ discovered: 3, upserted: 2, skipped: 1 });
+      expect(result).toEqual({
+        discovered: 3,
+        upserted: 2,
+        skipped: 1,
+        collapsed: 0,
+      });
       const count = await db.agent.count({
         where: { email: { in: [CORP_EMAIL, FREE_EMAIL] } },
       });

@@ -25,13 +25,21 @@ import {
   DefaultComplianceGuard,
   type AgentForGuard,
 } from "../lib/compliance/compliance-guard.js";
+import type { AgentRepository } from "../repositories/agent.repository.js";
 
 const db = getTestPrisma();
 const TEST_PREFIX = "m6-guard";
 const UNSUB_EMAIL = `test-${TEST_PREFIX}-unsub@agency.test`;
 const MIXED_CASE_EMAIL = `test-${TEST_PREFIX}-Mixed@Agency.Test`;
 
-const guard = new DefaultComplianceGuard();
+// This suite proves gates 1-3 (PECR / opt-out / suppression) against the real
+// DB. Stub the per-domain gate (gate 4) so it never issues a live findFirst —
+// keeping the harness deterministic and scoped to the consent gates it asserts.
+const guard = new DefaultComplianceGuard({
+  agentRepository: {
+    wasDomainContactedSince: async () => false,
+  } as unknown as AgentRepository,
+});
 
 function corporate(email: string): AgentForGuard {
   return {

@@ -183,7 +183,9 @@ export class AgentRepository {
       where: {
         id: { not: excludeAgentId },
         lastContactedAt: { gte: since },
-        email: { endsWith: `@${d}` },
+        // case-insensitive: emails are stored lower-cased, but ILIKE keeps the
+        // match correct even if a future non-normalised insert path slips in.
+        email: { endsWith: `@${d}`, mode: "insensitive" },
       },
       select: { id: true },
     });
