@@ -12,8 +12,8 @@ for all infrastructure config.
 |---|---|---|
 | `external_email_enabled` | `true` | email + password / magic-link auth on |
 | `mailer_autoconfirm` | `false` | email confirmation stays **required** |
-| `site_url` | `https://app.homeranger.app` | default auth-redirect target (prod app) |
-| `uri_allow_list` | `app.homeranger.app` + `localhost:3000` (+ `/**`) | allowed redirects (prod + local dev) |
+| `site_url` | `https://homeranger.app` | default auth-redirect target (prod app) |
+| `uri_allow_list` | `homeranger.app` + `localhost:3000` (+ `/**`) | allowed redirects (prod + local dev) |
 | `rate_limit_email_sent` | `100`/hr | lifted off the tiny built-in default |
 | `mailer_otp_exp` | `86400` (24h) | confirmation / recovery link validity |
 

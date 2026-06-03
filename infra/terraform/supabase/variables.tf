@@ -7,15 +7,15 @@ variable "project_ref" {
 variable "site_url" {
   description = "Primary Site URL — the default target for auth email redirect links (the production app)."
   type        = string
-  default     = "https://app.homeranger.app"
+  default     = "https://homeranger.app"
 }
 
 variable "additional_redirect_urls" {
   description = "Allowed post-auth redirect targets (prod + local dev, with wildcards). Joined into the GoTrue uri_allow_list."
   type        = list(string)
   default = [
-    "https://app.homeranger.app",
-    "https://app.homeranger.app/**",
+    "https://homeranger.app",
+    "https://homeranger.app/**",
     "http://localhost:3000",
     "http://localhost:3000/**",
   ]
