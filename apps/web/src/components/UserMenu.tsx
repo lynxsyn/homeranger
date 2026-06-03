@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { OUTREACH_URGENCY_LEVELS, buyerFullName } from "@homeranger/shared";
 import { trpc } from "../lib/trpc";
+import { useAuth } from "../lib/auth";
 import { Icon } from "./Icon";
 
 /** The user-facing nav. Routes stay internal (`/scouts`), labels are the brand
@@ -32,6 +33,8 @@ export interface UserMenuProps {
   onToggleTheme: () => void;
   /** App-level navigation: clears any scout filter, then routes to `to`. */
   onNavigate: (to: string) => void;
+  /** Sign the user out of Supabase (returns to the sign-in gate). */
+  onSignOut: () => void;
 }
 
 function initialsOf(firstName: string, lastName: string): string {
@@ -42,16 +45,23 @@ function initialsOf(firstName: string, lastName: string): string {
     .toUpperCase();
 }
 
-export function UserMenu({ theme, onToggleTheme, onNavigate }: UserMenuProps) {
+export function UserMenu({
+  theme,
+  onToggleTheme,
+  onNavigate,
+  onSignOut,
+}: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const { data: profile } = trpc.preferences.get.useQuery();
+  const { user } = useAuth();
 
   const firstName = profile?.firstName ?? "";
   const lastName = profile?.lastName ?? "";
   const initials = initialsOf(firstName, lastName);
   const name = buyerFullName({ firstName, lastName });
+  const email = user?.email ?? "";
   const urgency = OUTREACH_URGENCY_LEVELS.find((u) => u.id === profile?.urgency);
   const isDark = theme === "dark";
   // The avatar reads "active" when the menu is open or we're on Settings (its
@@ -110,6 +120,11 @@ export function UserMenu({ theme, onToggleTheme, onNavigate }: UserMenuProps) {
         >
           <div className="um-head">
             <span className="um-name">{name || "Your account"}</span>
+            {email && (
+              <span className="um-email" data-testid="account-email">
+                {email}
+              </span>
+            )}
             <span className="um-sub">
               {name
                 ? urgency
@@ -152,6 +167,20 @@ export function UserMenu({ theme, onToggleTheme, onNavigate }: UserMenuProps) {
             <span className="um-theme-state" data-testid="theme-state">
               {isDark ? "Dark" : "Light"}
             </span>
+          </button>
+          <div className="um-divider" />
+          <button
+            type="button"
+            role="menuitem"
+            className="um-item um-signout"
+            data-testid="sign-out"
+            onClick={() => {
+              setOpen(false);
+              onSignOut();
+            }}
+          >
+            <Icon name="log-out" size={17} />
+            <span>Sign out</span>
           </button>
         </div>
       )}

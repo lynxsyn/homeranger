@@ -49,3 +49,17 @@ export * from "./lib/email/email-provider.js";
 // raw prisma client stays unexported (repositories own all Prisma access).
 export { appRouter, type AppRouter } from "./routers/index.js";
 export { createContext } from "./context.js";
+
+// Supabase Auth identity + owner-key helpers. `ownerKeyFor`/`isOperator` are the
+// single chokepoint routers use to scope per-user data; the integration tests +
+// any admin tooling import the verifier surface from here.
+export {
+  isOperator,
+  operatorEmail,
+  ownerKeyFor,
+  readSupabaseAuthConfigFromEnv,
+  resolveSupabaseIdentity,
+  verifySupabaseJwt,
+  type SupabaseAuthConfig,
+  type SupabaseIdentity,
+} from "./lib/auth/supabase-auth.js";

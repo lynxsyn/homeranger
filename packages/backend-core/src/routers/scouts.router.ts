@@ -34,7 +34,8 @@ import {
   scoutSetStatusInputSchema,
   scoutUpdateInputSchema,
 } from "@homeranger/shared";
-import { protectedProcedure, router } from "../trpc.js";
+import { operatorProcedure, protectedProcedure, router } from "../trpc.js";
+import { ownerKeyFor } from "../lib/auth/supabase-auth.js";
 import {
   scoutRepository,
   type ScoutRecord,
@@ -169,15 +170,23 @@ function scoutNotFound(error: unknown): never {
   throw error;
 }
 
+// The outreach loop (launch → discover → review → guarded send) is the
+// OPERATOR's compliance-governed engine: it cold-emails estate agents on the
+// shared sending domain under one global warmup budget + kill-switch + sign-off
+// profile. Multi-user does NOT fan that out — a non-operator can manage their
+// own searches/listings/settings but cannot drive sends. Those three procedures
+// use `operatorProcedure` (FORBIDDEN for a non-operator); the CRUD surface uses
+// `protectedProcedure` and scopes by ownerKeyFor(ctx.user).
+
 export const scoutsRouter = router({
-  list: protectedProcedure.query(async (): Promise<ScoutRow[]> => {
-    return scoutRepository.list();
+  list: protectedProcedure.query(async ({ ctx }): Promise<ScoutRow[]> => {
+    return scoutRepository.list(ownerKeyFor(ctx.user));
   }),
 
   getById: protectedProcedure
     .input(scoutByIdInputSchema)
-    .query(async ({ input }): Promise<ScoutRow> => {
-      const row = await scoutRepository.getById(input.id);
+    .query(async ({ ctx, input }): Promise<ScoutRow> => {
+      const row = await scoutRepository.getById(input.id, ownerKeyFor(ctx.user));
       if (!row) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
       }
@@ -186,50 +195,57 @@ export const scoutsRouter = router({
 
   create: protectedProcedure
     .input(scoutCreateInputSchema)
-    .mutation(async ({ input }): Promise<ScoutRow> => {
-      return scoutRepository.create({
-        name: input.name,
-        location: input.location,
-        types: input.types,
-        condition: input.condition,
-        land: input.land,
-        saleMethods: input.saleMethods,
-        minBedrooms: input.minBedrooms ?? null,
-        maxPricePence: input.maxPricePence ?? null,
-        keywords: input.keywords,
-        status: input.status,
-      });
+    .mutation(async ({ ctx, input }): Promise<ScoutRow> => {
+      return scoutRepository.create(
+        {
+          name: input.name,
+          location: input.location,
+          types: input.types,
+          condition: input.condition,
+          land: input.land,
+          saleMethods: input.saleMethods,
+          minBedrooms: input.minBedrooms ?? null,
+          maxPricePence: input.maxPricePence ?? null,
+          keywords: input.keywords,
+          status: input.status,
+        },
+        ownerKeyFor(ctx.user),
+      );
     }),
 
   update: protectedProcedure
     .input(scoutUpdateInputSchema)
-    .mutation(async ({ input }): Promise<ScoutRow> => {
-      // Pre-check existence so a missing id maps to NOT_FOUND (rather than a
-      // raw Prisma P2025 surfacing as INTERNAL_SERVER_ERROR).
-      const existing = await scoutRepository.getById(input.id);
+    .mutation(async ({ ctx, input }): Promise<ScoutRow> => {
+      const ownerId = ownerKeyFor(ctx.user);
+      // Pre-check existence (scoped to the owner) so a missing/foreign id maps
+      // to NOT_FOUND rather than a raw Prisma P2025 → INTERNAL_SERVER_ERROR.
+      const existing = await scoutRepository.getById(input.id, ownerId);
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
       }
-      return scoutRepository.update({
-        id: input.id,
-        name: input.name,
-        location: input.location,
-        types: input.types,
-        condition: input.condition,
-        land: input.land,
-        saleMethods: input.saleMethods,
-        minBedrooms: input.minBedrooms ?? null,
-        maxPricePence: input.maxPricePence ?? null,
-        keywords: input.keywords,
-        status: input.status,
-      });
+      return scoutRepository.update(
+        {
+          id: input.id,
+          name: input.name,
+          location: input.location,
+          types: input.types,
+          condition: input.condition,
+          land: input.land,
+          saleMethods: input.saleMethods,
+          minBedrooms: input.minBedrooms ?? null,
+          maxPricePence: input.maxPricePence ?? null,
+          keywords: input.keywords,
+          status: input.status,
+        },
+        ownerId,
+      );
     }),
 
   delete: protectedProcedure
     .input(scoutByIdInputSchema)
-    .mutation(async ({ input }): Promise<{ id: string }> => {
+    .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
       try {
-        return await scoutRepository.delete(input.id);
+        return await scoutRepository.delete(input.id, ownerKeyFor(ctx.user));
       } catch (error) {
         return scoutNotFound(error);
       }
@@ -237,9 +253,13 @@ export const scoutsRouter = router({
 
   setStatus: protectedProcedure
     .input(scoutSetStatusInputSchema)
-    .mutation(async ({ input }): Promise<ScoutRow> => {
+    .mutation(async ({ ctx, input }): Promise<ScoutRow> => {
       try {
-        return await scoutRepository.setStatus(input.id, input.status);
+        return await scoutRepository.setStatus(
+          input.id,
+          input.status,
+          ownerKeyFor(ctx.user),
+        );
       } catch (error) {
         return scoutNotFound(error);
       }
@@ -252,10 +272,10 @@ export const scoutsRouter = router({
    * Discovery only SOURCES agents — no send fires here. Returns the enqueued
    * flag + the outcodes targeted (so the UI can echo the patch).
    */
-  launch: protectedProcedure
+  launch: operatorProcedure
     .input(scoutByIdInputSchema)
     .mutation(async ({ input }): Promise<ScoutLaunchResult> => {
-      const scout = await scoutRepository.getById(input.id);
+      const scout = await scoutRepository.getById(input.id, null);
       if (!scout) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
       }
@@ -283,16 +303,16 @@ export const scoutsRouter = router({
    * an eligible one with reason=null. NOTHING is sent — this is the operator's
    * review surface. A non-ComplianceError rethrows (a real fault, not a block).
    */
-  reviewDrafts: protectedProcedure
+  reviewDrafts: operatorProcedure
     .input(scoutByIdInputSchema)
     .query(async ({ input }): Promise<ScoutReviewDraftsResult> => {
-      const scout = await scoutRepository.getById(input.id);
+      const scout = await scoutRepository.getById(input.id, null);
       if (!scout) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
       }
       // Resolve the buyer identity so the reviewed draft is signed + paced
-      // exactly like the email the worker will send.
-      const profile = await scoutSearchProfileRepository.getOrCreate();
+      // exactly like the email the worker will send (operator profile = null).
+      const profile = await scoutSearchProfileRepository.getOrCreate(null);
       const sender = resolveSender(profile, currentSenderName());
       const draft = draftScoutEmail(scout, sender);
       const { items } = await scoutAgentRepository.list({
@@ -340,7 +360,7 @@ export const scoutsRouter = router({
    * brief. The send is STILL guarded at the worker (assertCanSend reserve:true) —
    * approval is consent, not a guard bypass. Returns the count enqueued.
    */
-  approveSends: protectedProcedure
+  approveSends: operatorProcedure
     .input(scoutApproveSendsInputSchema)
     .mutation(async ({ input }): Promise<ScoutApproveSendsResult> => {
       for (const agentId of input.agentIds) {
@@ -362,8 +382,8 @@ export const scoutsRouter = router({
    */
   stats: protectedProcedure
     .input(scoutByIdInputSchema)
-    .query(async ({ input }): Promise<ScoutStatsResult> => {
-      const scout = await scoutRepository.getById(input.id);
+    .query(async ({ ctx, input }): Promise<ScoutStatsResult> => {
+      const scout = await scoutRepository.getById(input.id, ownerKeyFor(ctx.user));
       if (!scout) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scout not found" });
       }

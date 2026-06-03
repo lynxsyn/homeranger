@@ -68,9 +68,11 @@ export function SettingsPage() {
   const seededRef = useRef(false);
   const firstRef = useRef<HTMLInputElement>(null);
 
+  // Focus the first field once the form mounts (after the profile loads — the
+  // form is gated on it below, so [] would fire before the input exists).
   useEffect(() => {
     firstRef.current?.focus();
-  }, []);
+  }, [profile]);
 
   // Seed the form ONCE from the loaded profile (a later refetch after save must
   // not clobber an in-progress edit).
@@ -110,6 +112,24 @@ export function SettingsPage() {
   const previewName = buyerFullName(draft) || sender?.name || null;
   const previewSignature = signatureBlock(previewName, draft.phone);
   const previewUrgency = urgencyLine(draft.urgency);
+
+  // Gate the editable form on the profile load so the one-time seed ALWAYS
+  // completes before the fields are interactive — otherwise a fast edit can be
+  // clobbered when the async profile arrives mid-typing (the seededRef seeds
+  // late). Fields auto-wait for this in tests, and users see no blank flash.
+  if (!profile) {
+    return (
+      <main className="settings" data-testid="settings-page" aria-busy="true">
+        <div className="page-head">
+          <span className="settings-eyebrow">Account</span>
+          <h1 className="t-h1">Your details</h1>
+        </div>
+        <p className="settings-loading" data-testid="settings-loading">
+          Loading your details…
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main className="settings" data-testid="settings-page">

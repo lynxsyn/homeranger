@@ -12,7 +12,8 @@
  *     whose "Draft follow-ups" opens a FollowUpModal that groups the bookmarked
  *     homes BY AGENCY (one warm note per agency) for review. "Send" is a MOCK →
  *     a success state (followup-sent); no real send (that's PR3). Bookmarks
- *     persist in localStorage "hs-interested".
+ *     persist PER USER server-side (listings.save/unsave); the operator's saved
+ *     set is reset by the E2E seed so the bar starts empty.
  *
  * Covers:
  *   - loads the seeded listings into the table (one row per fixture);
@@ -185,4 +186,27 @@ test("bookmark → follow-up golden path: interest-bar, modal grouped by agency,
     .getByTestId("followup-send")
     .evaluate((el) => (el as HTMLElement).click());
   await expect(page.getByTestId("followup-sent")).toBeVisible();
+});
+
+test("a saved bookmark PERSISTS across a reload (per-user server-side, not memory)", async ({
+  page,
+}) => {
+  const addr = "rivington street se1";
+  // Idempotently ensure the target is bookmarked (robust to any leftover saved
+  // state on a shared/reused dev DB — CI starts fresh).
+  const before = (await row(page, addr).getAttribute("class")) ?? "";
+  if (!before.includes("is-interested")) {
+    await row(page, addr).getByTestId("interest-button").click();
+  }
+  await expect(row(page, addr)).toHaveClass(/is-interested/);
+
+  // Reload: the save must come BACK from the server (listings.saved seeds the
+  // interest set) — a purely client-side bookmark would vanish here.
+  await page.reload();
+  await expect(page.getByTestId("listings-table")).toBeVisible();
+  await expect(row(page, addr)).toHaveClass(/is-interested/);
+
+  // Clean up: unbookmark → unsave server-side → the row is no longer interested.
+  await row(page, addr).getByTestId("interest-button").click();
+  await expect(row(page, addr)).not.toHaveClass(/is-interested/);
 });

@@ -17,6 +17,9 @@ import { scoutRepository, type CreateScoutInput } from "./scout.repository.js";
 
 const db = getTestPrisma();
 const NAME_PREFIX = "test-scout-";
+// Two distinct non-operator owners for the isolation test.
+const OWNER_A = "a0a0a0a0-0000-4000-8000-00000000000a";
+const OWNER_B = "b0b0b0b0-0000-4000-8000-00000000000b";
 
 async function cleanupScouts(): Promise<void> {
   await db.scout.deleteMany({ where: { name: { startsWith: NAME_PREFIX } } });
@@ -53,6 +56,7 @@ describe("scoutRepository CRUD round-trip (real pgvector)", () => {
     // CREATE — outcodes resolved from a region-NAME location.
     const created = await scoutRepository.create(
       baseInput({ name: `${NAME_PREFIX}roundtrip`, location: "Snowdonia, Gwynedd" }),
+      OWNER_A,
     );
     expect(created.id).toBeTruthy();
     expect(created.name).toBe(`${NAME_PREFIX}roundtrip`);
@@ -64,28 +68,31 @@ describe("scoutRepository CRUD round-trip (real pgvector)", () => {
     expect(created.outcodes.length).toBeGreaterThan(0);
 
     // LIST — ordered updatedAt desc; our row is present.
-    const listed = await scoutRepository.list();
+    const listed = await scoutRepository.list(OWNER_A);
     expect(listed.some((s) => s.id === created.id)).toBe(true);
 
     // GET BY ID.
-    const fetched = await scoutRepository.getById(created.id);
+    const fetched = await scoutRepository.getById(created.id, OWNER_A);
     expect(fetched?.id).toBe(created.id);
     expect(fetched?.outcodes).toEqual(created.outcodes);
 
     // UPDATE — full replace; new location re-resolves outcodes from EXPLICIT text.
-    const updated = await scoutRepository.update({
-      id: created.id,
-      name: `${NAME_PREFIX}roundtrip`,
-      location: "SE16, SE1",
-      types: ["Flat"],
-      condition: ["Move-in ready"],
-      land: [],
-      saleMethods: ["Auction"],
-      minBedrooms: null,
-      maxPricePence: null,
-      keywords: "",
-      status: "active",
-    });
+    const updated = await scoutRepository.update(
+      {
+        id: created.id,
+        name: `${NAME_PREFIX}roundtrip`,
+        location: "SE16, SE1",
+        types: ["Flat"],
+        condition: ["Move-in ready"],
+        land: [],
+        saleMethods: ["Auction"],
+        minBedrooms: null,
+        maxPricePence: null,
+        keywords: "",
+        status: "active",
+      },
+      OWNER_A,
+    );
     expect(updated.location).toBe("SE16, SE1");
     expect(updated.types).toEqual(["Flat"]);
     expect(updated.minBedrooms).toBeNull();
@@ -94,18 +101,19 @@ describe("scoutRepository CRUD round-trip (real pgvector)", () => {
     expect(updated.outcodes).toEqual(["SE1", "SE16"]);
 
     // SET STATUS — active → paused.
-    const paused = await scoutRepository.setStatus(created.id, "paused");
+    const paused = await scoutRepository.setStatus(created.id, "paused", OWNER_A);
     expect(paused.status).toBe("paused");
 
     // DELETE — echoes the id, and the row is gone.
-    const deleted = await scoutRepository.delete(created.id);
+    const deleted = await scoutRepository.delete(created.id, OWNER_A);
     expect(deleted).toEqual({ id: created.id });
-    expect(await scoutRepository.getById(created.id)).toBeNull();
+    expect(await scoutRepository.getById(created.id, OWNER_A)).toBeNull();
   });
 
   it("resolves outcodes from an explicit-outcode location on create", async () => {
     const created = await scoutRepository.create(
       baseInput({ name: `${NAME_PREFIX}explicit`, location: "SE16, SE1" }),
+      OWNER_A,
     );
     expect(created.outcodes).toEqual(["SE1", "SE16"]);
   });
@@ -113,22 +121,56 @@ describe("scoutRepository CRUD round-trip (real pgvector)", () => {
   it("orders list by updatedAt desc (most recently touched first)", async () => {
     const first = await scoutRepository.create(
       baseInput({ name: `${NAME_PREFIX}order-a`, location: "Conwy County" }),
+      OWNER_A,
     );
     const second = await scoutRepository.create(
       baseInput({ name: `${NAME_PREFIX}order-b`, location: "Gwynedd" }),
+      OWNER_A,
     );
     // Wait a clock tick so `first`'s touch is STRICTLY newer than `second`'s
     // create — `updatedAt` is millisecond-resolution, so without this the desc
     // order can tie and flake (observed once on a fast run).
     await new Promise((resolve) => setTimeout(resolve, 15));
     // Touch `first` so it becomes the most-recently-updated.
-    await scoutRepository.setStatus(first.id, "paused");
+    await scoutRepository.setStatus(first.id, "paused", OWNER_A);
 
-    const listed = (await scoutRepository.list()).filter((s) =>
+    const listed = (await scoutRepository.list(OWNER_A)).filter((s) =>
       s.name.startsWith(NAME_PREFIX),
     );
     const firstIdx = listed.findIndex((s) => s.id === first.id);
     const secondIdx = listed.findIndex((s) => s.id === second.id);
     expect(firstIdx).toBeLessThan(secondIdx);
+  });
+
+  it("isolates scouts across owners — B cannot see or mutate A's scout", async () => {
+    const aScout = await scoutRepository.create(
+      baseInput({ name: `${NAME_PREFIX}owner-a-private`, location: "Conwy County" }),
+      OWNER_A,
+    );
+
+    // B's list + getById never surface A's scout.
+    const bList = await scoutRepository.list(OWNER_B);
+    expect(bList.some((s) => s.id === aScout.id)).toBe(false);
+    expect(await scoutRepository.getById(aScout.id, OWNER_B)).toBeNull();
+    // The operator namespace (null) is also separate from A's.
+    expect(await scoutRepository.getById(aScout.id, null)).toBeNull();
+
+    // B's writes against A's id are no-ops that surface as P2025 (→ NOT_FOUND).
+    await expect(
+      scoutRepository.update(
+        { ...baseInput({ name: `${NAME_PREFIX}hijack` }), id: aScout.id },
+        OWNER_B,
+      ),
+    ).rejects.toMatchObject({ code: "P2025" });
+    await expect(
+      scoutRepository.setStatus(aScout.id, "paused", OWNER_B),
+    ).rejects.toMatchObject({ code: "P2025" });
+    await expect(
+      scoutRepository.delete(aScout.id, OWNER_B),
+    ).rejects.toMatchObject({ code: "P2025" });
+
+    // A's scout is untouched + still active.
+    const stillThere = await scoutRepository.getById(aScout.id, OWNER_A);
+    expect(stillThere?.status).toBe("active");
   });
 });

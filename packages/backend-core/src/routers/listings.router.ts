@@ -35,6 +35,7 @@ import {
 } from "@homeranger/shared";
 import type { ListingStatus } from "@prisma/client";
 import { protectedProcedure, router } from "../trpc.js";
+import { ownerKeyFor } from "../lib/auth/supabase-auth.js";
 import {
   listingRepository,
   type ListingFilter,
@@ -43,6 +44,7 @@ import {
 } from "../repositories/listing.repository.js";
 import { photoAnalysisRepository } from "../repositories/photo-analysis.repository.js";
 import { listingScoreRepository } from "../repositories/listing-score.repository.js";
+import { savedListingRepository } from "../repositories/saved-listing.repository.js";
 import type { CursorPage } from "../lib/pagination/cursor.js";
 
 /** A single listing row as `getById` returns it. */
@@ -89,6 +91,25 @@ export interface ListingExpandPayload {
 }
 
 const byIdInput = z.object({ id: z.string().uuid() });
+const listingIdInput = z.object({ listingId: z.string().uuid() });
+
+/**
+ * Attach each listing's match score (ONE batch query, no N+1) + the derived
+ * `agency` label, turning `ListingRecord`s into `ListingListItem`s. Shared by
+ * `list` and `saved` so both rows carry the Match ring + Agent column data.
+ */
+async function attachScores(
+  items: ListingRecord[],
+): Promise<ListingListItem[]> {
+  const scores = await listingScoreRepository.getCombinedScoresByListingIds(
+    items.map((item) => item.id),
+  );
+  return items.map((item) => ({
+    ...item,
+    combinedScore: scores.get(item.id) ?? null,
+    agency: item.agencyName ?? item.agentEmail ?? null,
+  }));
+}
 
 /** Map the shared wire filter to the repository `ListingFilter`. */
 function toRepositoryFilter(
@@ -130,22 +151,51 @@ export const listingsRouter = router({
         cursor: input.cursor,
         limit: input.limit,
       });
-      // Attach each row's match score in ONE batch query (no N+1) so the table's
-      // Match ring + score sort have real data. Unscored listings → null.
-      const scores = await listingScoreRepository.getCombinedScoresByListingIds(
-        page.items.map((item) => item.id),
-      );
       return {
-        items: page.items.map((item) => ({
-          // `...item` carries bathrooms + agentEmail through from ListingRecord.
-          ...item,
-          combinedScore: scores.get(item.id) ?? null,
-          // Derived Agent-column / follow-up-group key: prefer the friendly
-          // agency name, fall back to the raw sender email, else null ("—").
-          agency: item.agencyName ?? item.agentEmail ?? null,
-        })),
+        items: await attachScores(page.items),
         nextCursor: page.nextCursor,
       };
+    }),
+
+  /**
+   * The signed-in user's saved ("interested") listings, most-recently-saved
+   * first, hydrated to full `ListingListItem`s (Match ring + Agent column).
+   * Scoped by `ownerKeyFor(ctx.user)` — the SavedListing overlay is per-user;
+   * the Listing catalogue itself is shared. The web client also derives the
+   * saved-id set from this to seed each row's Interest toggle.
+   */
+  saved: protectedProcedure.query(
+    async ({ ctx }): Promise<ListingListItem[]> => {
+      const ownerId = ownerKeyFor(ctx.user);
+      const ids = await savedListingRepository.listSavedListingIds(ownerId);
+      const rows = await listingRepository.getByIds(ids);
+      // getByIds does not preserve order; re-order to the saved order (newest
+      // first) and drop ids whose listing was since deleted.
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      const ordered = ids
+        .map((id) => byId.get(id))
+        .filter((row): row is ListingRecord => row !== undefined);
+      return attachScores(ordered);
+    },
+  ),
+
+  /** Save (bookmark) a listing for the signed-in user. Idempotent. */
+  save: protectedProcedure
+    .input(listingIdInput)
+    .mutation(async ({ ctx, input }): Promise<{ saved: true }> => {
+      await savedListingRepository.save(ownerKeyFor(ctx.user), input.listingId);
+      return { saved: true };
+    }),
+
+  /** Unsave a listing for the signed-in user. Idempotent. */
+  unsave: protectedProcedure
+    .input(listingIdInput)
+    .mutation(async ({ ctx, input }): Promise<{ saved: false }> => {
+      await savedListingRepository.unsave(
+        ownerKeyFor(ctx.user),
+        input.listingId,
+      );
+      return { saved: false };
     }),
 
   getById: protectedProcedure

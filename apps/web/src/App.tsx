@@ -21,12 +21,33 @@ import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { ListingsPage } from "./pages/ListingsPage";
 import { ScoutsPage } from "./pages/ScoutsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { SignInPage } from "./pages/SignInPage";
 import type { ScoutFilter } from "./pages/ScoutsPage";
 import { Logo } from "./components/ui";
 import { UserMenu } from "./components/UserMenu";
 import { useStored } from "./lib/useStored";
+import { useAuth } from "./lib/auth";
 
 export function App() {
+  const { status } = useAuth();
+
+  // Gate the whole app on the Supabase sign-in status: a brief loading state
+  // while the session resolves, then the sign-in page until authenticated.
+  if (status === "loading") {
+    return (
+      <div className="app auth-loading" data-testid="auth-loading" aria-busy="true">
+        <Logo size={30} />
+      </div>
+    );
+  }
+  if (status === "anonymous") {
+    return <SignInPage />;
+  }
+  return <AuthedApp />;
+}
+
+function AuthedApp() {
+  const { signOut } = useAuth();
   // A search's "View homes" pushes its outcodes into the Listings view; any menu
   // navigation (or clicking the logo) clears it.
   const [scoutFilter, setScoutFilter] = useState<ScoutFilter | null>(null);
@@ -71,6 +92,7 @@ export function App() {
             theme={theme}
             onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
             onNavigate={goTo}
+            onSignOut={() => void signOut()}
           />
         </div>
       </header>

@@ -15,9 +15,10 @@
 #   homeranger-redis      <- doxus-redis
 #   cloudflared          <- cloudflared
 #
-# Auth is Cloudflare Access (CF Access JWT verified in-process via jose), so
-# there is NO SuperTokens pod/egress — the M1-skeleton allow-supertokens policy
-# and the homeranger-api→supertokens:3567 egress rule were removed at M3.
+# Auth is Supabase (the access token verified in-process via jose against the
+# project JWKS), so there is NO SuperTokens pod/egress — the M1-skeleton
+# allow-supertokens policy + the homeranger-api→supertokens:3567 egress rule
+# were removed at M3. The Supabase JWKS is reached over the existing 443 egress.
 #
 # DNS egress is scoped to kube-system / k8s-app: kube-dns (the stricter pattern
 # from Doxus's postgres-init-netpol.yaml), not unscoped port 53. coredns in this
@@ -62,7 +63,7 @@ spec:
           protocol: TCP
 ---
 # homeranger-api: ingress from cloudflared (HTTP API on 3000); egress to postgres,
-# redis, and external HTTPS (Resend / Voyage / Anthropic + the CF Access JWKS
+# redis, and external HTTPS (Resend / Voyage / Anthropic + the Supabase JWKS
 # endpoint). DNS handled by allow-dns-egress.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -99,8 +100,8 @@ spec:
       ports:
         - port: 6379
           protocol: TCP
-    # External HTTPS: Resend, Voyage, Anthropic, AND the Cloudflare Access
-    # JWKS endpoint (https://<team>.cloudflareaccess.com/cdn-cgi/access/certs)
+    # External HTTPS: Resend, Voyage, Anthropic, AND the Supabase Auth JWKS
+    # endpoint (https://<ref>.supabase.co/auth/v1/.well-known/jwks.json)
     # the jose verifier fetches. k8s NetworkPolicy CANNOT match hostnames, so
     # this is broad egress to 443. See networkpolicy notes.
     - ports:

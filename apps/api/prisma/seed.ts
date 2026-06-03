@@ -18,6 +18,12 @@ import { prisma } from "@homeranger/backend-core/lib/prisma";
 import { LISTING_FIXTURES } from "../../../e2e/fixtures/listings.fixture.js";
 
 async function main(): Promise<void> {
+  // Clear the operator's saved ("interested") listings so the listings E2E
+  // bookmark golden path starts from a clean interest-bar even on a local
+  // reuseExistingServer re-run (the SavedListing overlay is operator-namespaced,
+  // userId NULL, in E2E's dev bypass). Mirrors the account-menu identity reset.
+  await prisma.savedListing.deleteMany({ where: { userId: null } });
+
   for (const fixture of LISTING_FIXTURES) {
     await listingRepository.upsertByAddress({
       addressNormalized: fixture.addressNormalized,

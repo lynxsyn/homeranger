@@ -38,6 +38,7 @@ import {
   Settings,
   User,
   Phone,
+  LogOut,
   type LucideIcon,
 } from "lucide-react";
 
@@ -74,6 +75,7 @@ const ICONS: Record<string, LucideIcon> = {
   settings: Settings,
   user: User,
   phone: Phone,
+  "log-out": LogOut,
 };
 
 export interface IconProps {

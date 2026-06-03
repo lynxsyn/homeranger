@@ -28,6 +28,13 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
 RUN cd apps/api && npx prisma generate
 RUN cd packages/shared && pnpm build
 RUN cd packages/backend-core && pnpm build
+# PUBLIC Supabase config baked into the SPA bundle (passed by release.yml from
+# repo variables). Both are publishable client-side values — no secret. Exposed
+# as env so Vite reads them as import.meta.env.VITE_* during the build.
+ARG VITE_SUPABASE_URL=""
+ARG VITE_SUPABASE_ANON_KEY=""
+ENV VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+ENV VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
 RUN cd apps/web && pnpm build && find dist/assets -type f -name '*.map' -delete
 
 FROM nginx:1.30-alpine AS runner

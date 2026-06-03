@@ -1,35 +1,36 @@
 /**
- * tRPC request context — builds `ctx.user` from the Cloudflare Access JWT.
+ * tRPC request context — builds `ctx.user` from the Supabase Auth access token.
  *
- * Mirrors the Doxus context.ts SHAPE (read request → resolve identity →
- * `ctx.user = {...} | null`; expected auth failures become `null` →
- * UNAUTHORIZED at the procedure; infra errors rethrow → 500) but swaps the
- * SuperTokens session lookup for Cloudflare Access JWT verification.
+ * The SPA signs in with @supabase/supabase-js and sends the access token as
+ * `Authorization: Bearer <jwt>`; this resolves it to `ctx.user = { id, email } |
+ * null` (expected auth failures → `null` → UNAUTHORIZED at the procedure; a JWKS
+ * infra error rethrows → 500). Mirrors the prior Cloudflare-Access context SHAPE
+ * (read request → resolve identity → `ctx.user`); Supabase replaces CF Access as
+ * the identity source so multiple users can sign in.
  *
- * The CF Access config is read from the environment ONCE at module load:
- *   - both CF_ACCESS_TEAM_DOMAIN + CF_ACCESS_AUD set → verify the JWT.
- *   - neither set → DEV BYPASS (identity = { email: DEV_USER_EMAIL }).
- *   - exactly one set → readCfAccessConfigFromEnv throws (fail loud).
+ * The Supabase config is read from the environment ONCE at module load:
+ *   - `SUPABASE_URL` set   → verify the Bearer token against the project JWKS.
+ *   - `SUPABASE_URL` unset → DEV BYPASS (identity = the dev operator), the
+ *     linchpin that lets local dev + Playwright E2E run authenticated with no
+ *     real token.
  */
 import type { CreateFastifyContextOptions } from "@trpc/server/adapters/fastify";
 import {
-  CF_ACCESS_JWT_HEADER,
-  readCfAccessConfigFromEnv,
-  resolveCfAccessIdentity,
-  type CfAccessConfig,
-  type CfAccessIdentity,
-} from "./lib/auth/cloudflare-access.js";
+  readSupabaseAuthConfigFromEnv,
+  resolveSupabaseIdentity,
+  type SupabaseAuthConfig,
+  type SupabaseIdentity,
+} from "./lib/auth/supabase-auth.js";
 
-// Resolved once per process. `readCfAccessConfigFromEnv` throws on a
-// half-configured env, so a misconfigured prod deploy fails fast at startup
-// (the first context build) rather than silently bypassing auth.
-const cfAccessConfig: CfAccessConfig | null = readCfAccessConfigFromEnv();
+// Resolved once per process. `null` = dev bypass (SUPABASE_URL unset); a set
+// value means every request must present a verifiable Bearer token.
+const supabaseAuthConfig: SupabaseAuthConfig | null =
+  readSupabaseAuthConfigFromEnv();
 
 export async function createContext({ req }: CreateFastifyContextOptions) {
-  const rawHeader = req.headers[CF_ACCESS_JWT_HEADER];
-  const user: CfAccessIdentity | null = await resolveCfAccessIdentity(
-    rawHeader,
-    cfAccessConfig,
+  const user: SupabaseIdentity | null = await resolveSupabaseIdentity(
+    req.headers.authorization,
+    supabaseAuthConfig,
   );
   return { user };
 }

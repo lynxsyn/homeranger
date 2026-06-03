@@ -5,11 +5,18 @@
  * contract honoured at the transport boundary), then enqueues outreach:send.
  * The WORKER is the authoritative guard + send path (reserve:true). M7 adds
  * metrics + killSwitch.toggle alongside this.
+ *
+ * OPERATOR-ONLY: `send` and the `killSwitch` act on the ONE shared sending
+ * domain + global warm-up budget + global kill-switch (WarmupState is a single
+ * unscoped row). They use `operatorProcedure` so a non-operator authenticated
+ * user cannot trigger cold sends or flip the global brake. `senderName` stays a
+ * plain `protectedProcedure` — it is read by the per-user follow-up modal for
+ * draft previews and exposes no operator capability.
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { killSwitchToggleInputSchema } from "@homeranger/shared";
-import { protectedProcedure, router } from "../trpc.js";
+import { operatorProcedure, protectedProcedure, router } from "../trpc.js";
 import { agentRepository } from "../repositories/agent.repository.js";
 import {
   warmupStateRepository as defaultWarmupStateRepository,
@@ -61,7 +68,7 @@ export interface KillSwitchState {
 }
 
 export const outreachRouter = router({
-  send: protectedProcedure
+  send: operatorProcedure
     .input(sendInput)
     .mutation(async ({ input }): Promise<OutreachSendResult> => {
       const agent = await agentRepository.findByEmail(input.agentEmail);
@@ -96,12 +103,12 @@ export const outreachRouter = router({
    * emergency brake. Idempotent on the value.
    */
   killSwitch: router({
-    get: protectedProcedure.query(async (): Promise<KillSwitchState> => {
+    get: operatorProcedure.query(async (): Promise<KillSwitchState> => {
       const state = await warmupStateRepository.getOrCreate();
       return { enabled: state.killSwitch };
     }),
 
-    toggle: protectedProcedure
+    toggle: operatorProcedure
       .input(killSwitchToggleInputSchema)
       .mutation(async ({ input }): Promise<KillSwitchState> => {
         const state = await warmupStateRepository.setKillSwitch(input.enabled);

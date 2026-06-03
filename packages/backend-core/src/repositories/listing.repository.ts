@@ -454,6 +454,22 @@ export class ListingRepository {
   }
 
   /**
+   * Batch-fetch listings by id (one `IN (...)` query, no N+1). Backs the saved-
+   * listings surface: the SavedListing overlay holds listing ids, the router
+   * hydrates them here. Unknown ids are silently dropped; order is NOT
+   * guaranteed, so the caller re-orders by its own key (the saved order).
+   */
+  async getByIds(ids: string[]): Promise<ListingRecord[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    return prisma.listing.findMany({
+      where: { id: { in: ids } },
+      select: LISTING_SELECT,
+    });
+  }
+
+  /**
    * Count listings whose `outcode` is one of the given set — the "homes found in
    * a scout's patch" stat (PR3 scoutsRouter.stats). An empty set returns 0 (a
    * scout with no target outcodes covers nothing). `outcode` is nullable, so a

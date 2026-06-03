@@ -8,6 +8,7 @@
 @import "./styles/scouts.css";
 @import "./styles/interest.css";
 @import "./styles/settings.css";
+@import "./styles/auth.css";
 
 /*
  * Screen-reader-only utility — used for table <caption>s and visually-hidden

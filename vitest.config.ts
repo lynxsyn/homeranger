@@ -39,9 +39,9 @@ export default defineConfig({
         // raw /api/health|/api/version routes + tRPC mount). It is proven by
         // the Playwright E2E (which boots the real server), not by unit tests;
         // excluded to avoid a false unit-coverage drop (same rationale as the
-        // repository excludes above). The context.ts module reads CF Access
-        // env at import time + builds ctx.user from the request — exercised via
-        // the cloudflare-access unit tests (resolveCfAccessIdentity) and E2E.
+        // repository excludes above). The context.ts module reads the Supabase
+        // auth env at import time + builds ctx.user from the request — exercised
+        // via the supabase-auth unit tests (resolveSupabaseIdentity) and E2E.
         "apps/api/src/main.ts",
         "packages/backend-core/src/context.ts",
         // The repository methods + the Prisma client need a live pgvector and
@@ -121,6 +121,10 @@ export default defineConfig({
         // Its pure helpers (resolveScoutOutcodes / draftScoutEmail in
         // lib/scouts/scout-brief.ts) are unit-covered and NOT excluded.
         "packages/backend-core/src/repositories/scout.repository.ts",
+        // Multi-user saved-listings overlay — Prisma I/O (save/unsave/list),
+        // exercised by the saved-listing integration test, not unit. Same
+        // rationale as the M2–M8 repository excludes above.
+        "packages/backend-core/src/repositories/saved-listing.repository.ts",
       ],
       thresholds: {
         // Floor with deliberate HEADROOM, not floor(measured). Measured M3 is

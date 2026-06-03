@@ -6,6 +6,7 @@
  * milestones add sibling routers here (M4 ingestion, M6/M7 outreach).
  */
 import { publicProcedure, router } from "../trpc.js";
+import { authRouter } from "./auth.router.js";
 import { listingsRouter } from "./listings.router.js";
 import { preferencesRouter } from "./preferences.router.js";
 import { outreachRouter } from "./outreach.router.js";
@@ -19,6 +20,7 @@ export const appRouter = router({
     status: "ok" as const,
   })),
 
+  auth: authRouter,
   listings: listingsRouter,
   preferences: preferencesRouter,
   outreach: outreachRouter,

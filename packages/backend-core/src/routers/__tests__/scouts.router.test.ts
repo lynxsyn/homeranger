@@ -107,8 +107,16 @@ function makeScout(overrides: Partial<ScoutRecord> = {}): ScoutRecord {
   };
 }
 
+// dev@homeranger.local is the default operator → owner key resolves to null (the
+// operator/default namespace), so the existing assertions see ownerId === null.
 const authedCaller = appRouter.createCaller({
-  user: { email: "dev@homeranger.local" },
+  user: { id: "00000000-0000-0000-0000-0000000000de", email: "dev@homeranger.local" },
+});
+
+// A non-operator signed-in user → owner key is their id (their own namespace).
+const PARTNER_ID = "33333333-3333-4333-8333-333333333333";
+const partnerCaller = appRouter.createCaller({
+  user: { id: PARTNER_ID, email: "partner@homeranger.test" },
 });
 
 afterEach(() => {
@@ -278,7 +286,7 @@ describe("scoutsRouter.delete", () => {
 
     const result = await authedCaller.scouts.delete({ id });
     expect(result).toEqual({ id });
-    expect(spy).toHaveBeenCalledWith(id);
+    expect(spy).toHaveBeenCalledWith(id, null);
   });
 
   it("maps Prisma P2025 (already gone) to NOT_FOUND", async () => {
@@ -306,7 +314,7 @@ describe("scoutsRouter.setStatus", () => {
       status: "paused",
     });
     expect(result).toEqual(paused);
-    expect(spy).toHaveBeenCalledWith(paused.id, "paused");
+    expect(spy).toHaveBeenCalledWith(paused.id, "paused", null);
   });
 
   it("maps Prisma P2025 (already gone) to NOT_FOUND", async () => {
@@ -604,5 +612,57 @@ describe("scoutsRouter auth", () => {
     await expect(anon.scouts.list()).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
+  });
+});
+
+describe("scoutsRouter multi-user scoping", () => {
+  it("scopes list/create to the operator's NULL namespace for the operator", async () => {
+    const fake = injectRepo();
+    const listSpy = vi.spyOn(fake, "list").mockResolvedValue([]);
+    const createSpy = vi.spyOn(fake, "create").mockResolvedValue(makeScout());
+
+    await authedCaller.scouts.list();
+    await authedCaller.scouts.create({ name: "Op scout" });
+
+    expect(listSpy).toHaveBeenCalledWith(null);
+    expect(createSpy.mock.calls[0]![1]).toBeNull();
+  });
+
+  it("scopes list/getById/create to a non-operator's own user id", async () => {
+    const fake = injectRepo();
+    const listSpy = vi.spyOn(fake, "list").mockResolvedValue([]);
+    const getSpy = vi.spyOn(fake, "getById").mockResolvedValue(makeScout());
+    const createSpy = vi.spyOn(fake, "create").mockResolvedValue(makeScout());
+
+    await partnerCaller.scouts.list();
+    await partnerCaller.scouts.getById({
+      id: "00000000-0000-7000-8000-000000000001",
+    });
+    await partnerCaller.scouts.create({ name: "Partner scout" });
+
+    expect(listSpy).toHaveBeenCalledWith(PARTNER_ID);
+    expect(getSpy).toHaveBeenCalledWith(
+      "00000000-0000-7000-8000-000000000001",
+      PARTNER_ID,
+    );
+    expect(createSpy.mock.calls[0]![1]).toBe(PARTNER_ID);
+  });
+
+  it("FORBIDS the operator-only outreach loop for a non-operator", async () => {
+    injectRepo();
+    for (const call of [
+      () => partnerCaller.scouts.launch({ id: "00000000-0000-7000-8000-000000000001" }),
+      () =>
+        partnerCaller.scouts.reviewDrafts({
+          id: "00000000-0000-7000-8000-000000000001",
+        }),
+      () =>
+        partnerCaller.scouts.approveSends({
+          id: "00000000-0000-7000-8000-000000000001",
+          agentIds: [],
+        }),
+    ]) {
+      await expect(call()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    }
   });
 });

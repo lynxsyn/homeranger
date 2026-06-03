@@ -11,10 +11,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
-const { useQueryMock } = vi.hoisted(() => ({ useQueryMock: vi.fn() }));
+const { useQueryMock, savedQueryMock, saveMutateMock, unsaveMutateMock } =
+  vi.hoisted(() => ({
+    useQueryMock: vi.fn(),
+    savedQueryMock: vi.fn(() => ({ data: [] as Array<{ id: string }> })),
+    saveMutateMock: vi.fn(),
+    unsaveMutateMock: vi.fn(),
+  }));
 vi.mock("../lib/trpc", () => ({
   trpc: {
-    listings: { list: { useQuery: useQueryMock } },
+    useUtils: () => ({ listings: { saved: { invalidate: vi.fn() } } }),
+    listings: {
+      list: { useQuery: useQueryMock },
+      saved: { useQuery: savedQueryMock },
+      save: { useMutation: () => ({ mutate: saveMutateMock }) },
+      unsave: { useMutation: () => ({ mutate: unsaveMutateMock }) },
+    },
     outreach: { senderName: { useQuery: () => ({ data: { name: "Bryan" } }) } },
   },
 }));
@@ -99,6 +111,11 @@ function withData(items: unknown[] = ITEMS, nextCursor: string | null = null) {
   });
 }
 
+/** Seed the per-user saved set the page rehydrates its bookmarks from. */
+function withSaved(ids: string[]) {
+  savedQueryMock.mockReturnValue({ data: ids.map((id) => ({ id })) });
+}
+
 function renderedAddresses(): string[] {
   return screen
     .getAllByTestId("listing-row")
@@ -107,6 +124,9 @@ function renderedAddresses(): string[] {
 
 beforeEach(() => {
   localStorage.clear();
+  savedQueryMock.mockReturnValue({ data: [] });
+  saveMutateMock.mockReset();
+  unsaveMutateMock.mockReset();
 });
 
 afterEach(() => {
@@ -288,7 +308,7 @@ describe("ListingsPage interest + follow-ups", () => {
     expect(screen.queryByTestId("interest-bar")).not.toBeInTheDocument();
   });
 
-  it("toggling a bookmark reveals the interest bar and persists to localStorage", () => {
+  it("toggling a bookmark reveals the interest bar and persists via save/unsave", () => {
     withData();
     render(<ListingsPage />);
     fireEvent.click(screen.getAllByTestId("interest-button")[0]!);
@@ -296,38 +316,41 @@ describe("ListingsPage interest + follow-ups", () => {
     const bar = screen.getByTestId("interest-bar");
     expect(bar).toHaveTextContent("1");
     expect(bar).toHaveTextContent(/home you're interested in/i);
-    // bravo sorts first (top score) → its id is the one stored.
-    expect(JSON.parse(localStorage.getItem("hs-interested") ?? "[]")).toEqual([
-      "id-bravo street",
-    ]);
+    // bravo sorts first (top score) → its id is the one saved server-side.
+    expect(saveMutateMock).toHaveBeenCalledWith(
+      { listingId: "id-bravo street" },
+      expect.anything(),
+    );
 
-    // Un-bookmark → the bar disappears again.
+    // Un-bookmark → the bar disappears + unsave fires.
     fireEvent.click(screen.getAllByTestId("interest-button")[0]!);
     expect(screen.queryByTestId("interest-bar")).not.toBeInTheDocument();
+    expect(unsaveMutateMock).toHaveBeenCalledWith(
+      { listingId: "id-bravo street" },
+      expect.anything(),
+    );
   });
 
-  it("rehydrates bookmarks from localStorage on mount", () => {
-    localStorage.setItem("hs-interested", JSON.stringify(["id-alpha road"]));
+  it("rehydrates saved bookmarks from the server on mount", () => {
+    withSaved(["id-alpha road"]);
     withData();
     render(<ListingsPage />);
     expect(screen.getByTestId("interest-bar")).toHaveTextContent("1");
   });
 
-  it("'Clear' empties the bookmarks and hides the bar", () => {
+  it("'Clear' empties the bookmarks, hides the bar, and unsaves server-side", () => {
+    withSaved(["id-bravo street"]);
     withData();
     render(<ListingsPage />);
-    fireEvent.click(screen.getAllByTestId("interest-button")[0]!);
+    expect(screen.getByTestId("interest-bar")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Clear"));
     expect(screen.queryByTestId("interest-bar")).not.toBeInTheDocument();
-    expect(JSON.parse(localStorage.getItem("hs-interested") ?? "[]")).toEqual([]);
+    expect(unsaveMutateMock).toHaveBeenCalledWith({ listingId: "id-bravo street" });
   });
 
   it("'Draft follow-ups' opens a modal grouping the bookmarked homes by agency", () => {
     // Bookmark alpha + charlie (both Acme Estates) and bravo (Bravo Homes).
-    localStorage.setItem(
-      "hs-interested",
-      JSON.stringify(["id-alpha road", "id-charlie lane", "id-bravo street"]),
-    );
+    withSaved(["id-alpha road", "id-charlie lane", "id-bravo street"]);
     withData();
     render(<ListingsPage />);
 
@@ -348,7 +371,7 @@ describe("ListingsPage interest + follow-ups", () => {
   });
 
   it("'Send' is a mock that flips to the sent success state", () => {
-    localStorage.setItem("hs-interested", JSON.stringify(["id-alpha road"]));
+    withSaved(["id-alpha road"]);
     withData();
     render(<ListingsPage />);
 
@@ -359,7 +382,7 @@ describe("ListingsPage interest + follow-ups", () => {
   });
 
   it("falls back to 'your agent' when grouping a home with no agency", () => {
-    localStorage.setItem("hs-interested", JSON.stringify(["id-no agent road"]));
+    withSaved(["id-no agent road"]);
     withData([
       makeItem({ addressNormalized: "no agent road", agency: null, agentEmail: null }),
     ]);

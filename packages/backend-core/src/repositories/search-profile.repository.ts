@@ -1,9 +1,15 @@
 /**
- * SearchProfile repository — owns all Prisma access for the single-row search
- * profile (the one user's buying preferences). Like the Listing embedding, the
- * `preferenceEmbedding` column is `Unsupported("vector(1024)")` and so is
- * read/written only via raw SQL. The profile is keyed on a stable singleton id
- * so `getOrCreate` always converges on one row.
+ * SearchProfile repository — owns all Prisma access for the search profile(s).
+ *
+ * Multi-user owner key: every method takes an optional `ownerId`:
+ *   - `ownerId == null` → the OPERATOR / default profile, the stable singleton
+ *     row keyed by `SEARCH_PROFILE_SINGLETON_ID`. This is what the backend
+ *     automation engine (outreach signing + AI matching, no request context)
+ *     reads — its behaviour is UNCHANGED, every backend caller passes no arg.
+ *   - `ownerId` set → that user's own profile row, keyed by the unique `userId`.
+ *
+ * Like the Listing embedding, the `preferenceEmbedding` column is
+ * `Unsupported("vector(1024)")` and so is read/written only via raw SQL.
  */
 import { Prisma, type Tenure } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
@@ -94,12 +100,32 @@ function fromVectorLiteral(raw: string): number[] {
 }
 
 export class SearchProfileRepository {
-  /** Fetch the singleton profile, creating an empty one on first access. */
-  async getOrCreate(tx?: Prisma.TransactionClient): Promise<SearchProfileRecord> {
+  /**
+   * The unique `where` selector for a profile: the singleton id for the
+   * operator (ownerId null) or the unique `userId` for a specific user.
+   */
+  private whereUnique(
+    ownerId: string | null,
+  ): Prisma.SearchProfileWhereUniqueInput {
+    return ownerId == null ? { id: SEARCH_PROFILE_SINGLETON_ID } : { userId: ownerId };
+  }
+
+  /**
+   * Fetch a profile, creating an empty one on first access. `ownerId == null`
+   * converges on the operator singleton (race-safe via the fixed id); a set
+   * `ownerId` upserts that user's row (id auto, keyed by the unique userId).
+   */
+  async getOrCreate(
+    ownerId: string | null = null,
+    tx?: Prisma.TransactionClient,
+  ): Promise<SearchProfileRecord> {
     const db: PrismaLike = tx ?? prisma;
     return db.searchProfile.upsert({
-      where: { id: SEARCH_PROFILE_SINGLETON_ID },
-      create: { id: SEARCH_PROFILE_SINGLETON_ID, outcodes: [] },
+      where: this.whereUnique(ownerId),
+      create:
+        ownerId == null
+          ? { id: SEARCH_PROFILE_SINGLETON_ID, outcodes: [] }
+          : { userId: ownerId, outcodes: [] },
       update: {},
       select: PROFILE_SELECT,
     });
@@ -107,14 +133,15 @@ export class SearchProfileRepository {
 
   async update(
     input: UpdateSearchProfileInput,
+    ownerId: string | null = null,
     tx?: Prisma.TransactionClient,
   ): Promise<SearchProfileRecord> {
     const db: PrismaLike = tx ?? prisma;
-    // Ensure the singleton exists, then apply the partial update so callers do
-    // not have to seed it first.
-    await this.getOrCreate(tx);
+    // Ensure the row exists, then apply the partial update so callers do not
+    // have to seed it first.
+    await this.getOrCreate(ownerId, tx);
     return db.searchProfile.update({
-      where: { id: SEARCH_PROFILE_SINGLETON_ID },
+      where: this.whereUnique(ownerId),
       data: {
         ...(input.freeTextPreferences !== undefined
           ? { freeTextPreferences: input.freeTextPreferences ?? "" }
@@ -139,11 +166,23 @@ export class SearchProfileRepository {
   }
 
   /**
+   * The raw-SQL owner predicate: the singleton id for the operator (ownerId
+   * null) or the user's `userId`. Both are bound + cast `::uuid` (never
+   * interpolated as text) so the predicate is injection-safe.
+   */
+  private ownerPredicate(ownerId: string | null): Prisma.Sql {
+    return ownerId == null
+      ? Prisma.sql`"id" = ${SEARCH_PROFILE_SINGLETON_ID}::uuid`
+      : Prisma.sql`"userId" = ${ownerId}::uuid`;
+  }
+
+  /**
    * Write the preference embedding (raw — Unsupported vector column). Bound as
-   * a single `::vector` parameter; the singleton id is bound and cast `::uuid`.
+   * a single `::vector` parameter; the owner predicate is bound + cast `::uuid`.
    */
   async writePreferenceEmbedding(
     embedding: number[],
+    ownerId: string | null = null,
     tx?: Prisma.TransactionClient,
   ): Promise<number> {
     const db: PrismaLike = tx ?? prisma;
@@ -152,7 +191,7 @@ export class SearchProfileRepository {
       UPDATE "SearchProfile"
       SET "preferenceEmbedding" = ${literal}::vector,
           "updatedAt" = NOW()
-      WHERE "id" = ${SEARCH_PROFILE_SINGLETON_ID}::uuid
+      WHERE ${this.ownerPredicate(ownerId)}
     `;
   }
 
@@ -163,13 +202,14 @@ export class SearchProfileRepository {
    * vector type across the repo boundary.
    */
   async readPreferenceEmbedding(
+    ownerId: string | null = null,
     tx?: Prisma.TransactionClient,
   ): Promise<number[] | null> {
     const db: PrismaLike = tx ?? prisma;
     const rows = await db.$queryRaw<Array<{ embedding: string | null }>>`
       SELECT "preferenceEmbedding"::text AS "embedding"
       FROM "SearchProfile"
-      WHERE "id" = ${SEARCH_PROFILE_SINGLETON_ID}::uuid
+      WHERE ${this.ownerPredicate(ownerId)}
     `;
     const raw = rows[0]?.embedding;
     if (!raw) {

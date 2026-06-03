@@ -104,3 +104,41 @@ describe("searchProfileRepository buyer identity (Settings 'Your details')", () 
     expect(after.freeTextPreferences).toBe("Bright garden flat");
   });
 });
+
+describe("searchProfileRepository per-user namespace (multi-user)", () => {
+  const USER_A = "a1a1a1a1-1111-4111-8111-1111111111a1";
+  const USER_B = "b1b1b1b1-1111-4111-8111-1111111111b1";
+
+  it("keeps the operator (null) profile separate from a user's profile", async () => {
+    const operator = await searchProfileRepository.getOrCreate(null);
+    const userA = await searchProfileRepository.getOrCreate(USER_A);
+    // Distinct rows (the operator singleton has the fixed id).
+    expect(userA.id).not.toBe(operator.id);
+
+    await searchProfileRepository.update({ firstName: "Aria" }, USER_A);
+    await searchProfileRepository.update({ firstName: "Owner" }, null);
+
+    expect((await searchProfileRepository.getOrCreate(USER_A)).firstName).toBe(
+      "Aria",
+    );
+    expect((await searchProfileRepository.getOrCreate(null)).firstName).toBe(
+      "Owner",
+    );
+    // A second user is independent again.
+    expect((await searchProfileRepository.getOrCreate(USER_B)).firstName).toBe(
+      "",
+    );
+  });
+
+  it("round-trips a per-user preference embedding independent of the operator", async () => {
+    await searchProfileRepository.getOrCreate(USER_A);
+    const embedding = Array.from({ length: DIM }, (_, i) => (i % 5) * 0.011);
+    await searchProfileRepository.writePreferenceEmbedding(embedding, USER_A);
+
+    const readA = await searchProfileRepository.readPreferenceEmbedding(USER_A);
+    expect(readA).toHaveLength(DIM);
+    expect(readA![3]).toBeCloseTo(embedding[3]!, 4);
+    // The operator namespace was never written → still null.
+    expect(await searchProfileRepository.readPreferenceEmbedding(null)).toBeNull();
+  });
+});

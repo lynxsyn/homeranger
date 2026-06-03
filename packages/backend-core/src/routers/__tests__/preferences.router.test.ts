@@ -31,7 +31,15 @@ function makeProfile(overrides: Partial<SearchProfileRecord> = {}): SearchProfil
   };
 }
 
-const authedCaller = appRouter.createCaller({ user: { email: "dev@homeranger.local" } });
+// dev@homeranger.local is the default operator → owner key null (the singleton
+// the AI-matching engine reads), so the recompute trigger fires for it.
+const authedCaller = appRouter.createCaller({
+  user: { id: "00000000-0000-0000-0000-0000000000de", email: "dev@homeranger.local" },
+});
+const PARTNER_ID = "33333333-3333-4333-8333-333333333333";
+const partnerCaller = appRouter.createCaller({
+  user: { id: PARTNER_ID, email: "partner@homeranger.test" },
+});
 
 afterEach(() => {
   _setSearchProfileRepositoryForTesting(null);
@@ -144,6 +152,42 @@ describe("preferencesRouter.update", () => {
     await expect(
       authedCaller.preferences.update({ outcodes: ["not-an-outcode!!"] }),
     ).rejects.toBeTruthy();
+  });
+});
+
+describe("preferencesRouter multi-user scoping", () => {
+  it("reads/writes the operator's NULL-namespace profile for the operator", async () => {
+    const fake = new SearchProfileRepository();
+    const getSpy = vi.spyOn(fake, "getOrCreate").mockResolvedValue(makeProfile());
+    const updateSpy = vi.spyOn(fake, "update").mockResolvedValue(makeProfile());
+    _setSearchProfileRepositoryForTesting(fake);
+    const trigger = vi.fn().mockResolvedValue(0);
+    _setProfileChangeTriggerForTesting(trigger);
+
+    await authedCaller.preferences.get();
+    await authedCaller.preferences.update({ freeTextPreferences: "x" });
+
+    expect(getSpy).toHaveBeenCalledWith(null);
+    expect(updateSpy.mock.calls[0]![1]).toBeNull();
+    expect(trigger).toHaveBeenCalledTimes(1); // operator → recompute fires
+  });
+
+  it("scopes a non-operator to their own profile and SKIPS the global recompute", async () => {
+    const fake = new SearchProfileRepository();
+    const getSpy = vi.spyOn(fake, "getOrCreate").mockResolvedValue(makeProfile());
+    const updateSpy = vi.spyOn(fake, "update").mockResolvedValue(makeProfile());
+    _setSearchProfileRepositoryForTesting(fake);
+    const trigger = vi.fn().mockResolvedValue(0);
+    _setProfileChangeTriggerForTesting(trigger);
+
+    await partnerCaller.preferences.get();
+    await partnerCaller.preferences.update({ freeTextPreferences: "y" });
+
+    expect(getSpy).toHaveBeenCalledWith(PARTNER_ID);
+    expect(updateSpy.mock.calls[0]![1]).toBe(PARTNER_ID);
+    // A non-operator's save stores their settings WITHOUT triggering the
+    // operator-scoped global recompute.
+    expect(trigger).not.toHaveBeenCalled();
   });
 });
 

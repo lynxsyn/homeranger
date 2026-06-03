@@ -64,13 +64,17 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Bake the git commit SHA into the api + processor images. The api's
-          # /api/version reports it for app-mode post-release verify; the
-          # processor surfaces it in logs/metrics. Both Dockerfiles declare
-          # ARG GIT_SHA. The web image does not, so scope the build-arg away
-          # from it (passing it would be a harmless no-op, but we keep intent
-          # explicit).
-          build-args: ${{ (matrix.app == 'api' || matrix.app == 'processor') && format('GIT_SHA={0}', github.sha) || '' }}
+          # Bake the git commit SHA into the api + processor images (their
+          # Dockerfiles declare ARG GIT_SHA; /api/version reports it for
+          # post-release verify). The WEB image bakes the PUBLIC Supabase config
+          # (URL + anon key) into the SPA bundle from repo VARIABLES (public
+          # values, not secrets) — set `vars.VITE_SUPABASE_URL` +
+          # `vars.VITE_SUPABASE_ANON_KEY` in the repo settings to activate
+          # sign-in in prod. Empty build-arg lines are ignored by the action.
+          build-args: |
+            ${{ (matrix.app == 'api' || matrix.app == 'processor') && format('GIT_SHA={0}', github.sha) || '' }}
+            ${{ matrix.app == 'web' && format('VITE_SUPABASE_URL={0}', vars.VITE_SUPABASE_URL) || '' }}
+            ${{ matrix.app == 'web' && format('VITE_SUPABASE_ANON_KEY={0}', vars.VITE_SUPABASE_ANON_KEY) || '' }}
 
   create-release:
     needs: [detect, build]

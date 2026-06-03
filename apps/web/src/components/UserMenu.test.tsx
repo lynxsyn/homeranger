@@ -15,6 +15,11 @@ vi.mock("../lib/trpc", () => ({
   trpc: { preferences: { get: { useQuery: profileQueryMock } } },
 }));
 
+// The menu reads the signed-in email from useAuth; mock it (no AuthProvider).
+vi.mock("../lib/auth", () => ({
+  useAuth: () => ({ user: { id: "u1", email: "user@homeranger.test" } }),
+}));
+
 import { UserMenu } from "./UserMenu";
 
 function withProfile(overrides: Record<string, unknown> = {}) {
@@ -29,16 +34,18 @@ function renderMenu(
 ) {
   const onNavigate = props.onNavigate ?? vi.fn();
   const onToggleTheme = props.onToggleTheme ?? vi.fn();
+  const onSignOut = props.onSignOut ?? vi.fn();
   render(
     <MemoryRouter initialEntries={[path]}>
       <UserMenu
         theme={props.theme ?? "light"}
         onNavigate={onNavigate}
         onToggleTheme={onToggleTheme}
+        onSignOut={onSignOut}
       />
     </MemoryRouter>,
   );
-  return { onNavigate, onToggleTheme };
+  return { onNavigate, onToggleTheme, onSignOut };
 }
 
 beforeEach(() => {
@@ -108,5 +115,23 @@ describe("UserMenu theme row", () => {
     expect(screen.getByTestId("theme-state")).toHaveTextContent("Dark");
     fireEvent.click(screen.getByTestId("theme-toggle"));
     expect(onToggleTheme).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("UserMenu account identity + sign out", () => {
+  it("shows the signed-in email in the header", () => {
+    renderMenu();
+    fireEvent.click(screen.getByTestId("account-avatar"));
+    expect(screen.getByTestId("account-email")).toHaveTextContent(
+      "user@homeranger.test",
+    );
+  });
+
+  it("delegates Sign out to onSignOut and closes the menu", () => {
+    const { onSignOut } = renderMenu();
+    fireEvent.click(screen.getByTestId("account-avatar"));
+    fireEvent.click(screen.getByTestId("sign-out"));
+    expect(onSignOut).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("account-menu")).not.toBeInTheDocument();
   });
 });

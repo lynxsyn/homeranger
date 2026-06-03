@@ -74,7 +74,11 @@ export default defineConfig({
         // M4 spec signs its POST with the same value.
         RESEND_INBOUND_WEBHOOK_SECRET: E2E_RESEND_INBOUND_SECRET,
         RESEND_WEBHOOK_SECRET: E2E_RESEND_INBOUND_SECRET,
-        // CF_ACCESS_TEAM_DOMAIN / CF_ACCESS_AUD intentionally UNSET → dev bypass.
+        // SUPABASE_URL forced EMPTY → the API takes its Supabase dev bypass
+        // (ctx.user = the dev operator), so the suite runs authenticated with no
+        // real token. Explicit because direnv may export a real SUPABASE_URL
+        // from .env into the shell Playwright inherits.
+        SUPABASE_URL: "",
         NODE_ENV: "development",
       },
     },
@@ -118,6 +122,14 @@ export default defineConfig({
       port: 5173,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
+      env: {
+        // Frontend auth bypass → the SPA treats the user as the signed-in
+        // operator without a Supabase login (twin of the API's SUPABASE_URL=""
+        // bypass), so the existing specs reach the app directly. The auth spec
+        // flips it off per-page (localStorage hr-e2e-bypass="off") to exercise
+        // the real sign-in gate.
+        VITE_E2E_AUTH_BYPASS: "1",
+      },
     },
   ],
 });

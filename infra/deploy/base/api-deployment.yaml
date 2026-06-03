@@ -2,10 +2,12 @@
 # scoped to homeranger: single replica, wait-for-postgres + prisma-migrate init
 # containers, /api/health probes on 3000, secrets from homeranger-secret.
 #
-# Auth is Cloudflare Access (CF_ACCESS_* + ALLOWED_USER_EMAIL from the secret).
-# For M3 those keys are EMPTY in the secret → the api takes the dev-bypass path
-# (ctx.user = { email: DEV_USER_EMAIL }); M4 sets them with the tunnel. There is
-# NO SuperTokens env or sidecar.
+# Auth is Supabase (multi-user). ctx.user is built from the Supabase access
+# token, verified in-process against the project JWKS. SUPABASE_URL +
+# SUPABASE_JWT_AUD are PLAIN env below (public; no runtime secret). With
+# SUPABASE_URL unset the api takes the dev-bypass path (ctx.user = the dev
+# operator) — set here so prod verifies real tokens. ALLOWED_USER_EMAIL is
+# reused as the operator email. No SuperTokens; no CF Access JWT verification.
 #
 # CHICKEN-AND-EGG: the image must exist in GHCR before Flux deploys this pod, or
 # the pod ImagePullBackOffs. The orchestrator builds + pushes ghcr.io/lynxsyn/
@@ -135,29 +137,22 @@ spec:
                 secretKeyRef:
                   name: homeranger-secret
                   key: RESEND_WEBHOOK_SECRET
-            # M3: these four keys are NOT yet in homeranger-secret (added in M4
-            # with the Cloudflare tunnel). `optional: true` lets the kubelet
-            # resolve them to UNSET rather than failing with
-            # CreateContainerConfigError — unset CF_ACCESS_* takes the api's
-            # documented dev-bypass path. M4 adds the real values to the secret
-            # AND flips these back to required (a missing prod secret must fail
-            # loud, which a non-optional ref guarantees).
-            # The live edge populates these in homeranger-secret (CF Access app
-            # AUD + team domain + the single allowed owner email), so they are
-            # now REQUIRED: a prod deploy missing the auth config must fail loud
-            # (CreateContainerConfigError) rather than silently take the
-            # dev-bypass path. Local/CI/E2E never use this manifest — they run
-            # with the trio unset (dev bypass) via env, not this secret.
-            - name: CF_ACCESS_TEAM_DOMAIN
-              valueFrom:
-                secretKeyRef:
-                  name: homeranger-secret
-                  key: CF_ACCESS_TEAM_DOMAIN
-            - name: CF_ACCESS_AUD
-              valueFrom:
-                secretKeyRef:
-                  name: homeranger-secret
-                  key: CF_ACCESS_AUD
+            # AUTH = Supabase. ctx.user is built from the Supabase access token
+            # (Authorization: Bearer) verified against the project JWKS. SETTING
+            # SUPABASE_URL is what turns OFF the dev bypass in prod — it MUST be
+            # present or the api would resolve every request to the dev operator
+            # with no auth. Plain values (the project hostname + the standard
+            # "authenticated" audience) — both PUBLIC, no secret needed at
+            # runtime (the JWKS is public). Local/CI/E2E run with SUPABASE_URL
+            # unset/empty (dev bypass) via env, not this manifest.
+            - name: SUPABASE_URL
+              value: "https://jdaklyjwxymrahnbuczi.supabase.co"
+            - name: SUPABASE_JWT_AUD
+              value: "authenticated"
+            # ALLOWED_USER_EMAIL is reused as the OPERATOR email — the identity
+            # whose data lives in the NULL namespace the automation engine reads
+            # (operatorEmail() = OPERATOR_USER_EMAIL ?? ALLOWED_USER_EMAIL ??
+            # DEV_USER_EMAIL). Required so the operator maps correctly in prod.
             - name: ALLOWED_USER_EMAIL
               valueFrom:
                 secretKeyRef:

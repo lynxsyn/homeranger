@@ -421,7 +421,8 @@ describe("makeDefaultScoutDraftLoader", () => {
       profileRepo(),
     );
     const draft = await load("scout-7");
-    expect(getById).toHaveBeenCalledWith("scout-7");
+    // The outreach loop reads the operator namespace (null owner key).
+    expect(getById).toHaveBeenCalledWith("scout-7", null);
     expect(draft?.subject).toBe("A private buyer looking in Conwy County");
     expect(draft?.bodyText).toContain(
       "I'm a private buyer searching in Conwy County",
