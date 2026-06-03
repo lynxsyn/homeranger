@@ -110,7 +110,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signUp(email: string, password: string): Promise<SignUpResult> {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      // Return the confirmation link to wherever the app is actually loaded
+      // (localhost in dev, the apex homeranger.app in prod) rather than the
+      // Supabase Site URL default — so a local signup confirms back to
+      // localhost instead of bouncing to production.
+      options: { emailRedirectTo: window.location.origin },
+    });
     // When email confirmation is required, sign-up returns a user but no session.
     const needsConfirmation = !error && !data.session && Boolean(data.user);
     return { error: error?.message ?? null, needsConfirmation };
