@@ -100,7 +100,7 @@ spec:
               type: RuntimeDefault
       containers:
         - name: processor
-          image: ghcr.io/lynxsyn/homescout-processor:0.12.0 # {"$imagepolicy": "flux-system:homescout-processor"}
+          image: ghcr.io/lynxsyn/homescout-processor:0.13.0 # {"$imagepolicy": "flux-system:homescout-processor"}
           imagePullPolicy: Always
           ports:
             - name: metrics
@@ -226,6 +226,19 @@ spec:
                 secretKeyRef:
                   name: homescout-secret
                   key: UNSUBSCRIBE_TOKEN_SECRET
+                  optional: true
+            # M7/M8 agent discovery. FIRECRAWL_API_KEY powers the real
+            # FirecrawlAgentDiscoveryProvider (web search → estate-agent emails).
+            # optional:true + the provider is construction-safe (boots without
+            # it; discover() throws retryable:false → drops the job) so discovery
+            # stays dormant until the operator adds the key, then activates with
+            # no redeploy. Scout launches query Firecrawl by the scout's PLACE
+            # NAME (v0.13.0), so real launches now find agents UK-wide.
+            - name: FIRECRAWL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: homescout-secret
+                  key: FIRECRAWL_API_KEY
                   optional: true
           resources:
             requests:
