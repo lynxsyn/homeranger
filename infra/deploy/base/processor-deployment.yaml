@@ -100,7 +100,7 @@ spec:
               type: RuntimeDefault
       containers:
         - name: processor
-          image: ghcr.io/lynxsyn/homeranger-processor:0.16.0 # {"$imagepolicy": "flux-system:homeranger-processor"}
+          image: ghcr.io/lynxsyn/homeranger-processor:0.17.0 # {"$imagepolicy": "flux-system:homeranger-processor"}
           imagePullPolicy: Always
           ports:
             - name: metrics
