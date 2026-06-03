@@ -12,12 +12,12 @@
 import {
   outreachRepository as defaultOutreachRepository,
   type OutreachRepository,
-} from "@homescout/backend-core/repositories/outreach.repository";
-import { enqueueOutreachFollowup as defaultEnqueueFollowup } from "@homescout/backend-core/lib/queue/queue-client";
-import { getOutreachConfig } from "@homescout/backend-core/services/outreach.service";
-import type { OutreachFollowupScanJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
-import type { EnqueueInput } from "@homescout/backend-core/lib/queue/queue-client";
-import type { OutreachFollowupJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
+} from "@homeranger/backend-core/repositories/outreach.repository";
+import { enqueueOutreachFollowup as defaultEnqueueFollowup } from "@homeranger/backend-core/lib/queue/queue-client";
+import { getOutreachConfig } from "@homeranger/backend-core/services/outreach.service";
+import type { OutreachFollowupScanJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
+import type { EnqueueInput } from "@homeranger/backend-core/lib/queue/queue-client";
+import type { OutreachFollowupJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
 import { toWorkerError } from "./worker-error.js";
 
 export interface FollowupScanHandlerDeps {

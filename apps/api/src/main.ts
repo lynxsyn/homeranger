@@ -1,5 +1,5 @@
 /**
- * homescout API entrypoint — Fastify 5 + tRPC 11 (Cloudflare Access auth).
+ * homeranger API entrypoint — Fastify 5 + tRPC 11 (Cloudflare Access auth).
  *
  * Wiring mirrors doxus-web/apps/control-plane-api/main.ts, minus SuperTokens:
  *   1. @fastify/cors + @fastify/formbody.
@@ -7,7 +7,7 @@
  *      tRPC plugin so they are not swallowed by the tRPC catch-all (the
  *      load-bearing ordering from control-plane-api/main.ts).
  *   3. fastifyTRPCPlugin LAST, at prefix /trpc, with the appRouter +
- *      createContext from @homescout/backend-core.
+ *      createContext from @homeranger/backend-core.
  *
  * Auth is entirely in createContext (CF Access JWT, dev-bypass when CF env
  * unset). No SuperTokens plugin/init.
@@ -23,10 +23,10 @@ import {
   appRouter,
   createContext,
   type AppRouter,
-} from "@homescout/backend-core";
-import { registerResendInboundRoute } from "@homescout/backend-core/routes/resend-inbound.route";
-import { registerResendEventsRoute } from "@homescout/backend-core/routes/resend-events.route";
-import { registerOutreachUnsubscribeRoute } from "@homescout/backend-core/routes/outreach-unsubscribe.route";
+} from "@homeranger/backend-core";
+import { registerResendInboundRoute } from "@homeranger/backend-core/routes/resend-inbound.route";
+import { registerResendEventsRoute } from "@homeranger/backend-core/routes/resend-events.route";
+import { registerOutreachUnsubscribeRoute } from "@homeranger/backend-core/routes/outreach-unsubscribe.route";
 
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? "0.0.0.0";
@@ -43,7 +43,7 @@ await server.register(formbody);
 // Raw routes BEFORE the tRPC plugin (not caught by the tRPC catch-all).
 server.get("/api/health", async () => ({ status: "ok" }));
 server.get("/api/version", async () => ({
-  service: "homescout-api",
+  service: "homeranger-api",
   gitSha: process.env.GIT_SHA ?? "unknown",
 }));
 

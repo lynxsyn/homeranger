@@ -19,7 +19,7 @@ import {
   type WarmupStateRecord,
 } from "../../repositories/warmup-state.repository.js";
 
-const caller = appRouter.createCaller({ user: { email: "dev@homescout.local" } });
+const caller = appRouter.createCaller({ user: { email: "dev@homeranger.local" } });
 
 function agent(): AgentRecord {
   return {

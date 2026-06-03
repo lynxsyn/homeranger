@@ -5,14 +5,14 @@
  *   - NON-retryable (a missing listing / a 4xx provider error, both carrying
  *     `retryable: false`) → `UnrecoverableError` so BullMQ moves the job straight
  *     to `failed` without burning the remaining attempts or re-billing the LLM;
- *     log it + increment `homescout_analysis_dropped_total`.
+ *     log it + increment `homeranger_analysis_dropped_total`.
  *   - retryable (429/5xx/transient, or an unknown/untyped error → treated as
  *     retryable, the transient-safe default) → rethrow so the backoff retries run.
  */
 import { UnrecoverableError } from "bullmq";
-import { analysisDroppedTotal } from "@homescout/backend-core/lib/ai/analysis-metrics";
-import type { ListingAnalysisService } from "@homescout/backend-core/services/listing-analysis.service";
-import type { AnalyzeListingJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
+import { analysisDroppedTotal } from "@homeranger/backend-core/lib/ai/analysis-metrics";
+import type { ListingAnalysisService } from "@homeranger/backend-core/services/listing-analysis.service";
+import type { AnalyzeListingJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
 
 /** Duck-type the `retryable` flag (works for ListingAnalysisError + ProviderError). */
 function isRetryable(error: unknown): boolean {

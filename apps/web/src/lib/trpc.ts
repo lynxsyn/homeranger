@@ -1,5 +1,5 @@
 /**
- * Typed tRPC React client for the homescout SPA.
+ * Typed tRPC React client for the homeranger SPA.
  *
  * Mirrors the Doxus web client: `createTRPCReact<AppRouter>()` for the hooks
  * namespace + a client whose `httpBatchLink` carries `transformer: superjson`
@@ -16,7 +16,7 @@
 import { createTRPCReact } from "@trpc/react-query";
 import { httpBatchLink, loggerLink } from "@trpc/client";
 import SuperJSON from "superjson";
-import type { AppRouter } from "@homescout/backend-core";
+import type { AppRouter } from "@homeranger/backend-core";
 
 export const trpc = createTRPCReact<AppRouter>();
 

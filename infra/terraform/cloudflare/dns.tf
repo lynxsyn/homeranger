@@ -1,10 +1,10 @@
 # Email DNS — Resend (dedicated sending domain = var.mail_subdomain, the apex
-# aid-engineering.com; a domain bought solely for homescout so cold-send
+# homeranger.app; a domain bought solely for homeranger so cold-send
 # reputation is isolated from any personal/company domain).
 #
 # Resend issues the EXACT DKIM / Return-Path target hostnames only AFTER the
 # sending domain is added in the Resend dashboard and verification starts.
-# Add `aid-engineering.com` as a domain in Resend, copy the records it
+# Add `homeranger.app` as a domain in Resend, copy the records it
 # shows, and replace the RESEND_DKIM_*_PLACEHOLDER values below — then
 # `tofu plan` / `tofu apply`. Until then these resources will plan with
 # placeholder content and email will NOT verify.
@@ -16,7 +16,7 @@
 
 # --- DKIM ---
 # Resend issues a single CNAME of the form
-#   resend._domainkey.aid-engineering.com -> <selector>.dkim.<region>.amazonses.com
+#   resend._domainkey.homeranger.app -> <selector>.dkim.<region>.amazonses.com
 # (older accounts get a TXT public-key record instead — if the dashboard
 # shows a TXT, switch this resource to type = "TXT" and put the p= value in
 # content). Mirror whatever the dashboard shows.
@@ -30,7 +30,7 @@ resource "cloudflare_dns_record" "resend_dkim" {
 }
 
 # --- Return-Path / MAIL FROM (bounce + feedback alignment) ---
-# Resend publishes a `send.aid-engineering.com` subdomain for the
+# Resend publishes a `send.homeranger.app` subdomain for the
 # MAIL FROM / Return-Path so SPF + bounces align with the sending domain.
 # It typically issues:
 #   1. An MX on send.<sub> -> feedback-smtp.<region>.amazonses.com (prio 10)
@@ -79,7 +79,7 @@ resource "cloudflare_dns_record" "dmarc" {
   zone_id = var.zone_id
   name    = "_dmarc.${var.mail_subdomain}"
   type    = "TXT"
-  content = "\"v=DMARC1; p=none; rua=mailto:dmarc@aid-engineering.com; fo=1\""
+  content = "\"v=DMARC1; p=none; rua=mailto:dmarc@homeranger.app; fo=1\""
   ttl     = 3600
   proxied = false
 }

@@ -1,6 +1,6 @@
-# homescout — UK Property Aggregator (two-channel ingestion + AI matching)
+# homeranger — UK Property Aggregator (two-channel ingestion + AI matching)
 
-> Codename `homescout` (rename freely). Brainstorm → plan artifact. This is a **large greenfield feature**, so the actual build proceeds as a sequence of AIDE specs (one per milestone), each its own PR + release tag, per the workspace Change Delivery Protocol and `scope-discipline.md`.
+> Codename `homeranger` (rename freely). Brainstorm → plan artifact. This is a **large greenfield feature**, so the actual build proceeds as a sequence of AIDE specs (one per milestone), each its own PR + release tag, per the workspace Change Delivery Protocol and `scope-discipline.md`.
 
 > **STATUS (2026-06-01) — M0 RESOLVED, plan completed.** The three decision gates are decided (see `docs/decisions/2026-06-01-*.md`) and the executable queue + per-milestone specs live in `docs/specs/` (`BUILD_ORDER.md` + `M1`…`M7`). Two changes from the original brainstorm below: **(1) Email-only, single channel** — the compliant-API enrichment channel (Channel 2) is dropped entirely; click through to the agent's page for detail. **(2) Decisions locked:** email = **Resend** (residency criterion #1 consciously waived for this personal tool), embeddings = **Voyage `voyage-3.5` at `vector(1024)`** (waiver extended to the data layer), data sources = **none** (no compliant live API exists). The sections below are the reasoning; where they describe the API channel, `licenceClass`, `ingest:poll`, the SSRF guard, or an "M0 pick", treat them as **superseded** by the decision docs. Anthropic note: runtime LLM calls need a metered `ANTHROPIC_API_KEY` (the Max subscription cannot back the deployed service); Anthropic has no embeddings endpoint, hence Voyage.
 
@@ -40,7 +40,7 @@ Research established three facts that shape everything:
                   │ outreach:followup                   │
                   └──────────────┬──────────────────────┘
                                  ▼
-              homescout-postgres (pgvector/pgvector:pg17) + homescout-redis (BullMQ + warmup token-bucket)
+              homeranger-postgres (pgvector/pgvector:pg17) + homeranger-redis (BullMQ + warmup token-bucket)
 ```
 
 **Single channel — Agent email (the only live source).** Autonomous-but-guarded outreach to UK estate agents asking to be notified of upcoming/off-market listings; ingest replies (free text + PDF/image attachments) → Claude structured extraction → dedup → upsert as `isPreMarket` listings, carrying the agent's click-out `listingUrl`. **"Autonomous" is gated, not unguarded** — every send passes a central `ComplianceGuard` (see below).
@@ -51,12 +51,12 @@ Research established three facts that shape everything:
 
 ## Repo & stack
 
-**Fully standalone application — zero shared Doxus runtime.** homescout runs on the same k3s *hardware* but shares nothing with Doxus: its own repo, namespace, Postgres, Redis, secrets (own age key), GHCR images, CI/release pipeline, Cloudflare tunnel hostname, and a dedicated email domain. Every Doxus file referenced in this plan is **copied as a pattern, never imported or shared** — no cross-repo deps, no shared packages, no shared DB/secrets. It adopts the workspace-root AIDE protocol but with its **own overlay** (its own `docs/specs/BUILD_ORDER.md`, `docs/decisions/`, and release-tag/post-release-verify scripts) — independent of `doxus-ops`.
+**Fully standalone application — zero shared Doxus runtime.** homeranger runs on the same k3s *hardware* but shares nothing with Doxus: its own repo, namespace, Postgres, Redis, secrets (own age key), GHCR images, CI/release pipeline, Cloudflare tunnel hostname, and a dedicated email domain. Every Doxus file referenced in this plan is **copied as a pattern, never imported or shared** — no cross-repo deps, no shared packages, no shared DB/secrets. It adopts the workspace-root AIDE protocol but with its **own overlay** (its own `docs/specs/BUILD_ORDER.md`, `docs/decisions/`, and release-tag/post-release-verify scripts) — independent of `doxus-ops`.
 
-**Single repo** `homescout` (not the 3-repo Doxus split — that split exists for independent release cadences and shared runtime-bundle sync you don't need). Mirror `doxus-web/pnpm-workspace.yaml` (`apps/*` + `packages/*`) and `tsconfig.base.json`.
+**Single repo** `homeranger` (not the 3-repo Doxus split — that split exists for independent release cadences and shared runtime-bundle sync you don't need). Mirror `doxus-web/pnpm-workspace.yaml` (`apps/*` + `packages/*`) and `tsconfig.base.json`.
 
 ```
-homescout/
+homeranger/
   apps/api/         Fastify 5 + tRPC 11; canonical prisma/ schema + migrations live here (mirror apps/control-plane-api)
   apps/processor/   BullMQ workers (mirror apps/processor/src/worker.ts — consumes only)
   apps/scheduler/   cron via PG leader-lock (mirror apps/scheduler/src/scheduler.ts — registers recurring jobs only)
@@ -70,7 +70,7 @@ homescout/
 
 Stack matches Doxus verbatim: pnpm, TS strict (no `any`), Fastify+tRPC, Prisma 7 + Postgres, BullMQ+Redis, React+Vite+Tailwind, Vitest + Playwright, `@anthropic-ai/sdk`, SuperTokens (single user → one `protectedProcedure`, drop tenant scoping per YAGNI). All backend code obeys `backend.md`: routers→services→repositories, repositories own ALL Prisma, cursor pagination `{items,nextCursor}` (default 20/max 100), prices as **integer pence**, `TRPCError` codes only.
 
-## Libraries & dependencies (homescout's own `package.json` — nothing shared with Doxus)
+## Libraries & dependencies (homeranger's own `package.json` — nothing shared with Doxus)
 
 **Email.** The *provider* is an M0 decision (the commodity gate's UK/EEA residency criterion drives it), wrapped behind a thin `EmailProvider` + `MailboxAdapter` interface so it stays swappable. A **managed ESP is the recommended primary — not pure `nodemailer`**: the autonomous circuit-breaker needs reliable bounce/complaint **webhooks**, and we must parse inbound replies + attachments — both of which an ESP provides and a send-only library does not.
 - **Send + bounce/complaint events:** an ESP SDK behind `EmailProvider`. Residency picks which: an **EEA-resident ESP** (MailerSend / Mailjet / Brevo / Scaleway TEM / SES `eu-west-1` / SendGrid EU region) to satisfy the gate; **Resend** only if you waive residency for a personal tool (verified June 2026: Resend's AUP permits compliant cold B2B and it has inbound, but its account data/metadata/logs sit in the US even when sending from Ireland → fails criterion #1). Keep `nodemailer` as the swappable SMTP transport (every candidate speaks SMTP) and the zero-ESP fallback if manual bounce handling is acceptable.
@@ -108,16 +108,16 @@ Follow the verified service pattern in `packages/backend-core/src/services/email
 
 ## Infra — fully standalone tenant on your k3s (own everything; Doxus manifests copied as patterns, never shared)
 
-Runs on the existing k3s **hardware** only; shares **no Doxus runtime**. Doxus's `deploy/` and Terraform are read as shape references and copied — homescout owns its own equivalents.
+Runs on the existing k3s **hardware** only; shares **no Doxus runtime**. Doxus's `deploy/` and Terraform are read as shape references and copied — homeranger owns its own equivalents.
 
-- **Flux source** — register a dedicated `GitRepository` + `Kustomization` pointing at homescout's own `infra/deploy/` (one-time cluster bootstrap). Doxus's Flux config is untouched.
-- **Namespace** — dedicated `homescout` namespace; NetworkPolicy default-deny ingress/egress, then allow only intra-namespace + the Cloudflare tunnel + required egress (LLM / email / data APIs). It cannot reach the Doxus `web` namespace.
-- **Postgres** — its **own** `homescout-postgres` Deployment (use the `pgvector/pgvector:pg17` image as the reference — NOT the `doxus-postgres` instance), own Longhorn PVC, own `homescout`/`homescout_migrator` roles; `CREATE EXTENSION vector` in the first migration.
-- **Redis** — its own `homescout-redis` (BullMQ + warmup token bucket).
+- **Flux source** — register a dedicated `GitRepository` + `Kustomization` pointing at homeranger's own `infra/deploy/` (one-time cluster bootstrap). Doxus's Flux config is untouched.
+- **Namespace** — dedicated `homeranger` namespace; NetworkPolicy default-deny ingress/egress, then allow only intra-namespace + the Cloudflare tunnel + required egress (LLM / email / data APIs). It cannot reach the Doxus `web` namespace.
+- **Postgres** — its **own** `homeranger-postgres` Deployment (use the `pgvector/pgvector:pg17` image as the reference — NOT the `doxus-postgres` instance), own Longhorn PVC, own `homeranger`/`homeranger_migrator` roles; `CREATE EXTENSION vector` in the first migration.
+- **Redis** — its own `homeranger-redis` (BullMQ + warmup token bucket).
 - **Deployments** — api/processor/scheduler with init-container `prisma migrate deploy`, non-root, probes, resource limits, Flux `$imagepolicy` annotations (shape copied from `api-deployment.yaml`). SPA via its own Cloudflare Pages project.
-- **Images** — own GHCR namespace (`ghcr.io/<you>/homescout-*`), own release workflow + semver tags; independent of Doxus's release pipeline.
-- **Secrets (SOPS+age)** — its **own age key/recipient** (Doxus's key must not decrypt homescout secrets and vice-versa): `ANTHROPIC_API_KEY`, email-provider token + webhook secret, `PROPERTYDATA_API_KEY`/`PATMA_API_KEY`, `DATABASE_URL`/`MIGRATION_DATABASE_URL`, `REDIS_PASSWORD`. Encrypt per the `sops.md` pattern before commit.
-- **Email + DNS** — its **own dedicated domain/zone** (not a Doxus subdomain — keeps cold-email sending reputation and legal exposure fully off anything you care about), with its own Cloudflare-managed DKIM CNAME, Return-Path CNAME, SPF TXT, DMARC TXT (`p=none` for warmup → tighten to `quarantine`), in homescout's own Terraform. Its own tunnel/ingress hostname.
+- **Images** — own GHCR namespace (`ghcr.io/<you>/homeranger-*`), own release workflow + semver tags; independent of Doxus's release pipeline.
+- **Secrets (SOPS+age)** — its **own age key/recipient** (Doxus's key must not decrypt homeranger secrets and vice-versa): `ANTHROPIC_API_KEY`, email-provider token + webhook secret, `PROPERTYDATA_API_KEY`/`PATMA_API_KEY`, `DATABASE_URL`/`MIGRATION_DATABASE_URL`, `REDIS_PASSWORD`. Encrypt per the `sops.md` pattern before commit.
+- **Email + DNS** — its **own dedicated domain/zone** (not a Doxus subdomain — keeps cold-email sending reputation and legal exposure fully off anything you care about), with its own Cloudflare-managed DKIM CNAME, Return-Path CNAME, SPF TXT, DMARC TXT (`p=none` for warmup → tighten to `quarantine`), in homeranger's own Terraform. Its own tunnel/ingress hostname.
 - **CI** — own workflows; runner labels via `${{ vars.RUNNER_LABEL_* }}` (E2E/image-build = ARC, fast feedback = hosted).
 
 ## M0 — Decision gates (BEFORE any code; produce written artifacts)
@@ -135,7 +135,7 @@ These three resolve the project's real unknowns and are required by `validation-
 | # | Milestone | TDD shape |
 |---|---|---|
 | **M0** | Decision gates above | ✅ RESOLVED — `docs/decisions/2026-06-01-*.md` |
-| **M1** | Repo + standalone infra scaffold: own Flux source, `homescout` namespace + default-deny NetworkPolicy, dedicated `homescout-postgres` (+`vector`), `homescout-redis`, own age-encrypted secrets, own domain DNS (Resend records) | infra (no TDD per `infra.md`); **gate: dedicated DB+Redis reachable + `vector` created before any integration/E2E test** |
+| **M1** | Repo + standalone infra scaffold: own Flux source, `homeranger` namespace + default-deny NetworkPolicy, dedicated `homeranger-postgres` (+`vector`), `homeranger-redis`, own age-encrypted secrets, own domain DNS (Resend records) | infra (no TDD per `infra.md`); **gate: dedicated DB+Redis reachable + `vector` created before any integration/E2E test** |
 | **M2** | Data model + repositories (incl. raw `vectorTopK`, `vector(1024)`) | RED repo unit+integration (assert cosine ordering on real pgvector) → GREEN schema/migrations/repos |
 | **M3** | Listings table read path — **first demo** (fixtures) | RED `listingsRouter.list` + table component → GREEN router + `ListingsPage` → E2E loads table, clicks a source link |
 | **M4** | Inbound email ingestion (**live data path**) | RED Resend inbound webhook + extract/dedup → GREEN raw route + `outreach:inbound` → E2E simulated inbound payload upserts `isPreMarket` listing visible in `listingsRouter.list` |
@@ -156,7 +156,7 @@ These three resolve the project's real unknowns and are required by `validation-
 
 ## Verification (end-to-end)
 
-- **Local:** `pnpm --filter @homescout/api prisma:generate && pnpm typecheck && pnpm --filter @homescout/api test && pnpm test:integration && pnpm test:e2e:local` from the worktree root, with coverage thresholds enforced (mirror the Doxus verify command + the coverage HARD-GATE).
+- **Local:** `pnpm --filter @homeranger/api prisma:generate && pnpm typecheck && pnpm --filter @homeranger/api test && pnpm test:integration && pnpm test:e2e:local` from the worktree root, with coverage thresholds enforced (mirror the Doxus verify command + the coverage HARD-GATE).
 - **Channel-1 proof (E2E):** POST a simulated Postmark inbound-parse payload (free-text + attachment) to the webhook → assert a `Listing` is upserted with `isPreMarket=true` and appears in `listingsRouter.list`. Assert `ComplianceGuard` blocks a send to a `mailboxType=unknown`/suppressed/over-cap agent.
 - **Channel-2 proof (E2E):** mock a PropertyData response via the adapter → `ingest:poll` → row appears with correct `licenceClass`, enriched onto the matching address (dedup).
 - **AI proof (E2E):** ingest → `analyze:listing` → `PhotoAnalysis` + `ListingScore` populated; table row-expand renders features + score rationale.

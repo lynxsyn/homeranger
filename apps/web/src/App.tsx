@@ -1,5 +1,5 @@
 /**
- * App shell — the HomeScout topbar (logo + primary nav + tagline + theme
+ * App shell — the HomeRanger topbar (logo + primary nav + tagline + theme
  * toggle) over the routed content, all inside the `.app` max-width container.
  *
  * `/listings` is the listings table; `/scouts` is the saved-search scout

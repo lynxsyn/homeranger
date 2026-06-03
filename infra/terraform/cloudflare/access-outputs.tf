@@ -1,7 +1,7 @@
 # Cloudflare Access outputs (separate file for a clean reviewable diff).
 
 output "app_access_aud" {
-  value       = cloudflare_zero_trust_access_application.homescout.aud
+  value       = cloudflare_zero_trust_access_application.homeranger.aud
   description = "The Access application AUD tag — set as the api's CF_ACCESS_AUD secret so jose validates the JWT audience."
 }
 

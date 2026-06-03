@@ -9,7 +9,7 @@
  *   - for OVERSIZED PDFs (over the Claude inline-document cap) flatten to text
  *     via `unpdf` (pure-JS pdf.js build, no native deps) and pass a text block;
  *   - map the provider's `ExtractedListing` (pricePence integer pence, enums
- *     from @homescout/shared tuples) onto the service's `ExtractedListing`.
+ *     from @homeranger/shared tuples) onto the service's `ExtractedListing`.
  *
  * Kept SEPARATE from claude-extraction.provider.ts so the provider stays a
  * transport-free Anthropic wrapper and the adapter owns the attachment/unpdf

@@ -10,7 +10,7 @@
  * extractor regex-parses the postcode + a price and uses the remaining subject
  * text as the raw address. Enabled by `EXTRACTION_FAKE=1`; never used in prod.
  */
-import { UK_POSTCODE_REGEX } from "@homescout/shared";
+import { UK_POSTCODE_REGEX } from "@homeranger/shared";
 import type {
   DecodedAttachment,
   ExtractedListing,

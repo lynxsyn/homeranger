@@ -1,4 +1,4 @@
-// @homescout/backend-core public surface. Routers, services, repositories,
+// @homeranger/backend-core public surface. Routers, services, repositories,
 // trpc context, and provider interfaces (EmailProvider, EmbeddingProvider)
 // are exported from here. M2 surfaces the repository layer + its shared
 // lib helpers (prisma client + cursor pagination); later milestones add
@@ -21,7 +21,7 @@ export { runTransaction } from "./lib/prisma.js";
 
 // M4 queue layer (BullMQ): config + client + enqueue helpers. apps/api (webhook
 // routes) and apps/processor (worker) import these. Deep imports
-// (`@homescout/backend-core/lib/queue/queue-client`) also resolve via the
+// (`@homeranger/backend-core/lib/queue/queue-client`) also resolve via the
 // package.json "./*" wildcard; the barrel re-export keeps the type surface
 // available to consumers that import from the package root.
 export * from "./lib/queue/queue-config.js";

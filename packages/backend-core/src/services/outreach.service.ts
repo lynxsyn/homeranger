@@ -154,7 +154,7 @@ export interface OutreachConfig {
 export function getOutreachConfig(): OutreachConfig {
   const unsubscribeBaseUrl =
     process.env.UNSUBSCRIBE_BASE_URL?.trim() ||
-    "https://app.aid-engineering.com/api/outreach/unsubscribe";
+    "https://app.homeranger.app/api/outreach/unsubscribe";
   const followupCadenceHours = Number.parseInt(
     process.env.OUTREACH_FOLLOWUP_HOURS ?? "72",
     10,

@@ -1,7 +1,7 @@
 /**
- * Queue + job-type config for the homescout BullMQ layer.
+ * Queue + job-type config for the homeranger BullMQ layer.
  *
- * Doxus derives QueueName / JobType from PRISMA enums; homescout's schema has
+ * Doxus derives QueueName / JobType from PRISMA enums; homeranger's schema has
  * NO such enum (the data model never added one), so the job types are a TS
  * union of const string literals — the shape the M4 spec asks for
  * (`outreach:inbound | resend:event | analyze:listing`). This file is the
@@ -36,7 +36,7 @@ export const QUEUE_NAMES = {
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
-/** Every job type that can ride the homescout queues (== the queue names). */
+/** Every job type that can ride the homeranger queues (== the queue names). */
 export const JOB_TYPES = [
   QUEUE_NAMES.inbound,
   QUEUE_NAMES.event,

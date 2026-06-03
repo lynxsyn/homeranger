@@ -64,7 +64,7 @@ function payload(): InboundEmailPayload {
   return {
     messageId: EMAIL_ID,
     receivedAt: new Date(),
-    recipientEmail: "inbox@homescout.app",
+    recipientEmail: "inbox@homeranger.app",
     senderEmail: `test-${TEST_PREFIX}-agent@example.com`,
     senderName: null,
     subject: "Off-market terrace",

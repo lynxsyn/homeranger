@@ -389,10 +389,10 @@ describe("createAnthropicClient (AI Gateway wiring)", () => {
 
   it("routes through the AI Gateway base URL when CF_AI_GATEWAY_* is set", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
-    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     const client = createAnthropicClient(CONFIG);
     expect(client.baseURL).toContain(
-      "gateway.ai.cloudflare.com/v1/acc123/homescout/anthropic",
+      "gateway.ai.cloudflare.com/v1/acc123/homeranger/anthropic",
     );
   });
 });

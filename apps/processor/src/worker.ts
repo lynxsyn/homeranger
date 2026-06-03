@@ -1,8 +1,8 @@
 /**
- * homescout processor — the consume side of the M4 inbound-ingestion pipeline.
+ * homeranger processor — the consume side of the M4 inbound-ingestion pipeline.
  *
  * M4 brings apps/processor up from the empty skeleton into a real BullMQ worker
- * on homescout-redis (the way M3 brought apps/api up). It registers one
+ * on homeranger-redis (the way M3 brought apps/api up). It registers one
  * processor per queue and dispatches:
  *   - outreach:inbound → hydrate (Resend Received-Emails/Attachments API → R2)
  *     then InboundIngestionService.ingestInboundEmail (Claude extraction →
@@ -21,68 +21,68 @@
  * Claude extractor for the deterministic fake (no LLM spend in E2E/CI).
  *
  * Wiring mirrors doxus-web/apps/processor/src/worker.ts, minus Sentry / Posthog
- * / OutboxRelay / scheduled-job ownership (homescout has none in M4). Node16
+ * / OutboxRelay / scheduled-job ownership (homeranger has none in M4). Node16
  * resolution → all relative imports carry `.js`.
  */
 import http from "node:http";
-import { prisma } from "@homescout/backend-core/lib/prisma";
-import { BullMQQueueClient } from "@homescout/backend-core/lib/queue/queue-client";
-import { QUEUE_NAMES } from "@homescout/backend-core/lib/queue/queue-config";
+import { prisma } from "@homeranger/backend-core/lib/prisma";
+import { BullMQQueueClient } from "@homeranger/backend-core/lib/queue/queue-client";
+import { QUEUE_NAMES } from "@homeranger/backend-core/lib/queue/queue-config";
 import {
   closeRedisConnection,
   getRedisConnection,
-} from "@homescout/backend-core/lib/queue/redis-connection";
+} from "@homeranger/backend-core/lib/queue/redis-connection";
 import {
   collectQueueMetrics,
   queueMetricsRegistry,
-} from "@homescout/backend-core/lib/queue/queue-metrics";
-import { extractionMetricsRegistry } from "@homescout/backend-core/lib/ai/claude-extraction.provider";
-import { analysisMetricsRegistry } from "@homescout/backend-core/lib/ai/analysis-metrics";
-import { ClaudeListingExtractionAdapter } from "@homescout/backend-core/lib/ai/listing-extraction.adapter";
-import { FakeListingExtractionProvider } from "@homescout/backend-core/lib/ai/fake-extraction.provider";
-import { FakeResendHydrator } from "@homescout/backend-core/lib/inbound/resend-hydrator";
+} from "@homeranger/backend-core/lib/queue/queue-metrics";
+import { extractionMetricsRegistry } from "@homeranger/backend-core/lib/ai/claude-extraction.provider";
+import { analysisMetricsRegistry } from "@homeranger/backend-core/lib/ai/analysis-metrics";
+import { ClaudeListingExtractionAdapter } from "@homeranger/backend-core/lib/ai/listing-extraction.adapter";
+import { FakeListingExtractionProvider } from "@homeranger/backend-core/lib/ai/fake-extraction.provider";
+import { FakeResendHydrator } from "@homeranger/backend-core/lib/inbound/resend-hydrator";
 import {
   DefaultInboundIngestionService,
   type ListingExtractionProvider,
-} from "@homescout/backend-core/services/inbound-ingestion.service";
-import { emailEventService } from "@homescout/backend-core/services/email-event.service";
-import { enqueueAnalyzeListing } from "@homescout/backend-core/lib/queue/queue-client";
+} from "@homeranger/backend-core/services/inbound-ingestion.service";
+import { emailEventService } from "@homeranger/backend-core/services/email-event.service";
+import { enqueueAnalyzeListing } from "@homeranger/backend-core/lib/queue/queue-client";
 import type {
   ResendHydrator,
-} from "@homescout/backend-core/lib/inbound/resend-hydrator";
+} from "@homeranger/backend-core/lib/inbound/resend-hydrator";
 // M5 analysis pipeline wiring (real providers vs ANALYSIS_FAKE seam).
-import { DefaultClaudeVisionScorer } from "@homescout/backend-core/lib/ai/vision-scorer.provider";
-import { FakeVisionScorer } from "@homescout/backend-core/lib/ai/fake-vision-scorer.provider";
-import { VoyageEmbeddingProvider } from "@homescout/backend-core/lib/ai/embedding-provider";
-import { FakeEmbeddingProvider } from "@homescout/backend-core/lib/ai/fake-embedding.provider";
-import { DefaultClaudeMatchScorer } from "@homescout/backend-core/lib/ai/match-scorer.provider";
-import { FakeMatchScorer } from "@homescout/backend-core/lib/ai/fake-match-scorer.provider";
-import { R2PhotoSource } from "@homescout/backend-core/lib/ai/r2-photo-source.provider";
-import { FakePhotoSource } from "@homescout/backend-core/lib/ai/fake-photo-source.provider";
-import type { VisionScorer } from "@homescout/backend-core/lib/ai/vision-scorer.provider";
-import type { EmbeddingProvider } from "@homescout/backend-core/lib/ai/embedding-provider";
-import type { MatchScorer } from "@homescout/backend-core/lib/ai/match-scorer.provider";
-import type { PhotoSource } from "@homescout/backend-core/lib/ai/photo-source";
-import { getPreferenceMatchService } from "@homescout/backend-core/services/preference-match.service";
-import { getListingAnalysisService } from "@homescout/backend-core/services/listing-analysis.service";
+import { DefaultClaudeVisionScorer } from "@homeranger/backend-core/lib/ai/vision-scorer.provider";
+import { FakeVisionScorer } from "@homeranger/backend-core/lib/ai/fake-vision-scorer.provider";
+import { VoyageEmbeddingProvider } from "@homeranger/backend-core/lib/ai/embedding-provider";
+import { FakeEmbeddingProvider } from "@homeranger/backend-core/lib/ai/fake-embedding.provider";
+import { DefaultClaudeMatchScorer } from "@homeranger/backend-core/lib/ai/match-scorer.provider";
+import { FakeMatchScorer } from "@homeranger/backend-core/lib/ai/fake-match-scorer.provider";
+import { R2PhotoSource } from "@homeranger/backend-core/lib/ai/r2-photo-source.provider";
+import { FakePhotoSource } from "@homeranger/backend-core/lib/ai/fake-photo-source.provider";
+import type { VisionScorer } from "@homeranger/backend-core/lib/ai/vision-scorer.provider";
+import type { EmbeddingProvider } from "@homeranger/backend-core/lib/ai/embedding-provider";
+import type { MatchScorer } from "@homeranger/backend-core/lib/ai/match-scorer.provider";
+import type { PhotoSource } from "@homeranger/backend-core/lib/ai/photo-source";
+import { getPreferenceMatchService } from "@homeranger/backend-core/services/preference-match.service";
+import { getListingAnalysisService } from "@homeranger/backend-core/services/listing-analysis.service";
 import {
   FakeEmailSendProvider,
   type EmailProvider,
-} from "@homescout/backend-core/lib/email/email-provider";
+} from "@homeranger/backend-core/lib/email/email-provider";
 import {
   NodemailerEmailProvider,
   ResendEmailSendProvider,
-} from "@homescout/backend-core/lib/email/mailbox-adapter";
-import { getOutreachService } from "@homescout/backend-core/services/outreach.service";
-import { scoutRepository } from "@homescout/backend-core/repositories/scout.repository";
-import { outreachReplyService } from "@homescout/backend-core/services/outreach-reply.service";
-import { warmupService } from "@homescout/backend-core/services/warmup.service";
+} from "@homeranger/backend-core/lib/email/mailbox-adapter";
+import { getOutreachService } from "@homeranger/backend-core/services/outreach.service";
+import { scoutRepository } from "@homeranger/backend-core/repositories/scout.repository";
+import { outreachReplyService } from "@homeranger/backend-core/services/outreach-reply.service";
+import { warmupService } from "@homeranger/backend-core/services/warmup.service";
 import {
   FakeAgentDiscoveryProvider,
   type AgentDiscoveryProvider,
-} from "@homescout/backend-core/lib/discovery/agent-discovery.provider";
-import { FirecrawlAgentDiscoveryProvider } from "@homescout/backend-core/lib/discovery/firecrawl-agent-discovery.provider";
-import { getAgentDiscoveryService } from "@homescout/backend-core/services/agent-discovery.service";
+} from "@homeranger/backend-core/lib/discovery/agent-discovery.provider";
+import { FirecrawlAgentDiscoveryProvider } from "@homeranger/backend-core/lib/discovery/firecrawl-agent-discovery.provider";
+import { getAgentDiscoveryService } from "@homeranger/backend-core/services/agent-discovery.service";
 import { RealResendHydrator } from "./resend-hydrator.js";
 import { makeInboundHandler } from "./inbound-handler.js";
 import { makeAnalyzeHandler } from "./analyze-handler.js";

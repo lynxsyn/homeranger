@@ -33,7 +33,7 @@ import {
   scoutCreateInputSchema,
   scoutSetStatusInputSchema,
   scoutUpdateInputSchema,
-} from "@homescout/shared";
+} from "@homeranger/shared";
 import { protectedProcedure, router } from "../trpc.js";
 import {
   scoutRepository,

@@ -8,8 +8,8 @@
  * Discovery only SOURCES — the ComplianceGuard still gates every subsequent send
  * (corporate-only).
  */
-import type { DiscoverAgentsJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
-import type { AgentDiscoveryService } from "@homescout/backend-core/services/agent-discovery.service";
+import type { DiscoverAgentsJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
+import type { AgentDiscoveryService } from "@homeranger/backend-core/services/agent-discovery.service";
 import { toWorkerError } from "./worker-error.js";
 
 export interface DiscoverAgentsHandlerDeps {

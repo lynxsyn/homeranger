@@ -1,9 +1,9 @@
-# Cloudflare Tunnel runtime for the homescout edge (app.aid-engineering.com +
-# hooks.aid-engineering.com).
+# Cloudflare Tunnel runtime for the homeranger edge (app.homeranger.app +
+# hooks.homeranger.app).
 #
 # Tunnel ingress rules (hostname -> origin Service) AND the per-hostname DNS
 # CNAMEs are Terraform-managed in infra/terraform/cloudflare/tunnel.tf via
-# `cloudflare_zero_trust_tunnel_cloudflared_config.homescout` and the sibling
+# `cloudflare_zero_trust_tunnel_cloudflared_config.homeranger` and the sibling
 # `cloudflare_dns_record.tunnel_*` resources. This Deployment pulls its config
 # remotely via TUNNEL_TOKEN (config_src = "cloudflare"), so there is NO
 # in-cluster config.yaml ConfigMap.
@@ -13,30 +13,30 @@
 # infra/terraform/cloudflare/waf.tf in the same PR. Manual Cloudflare-dashboard
 # edits are reverted on the next `tofu apply`.
 #
-# Mirrors doxus-infra/deploy/base/cloudflared.yaml, scoped to the homescout
+# Mirrors doxus-infra/deploy/base/cloudflared.yaml, scoped to the homeranger
 # namespace (single-user app, same 2-replica HA pattern). The connector dials
 # OUT to the Cloudflare edge (QUIC 7844 / HTTPS 443) — no inbound ingress — and
-# proxies to homescout-api:3000 (/api, /ws, webhooks) and homescout-web:8080
+# proxies to homeranger-api:3000 (/api, /ws, webhooks) and homeranger-web:8080
 # (SPA), both allowed by allow-cloudflared egress in networkpolicy.yaml.
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: cloudflared
-  namespace: homescout
+  namespace: homeranger
   labels:
     app.kubernetes.io/name: cloudflared
-    app.kubernetes.io/part-of: homescout-app
+    app.kubernetes.io/part-of: homeranger-app
 automountServiceAccountToken: false
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cloudflared
-  namespace: homescout
+  namespace: homeranger
   labels:
     app.kubernetes.io/name: cloudflared
-    app.kubernetes.io/part-of: homescout-app
+    app.kubernetes.io/part-of: homeranger-app
 spec:
   revisionHistoryLimit: 3
   replicas: 2
@@ -52,7 +52,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: cloudflared
-        app.kubernetes.io/part-of: homescout-app
+        app.kubernetes.io/part-of: homeranger-app
     spec:
       serviceAccountName: cloudflared
       automountServiceAccountToken: false
@@ -129,7 +129,7 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: cloudflared-pdb
-  namespace: homescout
+  namespace: homeranger
   labels:
     app.kubernetes.io/name: cloudflared
 spec:
@@ -143,7 +143,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: cloudflared-metrics
-  namespace: homescout
+  namespace: homeranger
   labels:
     app.kubernetes.io/name: cloudflared
 spec:

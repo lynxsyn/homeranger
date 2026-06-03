@@ -97,7 +97,7 @@ function payload(): InboundEmailPayload {
   return {
     messageId: "email-merge-1",
     receivedAt: new Date(),
-    recipientEmail: "inbox@homescout.app",
+    recipientEmail: "inbox@homeranger.app",
     senderEmail: "agent@example.com",
     senderName: null,
     subject: "Off-market",

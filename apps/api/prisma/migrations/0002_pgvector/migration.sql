@@ -8,9 +8,9 @@
 -- and uses IF NOT EXISTS guards so the migration is idempotent and safe to
 -- re-apply.
 --
--- On homescout-postgres the `vector` extension is ALREADY created by the
+-- On homeranger-postgres the `vector` extension is ALREADY created by the
 -- postgres-init-roles Job (run by the bootstrap SUPERUSER, since the extension
--- is untrusted). `homescout_migrator` is NOT a superuser, so it cannot create
+-- is untrusted). `homeranger_migrator` is NOT a superuser, so it cannot create
 -- the extension itself — but `CREATE EXTENSION IF NOT EXISTS vector` is a no-op
 -- there (the extension exists) and PostgreSQL does not require ownership to run
 -- a no-op IF NOT EXISTS, so `prisma migrate deploy` (as the migrator) succeeds.
@@ -18,7 +18,7 @@
 -- environments (e.g. the docker pgvector test DB) where the init Job has not
 -- run; there the superuser of the throwaway container creates it.
 
--- Enable pgvector (no-op against homescout-postgres; real create in test/docker).
+-- Enable pgvector (no-op against homeranger-postgres; real create in test/docker).
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Add the Listing embedding column (Voyage voyage-3.5 => 1024 dims).

@@ -16,14 +16,14 @@ terraform {
   # AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY env vars (mapped from R2_KEY_ID
   # + R2_SECRET_KEY locally; repo GH Actions secrets in CI) authenticate.
   #
-  # homescout uses its OWN state bucket + key — it shares ZERO state with
-  # Doxus. Provision the `homescout-tf-state` R2 bucket (or reuse an existing
-  # R2 account-scoped bucket with a homescout/ key prefix) before first init.
+  # homeranger uses its OWN state bucket + key — it shares ZERO state with
+  # Doxus. Provision the `homeranger-tf-state` R2 bucket (or reuse an existing
+  # R2 account-scoped bucket with a homeranger/ key prefix) before first init.
   # The R2 account endpoint below is the SAME Cloudflare account Doxus uses
   # (account hash 6108d0d4381a4b61c8d0c9cd9cdf900a). Confirm the bucket name
   # against the R2 dashboard before `tofu init`.
   backend "s3" {
-    bucket = "homescout-tf-state"
+    bucket = "homeranger-tf-state"
     key    = "cloudflare/terraform.tfstate"
     region = "auto"
     endpoints = {

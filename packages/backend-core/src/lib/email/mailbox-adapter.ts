@@ -78,7 +78,7 @@ export class NodemailerEmailProvider implements EmailProvider {
       text: input.bodyText,
       ...(input.bodyHtml ? { html: input.bodyHtml } : {}),
       ...(input.headers ? { headers: input.headers } : {}),
-      messageId: `<${stableId}@homescout>`,
+      messageId: `<${stableId}@homeranger>`,
     });
     return { providerMessageId: info.messageId };
   }

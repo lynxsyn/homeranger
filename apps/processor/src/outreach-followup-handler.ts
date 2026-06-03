@@ -2,8 +2,8 @@
  * outreach:followup consumer — sends a follow-up on an awaiting_reply thread.
  * Same guard re-check + idempotency + error mapping as outreach:send.
  */
-import type { OutreachFollowupJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
-import type { OutreachService } from "@homescout/backend-core/services/outreach.service";
+import type { OutreachFollowupJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
+import type { OutreachService } from "@homeranger/backend-core/services/outreach.service";
 import { toWorkerError } from "./worker-error.js";
 
 export interface OutreachFollowupHandlerDeps {

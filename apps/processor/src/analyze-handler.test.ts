@@ -6,9 +6,9 @@
 import { describe, expect, it } from "vitest";
 import { UnrecoverableError } from "bullmq";
 import { makeAnalyzeHandler } from "./analyze-handler.js";
-import { analysisDroppedTotal } from "@homescout/backend-core/lib/ai/analysis-metrics";
-import type { ListingAnalysisService } from "@homescout/backend-core/services/listing-analysis.service";
-import type { AnalyzeListingJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
+import { analysisDroppedTotal } from "@homeranger/backend-core/lib/ai/analysis-metrics";
+import type { ListingAnalysisService } from "@homeranger/backend-core/services/listing-analysis.service";
+import type { AnalyzeListingJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
 
 function job(): { data: AnalyzeListingJobPayload } {
   return { data: { listingId: "11111111-1111-1111-1111-111111111111" } };

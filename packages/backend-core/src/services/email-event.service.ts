@@ -1,13 +1,13 @@
 /**
  * EmailEventService — the consume-side handler for the `resend:event` queue.
- * It normalises a Resend delivery/bounce/complaint event into the homescout
+ * It normalises a Resend delivery/bounce/complaint event into the homeranger
  * `EmailEventType` enum, persists an idempotent `EmailEvent` row, and on a hard
  * bounce / spam complaint inserts a `SuppressionEntry` (feeds the M6 circuit
  * breaker). Idempotent end-to-end: the EmailEvent unique on `providerEventId`
  * means a redelivered webhook is a no-op, and suppression only mutates on the
  * FIRST delivery of a given event.
  *
- * DI pattern (email-ingestion.service.ts + homescout repos): interface +
+ * DI pattern (email-ingestion.service.ts + homeranger repos): interface +
  * `Default…Service` with `deps.x ?? defaultX`, `let` singleton + setter. NO
  * direct Prisma — repositories only. TRPCError-free (worker-side service).
  */
@@ -64,7 +64,7 @@ interface EmailEventServiceDependencies {
 }
 
 /**
- * Resend event type → homescout EmailEventType. `email.sent` has no homescout
+ * Resend event type → homeranger EmailEventType. `email.sent` has no homeranger
  * EmailEventType (we never persist a bare "sent") → null = ignore.
  */
 const RESEND_TYPE_TO_EVENT_TYPE: Record<string, EmailEventType | null> = {

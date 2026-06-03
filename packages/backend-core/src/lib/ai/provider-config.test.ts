@@ -66,9 +66,9 @@ describe("createVisionAnthropicClient", () => {
 
   it("routes through the AI Gateway when CF_AI_GATEWAY_* is set", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
-    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     expect(createVisionAnthropicClient(config).baseURL).toContain(
-      "gateway.ai.cloudflare.com/v1/acc123/homescout/anthropic",
+      "gateway.ai.cloudflare.com/v1/acc123/homeranger/anthropic",
     );
   });
 });
@@ -147,9 +147,9 @@ describe("createMatchAnthropicClient", () => {
       "api.anthropic.com",
     );
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
-    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     expect(createMatchAnthropicClient(config).baseURL).toContain(
-      "/acc123/homescout/anthropic",
+      "/acc123/homeranger/anthropic",
     );
   });
 });

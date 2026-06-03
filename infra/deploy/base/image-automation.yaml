@@ -1,11 +1,11 @@
-# Flux image automation for homescout-api + homescout-web.
+# Flux image automation for homeranger-api + homeranger-web.
 #
 # Each ImageRepository scans GHCR for tags; each ImagePolicy selects the highest
 # semver >= 0.0.1; the single ImageUpdateAutomation rewrites the $imagepolicy
 # markers in ./infra/deploy/base and commits the bump.
 #
 # push.branch = main (single-user repo → direct push; no PR-gate side-branch).
-# Doxus uses a side-branch + auto-PR for its multi-author flow; homescout pushes
+# Doxus uses a side-branch + auto-PR for its multi-author flow; homeranger pushes
 # straight to main because there is one operator and no validate-infra gate yet.
 #
 # The image-reflector + image-automation controllers live in flux-system, so
@@ -14,10 +14,10 @@
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
-  name: homescout-api
+  name: homeranger-api
   namespace: flux-system
 spec:
-  image: ghcr.io/lynxsyn/homescout-api
+  image: ghcr.io/lynxsyn/homeranger-api
   interval: 5m
   secretRef:
     name: ghcr-pull-secret-flux
@@ -25,10 +25,10 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
-  name: homescout-web
+  name: homeranger-web
   namespace: flux-system
 spec:
-  image: ghcr.io/lynxsyn/homescout-web
+  image: ghcr.io/lynxsyn/homeranger-web
   interval: 5m
   secretRef:
     name: ghcr-pull-secret-flux
@@ -37,10 +37,10 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
-  name: homescout-processor
+  name: homeranger-processor
   namespace: flux-system
 spec:
-  image: ghcr.io/lynxsyn/homescout-processor
+  image: ghcr.io/lynxsyn/homeranger-processor
   interval: 5m
   secretRef:
     name: ghcr-pull-secret-flux
@@ -49,10 +49,10 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
-  name: homescout-scheduler
+  name: homeranger-scheduler
   namespace: flux-system
 spec:
-  image: ghcr.io/lynxsyn/homescout-scheduler
+  image: ghcr.io/lynxsyn/homeranger-scheduler
   interval: 5m
   secretRef:
     name: ghcr-pull-secret-flux
@@ -60,11 +60,11 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImagePolicy
 metadata:
-  name: homescout-api
+  name: homeranger-api
   namespace: flux-system
 spec:
   imageRepositoryRef:
-    name: homescout-api
+    name: homeranger-api
   filterTags:
     pattern: '^v?(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$'
     extract: '$version'
@@ -75,11 +75,11 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImagePolicy
 metadata:
-  name: homescout-web
+  name: homeranger-web
   namespace: flux-system
 spec:
   imageRepositoryRef:
-    name: homescout-web
+    name: homeranger-web
   filterTags:
     pattern: '^v?(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$'
     extract: '$version'
@@ -90,11 +90,11 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImagePolicy
 metadata:
-  name: homescout-processor
+  name: homeranger-processor
   namespace: flux-system
 spec:
   imageRepositoryRef:
-    name: homescout-processor
+    name: homeranger-processor
   filterTags:
     pattern: '^v?(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$'
     extract: '$version'
@@ -105,11 +105,11 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImagePolicy
 metadata:
-  name: homescout-scheduler
+  name: homeranger-scheduler
   namespace: flux-system
 spec:
   imageRepositoryRef:
-    name: homescout-scheduler
+    name: homeranger-scheduler
   filterTags:
     pattern: '^v?(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$'
     extract: '$version'
@@ -120,13 +120,13 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1beta1
 kind: ImageUpdateAutomation
 metadata:
-  name: homescout
+  name: homeranger
   namespace: flux-system
 spec:
   interval: 5m
   sourceRef:
     kind: GitRepository
-    name: homescout
+    name: homeranger
   git:
     checkout:
       ref:

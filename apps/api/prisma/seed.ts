@@ -3,7 +3,7 @@
  *
  * Upserts the shared fixtures via `listingRepository.upsertByAddress` (keyed on
  * `addressNormalized`, so re-running is a no-op refresh — safe under Playwright
- * `reuseExistingServer`). Run via `pnpm --filter @homescout/api db:seed`
+ * `reuseExistingServer`). Run via `pnpm --filter @homeranger/api db:seed`
  * (`tsx prisma/seed.ts`), folded into the E2E api webServer command before the
  * server boots.
  *
@@ -13,8 +13,8 @@
 import {
   listingRepository,
   searchProfileRepository,
-} from "@homescout/backend-core";
-import { prisma } from "@homescout/backend-core/lib/prisma";
+} from "@homeranger/backend-core";
+import { prisma } from "@homeranger/backend-core/lib/prisma";
 import { LISTING_FIXTURES } from "../../../e2e/fixtures/listings.fixture.js";
 
 async function main(): Promise<void> {

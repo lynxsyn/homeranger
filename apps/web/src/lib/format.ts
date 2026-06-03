@@ -4,7 +4,7 @@
  *
  * apps/web is moduleResolution=bundler → relative imports carry NO `.js`.
  */
-import type { PropertyType } from "@homescout/shared";
+import type { PropertyType } from "@homeranger/shared";
 
 const GBP = new Intl.NumberFormat("en-GB", {
   style: "currency",

@@ -5,11 +5,11 @@
  * attachment bytes from Resend, stores attachments to R2, and verifies the
  * webhook signature upstream) and drives extraction → dedup → upsert → enqueue.
  *
- * DI pattern (email-ingestion.service.ts + homescout repos):
+ * DI pattern (email-ingestion.service.ts + homeranger repos):
  *   - an `InboundIngestionService` interface
  *   - a `DefaultInboundIngestionService` whose constructor takes
  *     `deps = {}` and sets `this.x = deps.x ?? defaultX`
- *   - a bottom `let` singleton export + `_set…ForTesting` (the homescout form;
+ *   - a bottom `let` singleton export + `_set…ForTesting` (the homeranger form;
  *     a `const` singleton cannot be reassigned by the setter)
  *   - NO `prisma.*` — every write goes through a repository singleton, and the
  *     Listing + ListingSourceRecord writes share ONE transaction via
@@ -24,7 +24,7 @@
  * it is unit-testable with fakes and never imports bullmq / the Anthropic SDK.
  */
 import type { EmailAuthVerdict, ListingSource } from "@prisma/client";
-import { normalisePostcode, normaliseOutcode } from "@homescout/shared";
+import { normalisePostcode, normaliseOutcode } from "@homeranger/shared";
 import { runTransaction } from "../lib/prisma.js";
 import {
   listingRepository,

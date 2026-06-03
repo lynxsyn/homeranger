@@ -1,8 +1,8 @@
-// @homescout/shared public surface. Zod schemas, shared enums, and UK
+// @homeranger/shared public surface. Zod schemas, shared enums, and UK
 // constants shared between web and backend-core are exported from here.
 // Barrel pattern mirrors Doxus (`doxus .../packages/shared/src/index.ts`):
 // re-export from each module with explicit `.js` extensions (Node16 module
-// resolution requires them) so consumers import from `@homescout/shared`.
+// resolution requires them) so consumers import from `@homeranger/shared`.
 
 // Listing domain enums (single source of truth with the Prisma schema).
 export * from "./listing-enums.js";

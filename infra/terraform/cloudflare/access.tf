@@ -1,5 +1,5 @@
-# ── Cloudflare Zero Trust Access for the homescout app ──
-# A self-hosted Access application fronting app.aid-engineering.com (the same
+# ── Cloudflare Zero Trust Access for the homeranger app ──
+# A self-hosted Access application fronting app.homeranger.app (the same
 # hostname the tunnel serves). Cloudflare challenges the request, mints a JWT,
 # and stamps it as the `Cf-Access-Jwt-Assertion` header on every proxied
 # request — which the api verifies in-process (jose) against the team JWKS,
@@ -16,14 +16,14 @@
 
 resource "cloudflare_zero_trust_access_service_token" "post_release_verify" {
   account_id = var.account_id
-  name       = "homescout-post-release-verify"
+  name       = "homeranger-post-release-verify"
 }
 
 # Human (browser) access: the owner authenticates interactively via the team
 # IdP / one-time PIN and the verified `email` claim must equal var.owner_email.
-resource "cloudflare_zero_trust_access_policy" "homescout_owner_allow" {
+resource "cloudflare_zero_trust_access_policy" "homeranger_owner_allow" {
   account_id = var.account_id
-  name       = "Allow owner — homescout"
+  name       = "Allow owner — homeranger"
   decision   = "allow"
   include = [
     {
@@ -44,7 +44,7 @@ resource "cloudflare_zero_trust_access_policy" "homescout_owner_allow" {
 # `common_name`, not `email`, so the api's email-gated (protected) procedures
 # stay denied — only public routes/probes pass, which is what the verify gate
 # needs (it probes the `health` publicProcedure).
-resource "cloudflare_zero_trust_access_policy" "homescout_service_auth" {
+resource "cloudflare_zero_trust_access_policy" "homeranger_service_auth" {
   account_id = var.account_id
   name       = "Service Auth — post-release-verify"
   decision   = "non_identity"
@@ -57,19 +57,19 @@ resource "cloudflare_zero_trust_access_policy" "homescout_service_auth" {
   ]
 }
 
-resource "cloudflare_zero_trust_access_application" "homescout" {
+resource "cloudflare_zero_trust_access_application" "homeranger" {
   zone_id          = var.zone_id
-  name             = "homescout"
+  name             = "homeranger"
   domain           = var.app_hostname
   session_duration = "24h"
   type             = "self_hosted"
   policies = [
     {
-      id         = cloudflare_zero_trust_access_policy.homescout_owner_allow.id
+      id         = cloudflare_zero_trust_access_policy.homeranger_owner_allow.id
       precedence = 1
     },
     {
-      id         = cloudflare_zero_trust_access_policy.homescout_service_auth.id
+      id         = cloudflare_zero_trust_access_policy.homeranger_service_auth.id
       precedence = 2
     },
   ]

@@ -1,34 +1,34 @@
-# homescout Flux source + reconciler. Lives in homescout's OWN bootstrap path.
+# homeranger Flux source + reconciler. Lives in homeranger's OWN bootstrap path.
 # Mirrors doxus-infra/deploy/flux-system/gotk-sync.yaml but points at the
-# private lynxsyn/homescout repo and homescout's pve1 overlay, decrypting with
-# homescout's OWN age secret (sops-age-homescout) — NOT Doxus's sops-age.
+# private lynxsyn/homeranger repo and homeranger's pve1 overlay, decrypting with
+# homeranger's OWN age secret (sops-age-homeranger) — NOT Doxus's sops-age.
 #
 # These objects are applied imperatively during bootstrap (see
 # infra/deploy/flux/README.md). They are NOT part of Doxus's root Flux graph;
 # they register an independent GitRepository + Kustomization in flux-system on
-# the SAME shared k3s cluster, scoped entirely to homescout resources.
+# the SAME shared k3s cluster, scoped entirely to homeranger resources.
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
-  name: homescout
+  name: homeranger
   namespace: flux-system
 spec:
   interval: 1m0s
   ref:
     branch: main
   secretRef:
-    name: homescout-git-deploy-key
-  url: ssh://git@github.com/lynxsyn/homescout
+    name: homeranger-git-deploy-key
+  url: ssh://git@github.com/lynxsyn/homeranger
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: homescout
+  name: homeranger
   namespace: flux-system
   labels:
     environment: pve1
-    owner: homescout
+    owner: homeranger
 spec:
   interval: 10m0s
   retryInterval: 2m
@@ -38,20 +38,20 @@ spec:
   wait: true
   sourceRef:
     kind: GitRepository
-    name: homescout
+    name: homeranger
   decryption:
     provider: sops
     secretRef:
-      name: sops-age-homescout
+      name: sops-age-homeranger
   healthChecks:
     - apiVersion: v1
       kind: Namespace
-      name: homescout
+      name: homeranger
     - apiVersion: apps/v1
       kind: Deployment
-      name: homescout-postgres
-      namespace: homescout
+      name: homeranger-postgres
+      namespace: homeranger
     - apiVersion: apps/v1
       kind: Deployment
-      name: homescout-redis
-      namespace: homescout
+      name: homeranger-redis
+      namespace: homeranger

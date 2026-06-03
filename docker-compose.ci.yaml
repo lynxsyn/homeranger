@@ -1,24 +1,24 @@
 ## CI / integration compose — ephemeral pgvector + redis for local integration
 ## runs and as the base image set for the GitHub `services:` containers.
-## Mirrors doxus-web/docker-compose.ci.yaml minus SuperTokens (homescout is
+## Mirrors doxus-web/docker-compose.ci.yaml minus SuperTokens (homeranger is
 ## single-user, no auth service). Use `pnpm dev:services` to bring this up
 ## locally before `pnpm test:integration`.
 
 services:
   postgres:
     # pgvector 0.8.x ships in the pgvector/pgvector:pg17 image; matches the live
-    # homescout-postgres (pgvector 0.8.2). vector(1024) + HNSW need this image.
-    image: ${HOMESCOUT_POSTGRES_IMAGE:-pgvector/pgvector:pg17}
+    # homeranger-postgres (pgvector 0.8.2). vector(1024) + HNSW need this image.
+    image: ${HOMERANGER_POSTGRES_IMAGE:-pgvector/pgvector:pg17}
     environment:
-      POSTGRES_DB: homescout_test
-      POSTGRES_USER: homescout
-      POSTGRES_PASSWORD: homescout
+      POSTGRES_DB: homeranger_test
+      POSTGRES_USER: homeranger
+      POSTGRES_PASSWORD: homeranger
     ports:
       - "5433:5432"
     tmpfs:
       - /var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "homescout", "-d", "homescout_test"]
+      test: ["CMD", "pg_isready", "-U", "homeranger", "-d", "homeranger_test"]
       interval: 3s
       timeout: 2s
       retries: 10
@@ -27,7 +27,7 @@ services:
     # Present for parity with later milestones (BullMQ queues in apps/processor).
     # M2 repositories do not touch Redis; the integration globalSetup does not
     # require it. Kept here so the same compose serves M3+ without churn.
-    image: ${HOMESCOUT_REDIS_IMAGE:-redis:7-alpine}
+    image: ${HOMERANGER_REDIS_IMAGE:-redis:7-alpine}
     ports:
       - "6379:6379"
     tmpfs:

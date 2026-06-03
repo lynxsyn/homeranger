@@ -1,14 +1,14 @@
-# homescout Postgres data volume. COPIED AS A PATTERN from
+# homeranger Postgres data volume. COPIED AS A PATTERN from
 # doxus-infra/deploy/base/postgres-pvc-longhorn.yaml. Own PVC, own data — no
 # sharing with the doxus-postgres-data-lh volume.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: homescout-postgres-data-lh
-  namespace: homescout
+  name: homeranger-postgres-data-lh
+  namespace: homeranger
   labels:
-    app.kubernetes.io/name: homescout-postgres
-    app.kubernetes.io/part-of: homescout-app
+    app.kubernetes.io/name: homeranger-postgres
+    app.kubernetes.io/part-of: homeranger-app
 spec:
   accessModes:
     - ReadWriteOnce

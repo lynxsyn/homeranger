@@ -52,7 +52,7 @@ function signSvix(body: string, id: string, ts: string): string {
 
 const DB_URL =
   process.env.DATABASE_URL ??
-  "postgresql://homescout:homescout@localhost:5434/homescout";
+  "postgresql://homeranger:homeranger@localhost:5434/homeranger";
 
 // Clean up the listing + source record this spec creates so it does NOT pollute
 // the M3 listings-table specs (which assert an exact seeded row count) running
@@ -84,7 +84,7 @@ test("a signed Resend email.received POST becomes a pre-market Listing", async (
     data: {
       email_id: EMAIL_ID,
       from: "agent@example.com",
-      to: ["inbox@homescout.app"],
+      to: ["inbox@homeranger.app"],
       subject: `New listing: ${STREET} ${POSTCODE}, £450,000`,
       attachments: [],
     },

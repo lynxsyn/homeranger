@@ -27,43 +27,43 @@ describe("getAiGatewayConfig", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
     expect(getAiGatewayConfig()).toBeNull();
     vi.unstubAllEnvs();
-    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     expect(getAiGatewayConfig()).toBeNull();
   });
 
   it("treats whitespace-only env values as unset", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "   ");
-    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     expect(getAiGatewayConfig()).toBeNull();
   });
 
   it("returns account + gateway id (no token) when both are set", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
-    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     expect(getAiGatewayConfig()).toEqual({
       accountId: "acc123",
-      gatewayId: "homescout",
+      gatewayId: "homeranger",
     });
   });
 
   it("includes a trimmed token when CF_AI_GATEWAY_TOKEN is present", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
-    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     vi.stubEnv("CF_AI_GATEWAY_TOKEN", "  tok_secret  ");
     expect(getAiGatewayConfig()).toEqual({
       accountId: "acc123",
-      gatewayId: "homescout",
+      gatewayId: "homeranger",
       token: "tok_secret",
     });
   });
 
   it("omits the token when CF_AI_GATEWAY_TOKEN is whitespace-only", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
-    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     vi.stubEnv("CF_AI_GATEWAY_TOKEN", "   ");
     expect(getAiGatewayConfig()).toEqual({
       accountId: "acc123",
-      gatewayId: "homescout",
+      gatewayId: "homeranger",
     });
   });
 });
@@ -71,8 +71,8 @@ describe("getAiGatewayConfig", () => {
 describe("gatewayBaseUrl", () => {
   it("builds the provider-scoped gateway URL", () => {
     expect(
-      gatewayBaseUrl("anthropic", { accountId: "acc123", gatewayId: "homescout" }),
-    ).toBe("https://gateway.ai.cloudflare.com/v1/acc123/homescout/anthropic");
+      gatewayBaseUrl("anthropic", { accountId: "acc123", gatewayId: "homeranger" }),
+    ).toBe("https://gateway.ai.cloudflare.com/v1/acc123/homeranger/anthropic");
   });
 });
 
@@ -83,18 +83,18 @@ describe("anthropicGatewayClientOptions", () => {
 
   it("returns the gateway baseURL (no auth header) for an unauthenticated gateway", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
-    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     expect(anthropicGatewayClientOptions()).toEqual({
-      baseURL: "https://gateway.ai.cloudflare.com/v1/acc123/homescout/anthropic",
+      baseURL: "https://gateway.ai.cloudflare.com/v1/acc123/homeranger/anthropic",
     });
   });
 
   it("adds the cf-aig-authorization header when a token is configured", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
-    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     vi.stubEnv("CF_AI_GATEWAY_TOKEN", "tok_secret");
     expect(anthropicGatewayClientOptions()).toEqual({
-      baseURL: "https://gateway.ai.cloudflare.com/v1/acc123/homescout/anthropic",
+      baseURL: "https://gateway.ai.cloudflare.com/v1/acc123/homeranger/anthropic",
       defaultHeaders: { "cf-aig-authorization": "Bearer tok_secret" },
     });
   });
@@ -118,16 +118,16 @@ describe("voyageEmbeddingsEndpoint", () => {
 
   it("routes through the gateway voyage path when CF_AI_GATEWAY_* is set", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
-    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     expect(voyageEmbeddingsEndpoint()).toEqual({
-      url: "https://gateway.ai.cloudflare.com/v1/acc123/homescout/voyage/v1/embeddings",
+      url: "https://gateway.ai.cloudflare.com/v1/acc123/homeranger/voyage/v1/embeddings",
       headers: {},
     });
   });
 
   it("adds the cf-aig-authorization header for an authenticated gateway", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
-    vi.stubEnv("CF_AI_GATEWAY_ID", "homescout");
+    vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     vi.stubEnv("CF_AI_GATEWAY_TOKEN", "tok_secret");
     expect(voyageEmbeddingsEndpoint().headers).toEqual({
       "cf-aig-authorization": "Bearer tok_secret",

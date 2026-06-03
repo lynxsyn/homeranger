@@ -1,5 +1,5 @@
 # ── Cloudflare AI Gateway (transparent proxy for outbound LLM calls) ──
-# A single gateway fronts homescout's Anthropic traffic (M4 Claude extraction;
+# A single gateway fronts homeranger's Anthropic traffic (M4 Claude extraction;
 # Voyage + Haiku join in M5) for token/cost analytics, response caching, retries
 # and a queryable request log — WITHOUT changing the model, the prompt, or the
 # call sites. The app keeps its own ANTHROPIC_API_KEY and only points the SDK
@@ -14,7 +14,7 @@
 # cloudflare_ai_gateway is supported by the pinned provider (cloudflare 5.19.1).
 # Schema-required: id, collect_logs, cache_ttl, cache_invalidate_on_update,
 # rate_limiting_interval, rate_limiting_limit.
-resource "cloudflare_ai_gateway" "homescout" {
+resource "cloudflare_ai_gateway" "homeranger" {
   account_id = var.account_id
   id         = var.ai_gateway_id
 
@@ -52,6 +52,6 @@ resource "cloudflare_ai_gateway" "homescout" {
 }
 
 output "ai_gateway_id" {
-  value       = cloudflare_ai_gateway.homescout.id
-  description = "AI Gateway slug — set as CF_AI_GATEWAY_ID in the homescout secret (paired with CF_AI_GATEWAY_ACCOUNT_ID = the Cloudflare account id)."
+  value       = cloudflare_ai_gateway.homeranger.id
+  description = "AI Gateway slug — set as CF_AI_GATEWAY_ID in the homeranger secret (paired with CF_AI_GATEWAY_ACCOUNT_ID = the Cloudflare account id)."
 }

@@ -8,7 +8,7 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { killSwitchToggleInputSchema } from "@homescout/shared";
+import { killSwitchToggleInputSchema } from "@homeranger/shared";
 import { protectedProcedure, router } from "../trpc.js";
 import { agentRepository } from "../repositories/agent.repository.js";
 import {

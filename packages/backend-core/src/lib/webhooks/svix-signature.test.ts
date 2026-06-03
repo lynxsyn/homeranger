@@ -15,7 +15,7 @@ import {
 } from "./svix-signature.js";
 
 // A deterministic `whsec_` secret (base64 of 24 bytes). Arbitrary test value.
-const SECRET = `whsec_${Buffer.from("homescout-test-svix-key!!").toString("base64")}`;
+const SECRET = `whsec_${Buffer.from("homeranger-test-svix-key!!").toString("base64")}`;
 const ID = "msg_2abc";
 const NOW_MS = 1_900_000_000_000; // fixed clock
 const TS = String(Math.floor(NOW_MS / 1000));
@@ -163,6 +163,6 @@ describe("extractSvixHeaders", () => {
 describe("decodeSvixSecret", () => {
   it("strips the whsec_ prefix and base64-decodes", () => {
     const decoded = decodeSvixSecret(SECRET);
-    expect(decoded.toString()).toBe("homescout-test-svix-key!!");
+    expect(decoded.toString()).toBe("homeranger-test-svix-key!!");
   });
 });

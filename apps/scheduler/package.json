@@ -1,5 +1,5 @@
 {
-  "name": "@homescout/scheduler",
+  "name": "@homeranger/scheduler",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "test": "cd ../.. && vitest run --project unit"
   },
   "dependencies": {
-    "@homescout/backend-core": "workspace:*"
+    "@homeranger/backend-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "25.6.2",

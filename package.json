@@ -1,5 +1,5 @@
 {
-  "name": "homescout",
+  "name": "homeranger",
   "private": true,
   "version": "0.0.1",
   "packageManager": "pnpm@10.34.1",
@@ -9,7 +9,7 @@
   },
   "scripts": {
     "lint": "eslint . --max-warnings=0",
-    "build": "pnpm --filter @homescout/shared build && pnpm --filter @homescout/backend-core build && pnpm --filter @homescout/api build && pnpm --filter @homescout/processor build && pnpm --filter @homescout/scheduler build && pnpm --filter @homescout/web build",
+    "build": "pnpm --filter @homeranger/shared build && pnpm --filter @homeranger/backend-core build && pnpm --filter @homeranger/api build && pnpm --filter @homeranger/processor build && pnpm --filter @homeranger/scheduler build && pnpm --filter @homeranger/web build",
     "typecheck": "pnpm -r --parallel run typecheck",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
@@ -18,10 +18,10 @@
     "test:e2e": "playwright test",
     "test:e2e:local": "E2E_BASE_URL=http://localhost:5173 playwright test",
     "dev:services": "docker compose -f docker-compose.dev.yaml up -d --wait",
-    "dev:api": "pnpm --filter @homescout/api dev",
-    "dev:worker": "pnpm --filter @homescout/processor dev",
-    "dev:scheduler": "pnpm --filter @homescout/scheduler dev",
-    "dev:web": "pnpm --filter @homescout/web dev"
+    "dev:api": "pnpm --filter @homeranger/api dev",
+    "dev:worker": "pnpm --filter @homeranger/processor dev",
+    "dev:scheduler": "pnpm --filter @homeranger/scheduler dev",
+    "dev:web": "pnpm --filter @homeranger/web dev"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

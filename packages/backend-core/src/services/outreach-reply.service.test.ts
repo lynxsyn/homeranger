@@ -14,7 +14,7 @@ import type { SuppressionEntryRepository } from "../repositories/suppression-ent
 const PAYLOAD: InboundEmailPayload = {
   messageId: "resend-inbound-1",
   receivedAt: new Date("2026-06-02T09:00:00Z"),
-  recipientEmail: "inbox@homescout.app",
+  recipientEmail: "inbox@homeranger.app",
   senderEmail: "branch@agency.test",
   senderName: "Branch",
   subject: "Re: buyer enquiry",

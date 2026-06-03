@@ -6,7 +6,7 @@
  *   - getById: a single listing, NOT_FOUND on miss.
  *   - expand : photo-feature + score-rationale placeholder (null until M5).
  *
- * NO SERVICE LAYER. Doxus routers delegate to a `*.service.ts`, but homescout's
+ * NO SERVICE LAYER. Doxus routers delegate to a `*.service.ts`, but homeranger's
  * M2 surfaced only repositories and this is a pure read path with zero business
  * logic between the wire and storage — so the router calls `listingRepository`
  * directly (documented here; extract `listings.service.ts` in M4+ if derivation
@@ -32,7 +32,7 @@ import { z } from "zod";
 import {
   listListingsInputSchema,
   type ListListingsInput as SharedListListingsInput,
-} from "@homescout/shared";
+} from "@homeranger/shared";
 import type { ListingStatus } from "@prisma/client";
 import { protectedProcedure, router } from "../trpc.js";
 import {

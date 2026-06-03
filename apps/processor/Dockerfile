@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1.7
-# homescout processor (BullMQ worker) image. Mirrors apps/api/Dockerfile
+# homeranger processor (BullMQ worker) image. Mirrors apps/api/Dockerfile
 # (multi-stage pnpm build, prisma generate, src/*.ts -> dist/*.js exports
 # rewrite) but builds + runs apps/processor instead of apps/api.
 #
 # Doxus ships ONE image (doxus-api) and runs the worker off it via a CMD
-# override. homescout ships a DEDICATED homescout-processor image so the
+# override. homeranger ships a DEDICATED homeranger-processor image so the
 # processor Deployment needs no command override and the api/processor images
 # scale + roll out independently. Build context is the monorepo root
 # (release.yml passes `context: .`).
@@ -15,7 +15,7 @@
 FROM node:24.15.0-alpine AS base
 RUN corepack enable && corepack prepare pnpm@10.34.1 --activate
 WORKDIR /app
-ARG DATABASE_URL=postgresql://ci:ci@localhost:5432/homescout_ci
+ARG DATABASE_URL=postgresql://ci:ci@localhost:5432/homeranger_ci
 ENV DATABASE_URL=$DATABASE_URL
 
 # Install ALL deps. --ignore-scripts blocks postinstall worms inside the image;

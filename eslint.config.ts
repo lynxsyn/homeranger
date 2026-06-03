@@ -1,4 +1,4 @@
-// homescout flat ESLint config (loaded via jiti). Lean M1 baseline:
+// homeranger flat ESLint config (loaded via jiti). Lean M1 baseline:
 // typescript-eslint recommended (non-type-checked — fast, no parserServices).
 // Tighten with type-checked rules once the app surface lands (M2+).
 import tseslint from 'typescript-eslint'

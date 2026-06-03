@@ -5,8 +5,8 @@
  * (4xx) → UnrecoverableError (drop, no wasted retries/spend); transient → rethrow.
  */
 import { UnrecoverableError } from "bullmq";
-import { analysisDroppedTotal } from "@homescout/backend-core/lib/ai/analysis-metrics";
-import type { PreferenceMatchService } from "@homescout/backend-core/services/preference-match.service";
+import { analysisDroppedTotal } from "@homeranger/backend-core/lib/ai/analysis-metrics";
+import type { PreferenceMatchService } from "@homeranger/backend-core/services/preference-match.service";
 
 function isRetryable(error: unknown): boolean {
   const flag = (error as { retryable?: unknown } | null)?.retryable;

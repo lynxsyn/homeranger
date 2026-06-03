@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# homescout release-tag policy. SELF-CONTAINED (no doxus-ops delegation).
+# homeranger release-tag policy. SELF-CONTAINED (no doxus-ops delegation).
 #
 # Doxus's .aide/release-tag-policy.sh is a thin shim that execs the canonical
-# at doxus-ops/scripts/release/release-tag-policy.sh. homescout is a SINGLE
+# at doxus-ops/scripts/release/release-tag-policy.sh. homeranger is a SINGLE
 # repo with its OWN overlay independent of doxus-ops, so the canonical logic
 # is inlined here verbatim (doxus-ops PR #531 body).
 #
@@ -23,7 +23,7 @@ set -euo pipefail
 # and can pick an older tag when a parallel merge took the newer one).
 git fetch --tags --quiet origin 2>/dev/null || true
 LAST="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)"
-# Seed at v0.0.0 so the FIRST milestone (M1) becomes v0.1.0 — homescout is a
+# Seed at v0.0.0 so the FIRST milestone (M1) becomes v0.1.0 — homeranger is a
 # pre-1.0 greenfield tool (matches the v0.1.0 / range >=0.1.0 image-automation seed).
 [ -z "$LAST" ] && LAST="v0.0.0"
 

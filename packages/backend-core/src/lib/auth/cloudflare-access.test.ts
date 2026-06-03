@@ -3,7 +3,7 @@
  *
  * Ported from doxus-web .../lib/cf-access.test.ts (jose 4.15.9 createLocalJWKSet
  * + generateKeyPair so verification runs with no outbound HTTPS), extended for
- * homescout's single-allowed-user check, the dev-bypass env contract, and the
+ * homeranger's single-allowed-user check, the dev-bypass env contract, and the
  * `resolveCfAccessIdentity` header resolver.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -29,7 +29,7 @@ import {
 
 const TEAM_DOMAIN = "test.cloudflareaccess.com";
 const AUDIENCE = "test-aud-hex";
-const ALLOWED_EMAIL = "owner@homescout.test";
+const ALLOWED_EMAIL = "owner@homeranger.test";
 const ISSUER = `https://${TEAM_DOMAIN}`;
 
 interface TestKeySet {
@@ -141,7 +141,7 @@ describe("verifyCfAccessJwt", () => {
   });
 
   it("rejects a valid JWT whose email is not the allowed user", async () => {
-    const token = await signToken(key, { email: "intruder@homescout.test" });
+    const token = await signToken(key, { email: "intruder@homeranger.test" });
     await expect(verifyCfAccessJwt(token, config(key))).rejects.toThrow(
       /not the allowed user/,
     );
@@ -284,9 +284,9 @@ describe("resolveCfAccessIdentity", () => {
   });
 
   it("bypasses to DEV_USER_EMAIL when set", async () => {
-    process.env.DEV_USER_EMAIL = "custom-dev@homescout.local";
+    process.env.DEV_USER_EMAIL = "custom-dev@homeranger.local";
     const identity = await resolveCfAccessIdentity(undefined, null);
-    expect(identity).toEqual({ email: "custom-dev@homescout.local" });
+    expect(identity).toEqual({ email: "custom-dev@homeranger.local" });
   });
 
   it("returns the identity for a valid header token", async () => {

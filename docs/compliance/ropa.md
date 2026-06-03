@@ -1,6 +1,6 @@
-# Record of Processing Activities (ROPA) — homescout
+# Record of Processing Activities (ROPA) — homeranger
 
-> GDPR Art. 30 record for the homescout outbound-outreach + listing-ingestion
+> GDPR Art. 30 record for the homeranger outbound-outreach + listing-ingestion
 > processing. Single-user, self-hosted, non-commercial personal tool. Template
 > shape mirrors the Doxus ROPA. Paired with the LIA
 > (`legitimate-interest-basis.md`).
@@ -9,7 +9,7 @@
 
 | Field | Value |
 |---|---|
-| Controller | The operator (single private individual running homescout self-hosted). |
+| Controller | The operator (single private individual running homeranger self-hosted). |
 | Contact | The operator's own mailbox (see deployment secret). |
 | DPO | Not required (no large-scale or special-category processing). |
 

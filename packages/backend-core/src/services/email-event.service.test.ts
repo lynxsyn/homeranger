@@ -93,7 +93,7 @@ describe("normaliseResendEventType", () => {
     expect(normaliseResendEventType("email.failed")).toBe("failed");
   });
 
-  it("returns null for email.sent (no homescout EmailEventType)", () => {
+  it("returns null for email.sent (no homeranger EmailEventType)", () => {
     expect(normaliseResendEventType("email.sent")).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { makeDiscoverAgentsHandler } from "./discover-agents-handler.js";
-import type { AgentDiscoveryService } from "@homescout/backend-core/services/agent-discovery.service";
+import type { AgentDiscoveryService } from "@homeranger/backend-core/services/agent-discovery.service";
 
 describe("makeDiscoverAgentsHandler", () => {
   it("delegates the region to AgentDiscoveryService.discoverRegion", async () => {

@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 // Mirrors doxus-web/vitest.config.ts: one root config with named `unit` and
 // `integration` projects + v8 coverage measured against the unit project.
 //
-// homescout simplifications vs Doxus:
+// homeranger simplifications vs Doxus:
 //   - No `tools` project (no scripts/ test surface yet).
 //   - Single-user app: no SuperTokens / tenant seed gate; the integration
 //     globalSetup only verifies a live pgvector connection.

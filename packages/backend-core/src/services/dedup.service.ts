@@ -15,12 +15,12 @@
  *      (M4's extractor produces no embedding yet, so dedup is exact-match-only
  *      in practice; the fallback is wired for M5 + tested with a fake.)
  *
- * DI pattern (email-ingestion.service.ts + homescout repos): interface + a
+ * DI pattern (email-ingestion.service.ts + homeranger repos): interface + a
  * `Default…Service` taking `deps = {}` with `this.x = deps.x ?? defaultX`,
  * a bottom `let` singleton export + `_set…ForTesting`. NO direct Prisma — every
  * read goes through `listingRepository`. TRPCError-free (worker-side service).
  */
-import { normalisePostcode } from "@homescout/shared";
+import { normalisePostcode } from "@homeranger/shared";
 import {
   listingRepository,
   type ListingRepository,

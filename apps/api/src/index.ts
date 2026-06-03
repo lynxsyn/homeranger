@@ -1,2 +1,2 @@
-// @homescout/api placeholder entrypoint. Replaced by src/main.ts in M1+.
+// @homeranger/api placeholder entrypoint. Replaced by src/main.ts in M1+.
 export {};

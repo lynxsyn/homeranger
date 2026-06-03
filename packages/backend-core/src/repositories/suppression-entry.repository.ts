@@ -5,7 +5,7 @@
  * suppression. The `@@unique([email, reason])` makes the upsert idempotent
  * (re-bouncing the same address is a no-op for row count).
  *
- * Mirrors homescout repository conventions (listing-source-record.repository.ts).
+ * Mirrors homeranger repository conventions (listing-source-record.repository.ts).
  */
 import { Prisma, type SuppressionReason } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";

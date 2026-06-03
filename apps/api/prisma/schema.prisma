@@ -1,4 +1,4 @@
-// homescout data model — single-user, no tenant scoping, no RLS.
+// homeranger data model — single-user, no tenant scoping, no RLS.
 // Conventions mirror Doxus control-plane-api/prisma/schema.prisma exactly:
 //   • id String @id @default(uuid(7)) @db.Uuid
 //   • timestamps @db.Timestamptz(6)
@@ -57,7 +57,7 @@ enum EpcRating {
   unknown
 }
 
-// LOCKED by docs/plans/homescout-plan.md:86 — these five values are canonical.
+// LOCKED by docs/plans/homeranger-plan.md:86 — these five values are canonical.
 // Mirrors ListingStatusEnum in packages/shared/src/listing-enums.ts exactly.
 enum ListingStatus {
   pre_market

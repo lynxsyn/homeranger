@@ -16,16 +16,16 @@ import {
   getR2Storage,
   buildAttachmentKey,
   type R2Storage,
-} from "@homescout/backend-core/lib/storage/r2";
-import { MAX_ATTACHMENTS_PER_EMAIL } from "@homescout/backend-core/lib/ai/listing-extraction.adapter";
+} from "@homeranger/backend-core/lib/storage/r2";
+import { MAX_ATTACHMENTS_PER_EMAIL } from "@homeranger/backend-core/lib/ai/listing-extraction.adapter";
 import {
   normaliseAuthVerdict,
   firstRecipient,
   type HydratedInboundEmail,
   type ResendHydrator,
-} from "@homescout/backend-core/lib/inbound/resend-hydrator";
-import type { InboundEmailJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
-import type { DecodedAttachment } from "@homescout/backend-core/services/inbound-ingestion.service";
+} from "@homeranger/backend-core/lib/inbound/resend-hydrator";
+import type { InboundEmailJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
+import type { DecodedAttachment } from "@homeranger/backend-core/services/inbound-ingestion.service";
 
 /**
  * Read SPF/DKIM verdicts from the Authentication-Results header (lower-cased

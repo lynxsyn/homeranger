@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 /**
- * Canonical cursor-pagination contract for @homescout/backend-core.
+ * Canonical cursor-pagination contract for @homeranger/backend-core.
  *
  * Every list endpoint that returns paged results MUST consume
  * `cursorPageInput` (or `cursorPageInput.extend({ ...filters })`) for its

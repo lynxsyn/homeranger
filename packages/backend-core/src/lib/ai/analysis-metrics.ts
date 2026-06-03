@@ -1,10 +1,10 @@
 /**
  * Prometheus metrics for the M5 analysis providers (Claude vision, Voyage
- * embeddings, Claude match re-score). A self-contained Registry (homescout has
+ * embeddings, Claude match re-score). A self-contained Registry (homeranger has
  * no shared metrics registry) the processor merges into its /metrics scrape
  * alongside the queue + extraction registries. The `getSingleMetric ?? new`
  * guard keeps the module import-safe under HMR / repeated test imports (the
- * established homescout pattern from claude-extraction.provider.ts).
+ * established homeranger pattern from claude-extraction.provider.ts).
  *
  * `costPence` is ALSO persisted per photo on PhotoAnalysis (durable, queryable
  * for the monthly-spend kill-switch); this counter is the live cumulative view.
@@ -15,11 +15,11 @@ export const analysisMetricsRegistry = new Registry();
 
 /** Token usage by provider (anthropic|voyage), type (input|output), and model. */
 export const aiTokensTotal: Counter<"provider" | "type" | "model"> =
-  (analysisMetricsRegistry.getSingleMetric("homescout_ai_tokens_total") as
+  (analysisMetricsRegistry.getSingleMetric("homeranger_ai_tokens_total") as
     | Counter<"provider" | "type" | "model">
     | undefined) ??
   new Counter({
-    name: "homescout_ai_tokens_total",
+    name: "homeranger_ai_tokens_total",
     help: "AI token usage by provider, type and model (M5 analysis)",
     labelNames: ["provider", "type", "model"],
     registers: [analysisMetricsRegistry],
@@ -27,11 +27,11 @@ export const aiTokensTotal: Counter<"provider" | "type" | "model"> =
 
 /** Cumulative spend in integer pence by provider + model. */
 export const aiCostPenceTotal: Counter<"provider" | "model"> =
-  (analysisMetricsRegistry.getSingleMetric("homescout_ai_cost_pence_total") as
+  (analysisMetricsRegistry.getSingleMetric("homeranger_ai_cost_pence_total") as
     | Counter<"provider" | "model">
     | undefined) ??
   new Counter({
-    name: "homescout_ai_cost_pence_total",
+    name: "homeranger_ai_cost_pence_total",
     help: "Cumulative AI spend in pence by provider and model (M5 analysis)",
     labelNames: ["provider", "model"],
     registers: [analysisMetricsRegistry],
@@ -40,10 +40,10 @@ export const aiCostPenceTotal: Counter<"provider" | "model"> =
 /** Request duration by provider + outcome (ok|error). */
 export const aiRequestDurationSeconds: Histogram<"provider" | "status"> =
   (analysisMetricsRegistry.getSingleMetric(
-    "homescout_ai_request_duration_seconds",
+    "homeranger_ai_request_duration_seconds",
   ) as Histogram<"provider" | "status"> | undefined) ??
   new Histogram({
-    name: "homescout_ai_request_duration_seconds",
+    name: "homeranger_ai_request_duration_seconds",
     help: "AI request duration in seconds by provider and outcome (M5 analysis)",
     labelNames: ["provider", "status"],
     buckets: [0.1, 0.5, 1, 2, 5, 10, 30, 60],
@@ -56,11 +56,11 @@ export const aiRequestDurationSeconds: Histogram<"provider" | "status"> =
  * counter is the only signal they happened — scraped via the processor /metrics.
  */
 export const analysisDroppedTotal: Counter<string> =
-  (analysisMetricsRegistry.getSingleMetric("homescout_analysis_dropped_total") as
+  (analysisMetricsRegistry.getSingleMetric("homeranger_analysis_dropped_total") as
     | Counter<string>
     | undefined) ??
   new Counter({
-    name: "homescout_analysis_dropped_total",
+    name: "homeranger_analysis_dropped_total",
     help: "analyze:listing jobs dropped as non-retryable (poison pill)",
     registers: [analysisMetricsRegistry],
   });
@@ -68,10 +68,10 @@ export const analysisDroppedTotal: Counter<string> =
 /** Count of analyses short-circuited by the monthly-spend kill-switch. */
 export const analysisKillSwitchTotal: Counter<"reason"> =
   (analysisMetricsRegistry.getSingleMetric(
-    "homescout_analysis_kill_switch_total",
+    "homeranger_analysis_kill_switch_total",
   ) as Counter<"reason"> | undefined) ??
   new Counter({
-    name: "homescout_analysis_kill_switch_total",
+    name: "homeranger_analysis_kill_switch_total",
     help: "Listing analyses short-circuited by the kill-switch, by reason",
     labelNames: ["reason"],
     registers: [analysisMetricsRegistry],

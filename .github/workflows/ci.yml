@@ -1,4 +1,4 @@
-# homescout CI — M2 core: secret-scan + typecheck/lint + api-unit (coverage) +
+# homeranger CI — M2 core: secret-scan + typecheck/lint + api-unit (coverage) +
 # api-integration (pgvector service container -> prisma migrate deploy ->
 # test:integration). Grows per milestone: M3 adds E2E, M2+ adds the per-app
 # image build (release.yml). Action SHAs pinned (mirrors Doxus).
@@ -48,7 +48,7 @@ jobs:
       # generated @prisma/client (models + enums). prisma.config.ts tolerates a
       # missing MIGRATION_DATABASE_URL, so generate needs no DB.
       - name: Prisma generate
-        run: pnpm --filter @homescout/api prisma:generate
+        run: pnpm --filter @homeranger/api prisma:generate
       - name: Typecheck
         run: pnpm typecheck
       - name: Lint
@@ -68,8 +68,8 @@ jobs:
       # resolve during the unit run (the drift test imports the generated enums).
       - name: Prisma generate
         env:
-          MIGRATION_DATABASE_URL: postgresql://homescout:homescout@localhost:5432/homescout_test
-        run: pnpm --filter @homescout/api prisma:generate
+          MIGRATION_DATABASE_URL: postgresql://homeranger:homeranger@localhost:5432/homeranger_test
+        run: pnpm --filter @homeranger/api prisma:generate
       - name: Unit tests + coverage
         run: pnpm test:coverage
 
@@ -87,7 +87,7 @@ jobs:
       # backend-core/shared are erased by esbuild at test runtime, so no Prisma
       # client or DB is needed (unlike api-unit).
       - name: Web unit tests (happy-dom + testing-library)
-        run: pnpm --filter @homescout/web test
+        run: pnpm --filter @homeranger/web test
 
   api-integration:
     runs-on: ${{ vars.RUNNER_LABEL_DEFAULT || 'ubuntu-latest' }}
@@ -95,19 +95,19 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg17
         env:
-          POSTGRES_DB: homescout_test
-          POSTGRES_USER: homescout
-          POSTGRES_PASSWORD: homescout
+          POSTGRES_DB: homeranger_test
+          POSTGRES_USER: homeranger
+          POSTGRES_PASSWORD: homeranger
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U homescout -d homescout_test"
+          --health-cmd "pg_isready -U homeranger -d homeranger_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql://homescout:homescout@localhost:5432/homescout_test
-      MIGRATION_DATABASE_URL: postgresql://homescout:homescout@localhost:5432/homescout_test
+      DATABASE_URL: postgresql://homeranger:homeranger@localhost:5432/homeranger_test
+      MIGRATION_DATABASE_URL: postgresql://homeranger:homeranger@localhost:5432/homeranger_test
       VITEST_INTEGRATION: "1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -118,12 +118,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Prisma generate
-        run: pnpm --filter @homescout/api prisma:generate
+        run: pnpm --filter @homeranger/api prisma:generate
       # Applies 0001_init + the raw 0002_pgvector (CREATE EXTENSION vector +
       # vector(1024) columns + HNSW index). The container superuser owns the DB,
       # so CREATE EXTENSION succeeds on this throwaway pgvector instance.
       - name: Apply migrations
-        run: pnpm --filter @homescout/api prisma:deploy
+        run: pnpm --filter @homeranger/api prisma:deploy
       - name: Integration tests (real pgvector)
         run: pnpm test:integration
 
@@ -133,18 +133,18 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg17
         env:
-          POSTGRES_DB: homescout_test
-          POSTGRES_USER: homescout
-          POSTGRES_PASSWORD: homescout
+          POSTGRES_DB: homeranger_test
+          POSTGRES_USER: homeranger
+          POSTGRES_PASSWORD: homeranger
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U homescout -d homescout_test"
+          --health-cmd "pg_isready -U homeranger -d homeranger_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
       # The M4 inbound E2E adds a third Playwright webServer — the BullMQ worker
-      # (pnpm --filter @homescout/processor e2e:worker on :9090) — which
+      # (pnpm --filter @homeranger/processor e2e:worker on :9090) — which
       # fail-fast-pings Redis at boot (worker.ts) and exits if it is missing.
       # Without this service the worker dies, port 9090 never opens, the worker
       # webServer startup times out, the e2e job fails, and ci-gate deadlocks the
@@ -163,8 +163,8 @@ jobs:
       # servers. DB env points at the service container; CF_ACCESS_* are UNSET so
       # the api takes the dev-bypass path (no Cloudflare in CI). CI=true flips
       # reuseExistingServer off + retries to 1.
-      DATABASE_URL: postgresql://homescout:homescout@localhost:5432/homescout_test
-      MIGRATION_DATABASE_URL: postgresql://homescout:homescout@localhost:5432/homescout_test
+      DATABASE_URL: postgresql://homeranger:homeranger@localhost:5432/homeranger_test
+      MIGRATION_DATABASE_URL: postgresql://homeranger:homeranger@localhost:5432/homeranger_test
       # The worker webServer reads REDIS_URL (default redis://localhost:6379) and
       # pings Redis at boot; the api webServer enqueues onto it. Point both at the
       # redis service container above so the inbound E2E can enqueue + consume.
@@ -178,7 +178,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Prisma generate
-        run: pnpm --filter @homescout/api prisma:generate
+        run: pnpm --filter @homeranger/api prisma:generate
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: E2E (Playwright — webServer handles deploy + seed + boot)

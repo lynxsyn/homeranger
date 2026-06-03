@@ -1,7 +1,7 @@
 /* ============================================================================
-   HomeScout — Design Tokens (colours + type)
+   HomeRanger — Design Tokens (colours + type)
    ----------------------------------------------------------------------------
-   HomeScout is a calm, single-user UK property aggregator: a quiet table of
+   HomeRanger is a calm, single-user UK property aggregator: a quiet table of
    homes pulled from estate-agent emails, photo + metadata, click out to the
    source. The visual language is "editorial & trustworthy, not portal-flashy" —
    warm paper neutrals, one confident evergreen accent, generous rounding, soft
@@ -15,7 +15,7 @@
 
    Fonts are loaded from Google Fonts (see fonts/fonts.css or the <link> in your
    HTML). NOTE: the source codebase shipped no brand fonts (Tailwind defaults),
-   so this type pairing is a HomeScout design-system decision — see README.
+   so this type pairing is a HomeRanger design-system decision — see README.
    ========================================================================== */
 
 /* ---- Font face imports (Google Fonts) ----------------------------------- */

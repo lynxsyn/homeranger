@@ -30,7 +30,7 @@ The product needs UK for-sale (ideally pre-market) listings with an address, pri
 
 **Drop the compliant-API channel entirely for v1. Agent email is the sole source.**
 
-The user elected the simplest coherent shape: ingest listings from agent emails, and **click through to the agent's own page** (via the stored `listingUrl`) for any detail the email doesn't carry (EPC, comps, area stats). The in-app table shows only what the agent's email states (price, beds, EPC *if* mentioned) plus homescout's own AI taste scores — everything else is one click away on the source page.
+The user elected the simplest coherent shape: ingest listings from agent emails, and **click through to the agent's own page** (via the stored `listingUrl`) for any detail the email doesn't carry (EPC, comps, area stats). The in-app table shows only what the agent's email states (price, beds, EPC *if* mentioned) plus homeranger's own AI taste scores — everything else is one click away on the source page.
 
 ### What this removes from the original plan
 - The `ListingSourceAdapter` framework and all data adapters (PropertyData / PaTMa / Land Registry / EPC).

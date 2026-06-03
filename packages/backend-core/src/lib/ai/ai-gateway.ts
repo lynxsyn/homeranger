@@ -1,5 +1,5 @@
 /**
- * Cloudflare AI Gateway wiring for homescout's outbound LLM calls.
+ * Cloudflare AI Gateway wiring for homeranger's outbound LLM calls.
  *
  * AI Gateway is a TRANSPARENT PROXY in front of the model provider (Anthropic
  * today; Voyage / Haiku join in M5): the app keeps its OWN provider API key and
@@ -28,7 +28,7 @@ const GATEWAY_HOST = "https://gateway.ai.cloudflare.com";
 export interface AiGatewayConfig {
   /** Cloudflare account id — the 32-char hex account tag in the gateway URL. */
   accountId: string;
-  /** Gateway slug/name (e.g. "homescout"), as created in ai-gateway.tf. */
+  /** Gateway slug/name (e.g. "homeranger"), as created in ai-gateway.tf. */
   gatewayId: string;
   /**
    * Optional `cf-aig-authorization` bearer for AUTHENTICATED gateways. Absent

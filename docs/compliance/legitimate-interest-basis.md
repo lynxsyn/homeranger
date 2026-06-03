@@ -1,4 +1,4 @@
-# Legitimate Interest Assessment (LIA) — homescout outbound outreach
+# Legitimate Interest Assessment (LIA) — homeranger outbound outreach
 
 > **Scope:** the M6 outbound outreach path — autonomous-but-guarded cold B2B
 > email to UK estate-agent **corporate** mailboxes, and the ingestion of their

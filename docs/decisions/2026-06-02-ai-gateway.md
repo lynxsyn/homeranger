@@ -11,7 +11,7 @@ supersedes: none
 ## Context
 
 A platform-scope review (which Cloudflare services to adopt vs. keep portable)
-concluded that homescout already uses Cloudflare for the layer it should — the
+concluded that homeranger already uses Cloudflare for the layer it should — the
 network/storage edge (R2, Tunnel, Access, WAF, DNS) — while the stateful core
 (Postgres+pgvector, BullMQ/Redis, Node-on-K8s, Resend, Claude, Voyage) stays
 deliberately portable and off the Workers serverless paradigm. The review found
@@ -32,7 +32,7 @@ request/token/cost analytics, optional response caching, retries, and a queryabl
 request log **without changing the model, the prompt, or the call sites**.
 
 - **Infra:** `infra/terraform/cloudflare/ai-gateway.tf` provisions one
-  `cloudflare_ai_gateway` ("homescout") in the same CF account as R2. `collect_logs`
+  `cloudflare_ai_gateway` ("homeranger") in the same CF account as R2. `collect_logs`
   on (the analytics this exists for); caching + rate-limiting off by default;
   `authentication` off by default (var-flippable).
 - **App:** `packages/backend-core/src/lib/ai/ai-gateway.ts` builds the gateway
@@ -75,7 +75,7 @@ adoption exists for; the cleaner escape hatch remains unsetting the env entirely
 - Add (optional) secrets: `CF_AI_GATEWAY_ACCOUNT_ID`, `CF_AI_GATEWAY_ID`,
   `CF_AI_GATEWAY_TOKEN` (token only for an authenticated gateway). Wired into the
   processor Deployment with `optional: true` so a secret without them still boots.
-- `tofu apply` (or `-target=cloudflare_ai_gateway.homescout`) creates the gateway;
+- `tofu apply` (or `-target=cloudflare_ai_gateway.homeranger`) creates the gateway;
   the GitHub Actions CF token already in use covers it. Free at this volume.
 - No app behaviour change when the gateway is off; identical extraction results
   when on (same model, same prompt).

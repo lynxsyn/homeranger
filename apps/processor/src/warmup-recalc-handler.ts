@@ -3,8 +3,8 @@
  * Ramps the daily cap + reconciles the window counter. Idempotent; recalc errors
  * are retryable (a transient DB blip).
  */
-import type { WarmupRecalcJobPayload } from "@homescout/backend-core/lib/queue/queue-config";
-import type { WarmupService } from "@homescout/backend-core/services/warmup.service";
+import type { WarmupRecalcJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
+import type { WarmupService } from "@homeranger/backend-core/services/warmup.service";
 import { toWorkerError } from "./worker-error.js";
 
 export interface WarmupRecalcHandlerDeps {

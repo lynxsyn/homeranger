@@ -10,7 +10,7 @@ supersedes: none
 
 ## Context
 
-homescout vectorises (a) each listing's extracted text and (b) the user's free-text preference profile, for a pgvector cosine **top-K** retrieval, after which Claude **re-scores only the top-K** to produce the final ranking. The chosen model fixes the `vector(N)` dimension in the Prisma migration, and changing it later requires a migration **plus a full re-embed of the corpus** — so the choice is locked deliberately now.
+homeranger vectorises (a) each listing's extracted text and (b) the user's free-text preference profile, for a pgvector cosine **top-K** retrieval, after which Claude **re-scores only the top-K** to produce the final ranking. The chosen model fixes the `vector(N)` dimension in the Prisma migration, and changing it later requires a migration **plus a full re-embed of the corpus** — so the choice is locked deliberately now.
 
 This is a single-user, low-volume workload. The two-stage design (cheap vector recall → LLM precision re-rank) means the embedding only has to get the right candidates into the top-K bucket; it does not have to be the final arbiter of rank. That lowers the quality bar and lets cost/ops/residency drive the decision.
 

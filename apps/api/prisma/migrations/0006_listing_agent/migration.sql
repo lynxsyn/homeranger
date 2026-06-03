@@ -10,7 +10,7 @@
 -- DDL only (no data backfill): both columns are NULLable with NO default, so
 -- existing rows simply carry NULL (the Agent column renders "—" for them).
 -- Authored by hand to match the NNNN_name convention of 0004_outreach_compliance
--- / 0005_scouts (homescout does NOT use Prisma's timestamped dirs); the DDL is
+-- / 0005_scouts (homeranger does NOT use Prisma's timestamped dirs); the DDL is
 -- exactly what `prisma migrate diff` emits for these schema changes. No new
 -- table → 0003's ALTER DEFAULT PRIVILEGES already covers the existing Listing
 -- grant, so no GRANT statement is needed here.

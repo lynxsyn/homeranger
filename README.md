@@ -1,3 +1,3 @@
-# homescout
+# homeranger
 
-Standalone UK property aggregator (two-channel ingestion + AI matching). Plan: docs/plans/homescout-plan.md
+Standalone UK property aggregator (two-channel ingestion + AI matching). Plan: docs/plans/homeranger-plan.md

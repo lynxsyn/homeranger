@@ -38,7 +38,7 @@ export interface EmailProvider {
 }
 
 export interface OutreachEmailConfig {
-  /** The verified sending address (RESEND_FROM), e.g. "Homescout <hi@…>". */
+  /** The verified sending address (RESEND_FROM), e.g. "HomeRanger <hi@…>". */
   from: string;
   /** Optional Reply-To override. */
   replyTo?: string;

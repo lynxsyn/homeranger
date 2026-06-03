@@ -10,7 +10,7 @@
  *      the listing, and re-matches it against the seeded SearchProfile —
  *      writing PhotoAnalysis + Listing.embedding + ListingScore.
  *   3. /listings renders the row; its match-score RING shows the blended 0–100
- *      score once analysis lands (the HomeScout design surfaces the score as a
+ *      score once analysis lands (the HomeRanger design surfaces the score as a
  *      per-row ring — there is no row-expand panel; the `listings.expand`
  *      endpoint remains for a future detail view).
  *   4. Because the analysed listing is the only SCORED row, the default
@@ -49,7 +49,7 @@ function signSvix(body: string, id: string, ts: string): string {
 
 const DB_URL =
   process.env.DATABASE_URL ??
-  "postgresql://homescout:homescout@localhost:5434/homescout";
+  "postgresql://homeranger:homeranger@localhost:5434/homeranger";
 
 // Remove the listing this spec creates (cascade drops its PhotoAnalysis +
 // ListingScore) so it does not pollute the M3 listings-table specs' exact row
@@ -80,7 +80,7 @@ test("ingest → analyze → the row's score ring shows the match score", async 
     data: {
       email_id: EMAIL_ID,
       from: "agent@example.com",
-      to: ["inbox@homescout.app"],
+      to: ["inbox@homeranger.app"],
       subject: `New listing: ${STREET} ${POSTCODE}, £450,000`,
       attachments: [],
     },

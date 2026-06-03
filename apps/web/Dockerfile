@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.7
-# homescout web (SPA) image. Mirrors doxus-web/apps/web/Dockerfile: build the
-# Vite bundle, serve it via nginx (non-root). homescout differences: serves on
+# homeranger web (SPA) image. Mirrors doxus-web/apps/web/Dockerfile: build the
+# Vite bundle, serve it via nginx (non-root). homeranger differences: serves on
 # 8080 (matches the k8s Service + tunnel.tf ingress), no Sentry/Google-picker
 # build ARGs, and builds shared + backend-core in-image first because the SPA
-# imports `inferRouterOutputs` types from @homescout/backend-core. Build context
+# imports `inferRouterOutputs` types from @homeranger/backend-core. Build context
 # is the monorepo root (release.yml passes `context: .`).
 FROM node:24.15.0-alpine AS base
 RUN corepack enable && corepack prepare pnpm@10.34.1 --activate
@@ -22,7 +22,7 @@ COPY --from=deps /app/ ./
 COPY . .
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     pnpm rebuild @prisma/client @prisma/engines prisma esbuild
-# The web app's `import type { AppRouter }` from @homescout/backend-core resolves
+# The web app's `import type { AppRouter }` from @homeranger/backend-core resolves
 # against the package's TS sources at build time (Vite/tsc), but prisma client
 # types are needed for backend-core to typecheck cleanly during the bundle.
 RUN cd apps/api && npx prisma generate

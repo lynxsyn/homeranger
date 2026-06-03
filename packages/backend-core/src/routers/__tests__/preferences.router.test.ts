@@ -27,7 +27,7 @@ function makeProfile(overrides: Partial<SearchProfileRecord> = {}): SearchProfil
   };
 }
 
-const authedCaller = appRouter.createCaller({ user: { email: "dev@homescout.local" } });
+const authedCaller = appRouter.createCaller({ user: { email: "dev@homeranger.local" } });
 
 afterEach(() => {
   _setSearchProfileRepositoryForTesting(null);

@@ -20,7 +20,7 @@ import { defineConfig } from "@playwright/test";
 const E2E_BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:5173";
 
 const DEFAULT_DB_URL =
-  "postgresql://homescout:homescout@localhost:5434/homescout";
+  "postgresql://homeranger:homeranger@localhost:5434/homeranger";
 const DATABASE_URL = process.env.DATABASE_URL ?? DEFAULT_DB_URL;
 const MIGRATION_DATABASE_URL =
   process.env.MIGRATION_DATABASE_URL ?? DATABASE_URL;
@@ -56,12 +56,12 @@ export default defineConfig({
   webServer: [
     {
       command:
-        "pnpm --filter @homescout/api prisma:deploy && " +
-        "pnpm --filter @homescout/api db:seed && " +
+        "pnpm --filter @homeranger/api prisma:deploy && " +
+        "pnpm --filter @homeranger/api db:seed && " +
         // Non-watch entrypoint (e2e:api = `tsx src/main.ts`). A file watcher
         // under Playwright can tear down + rebind :3000 mid-run and flake an
         // in-flight tRPC request, so we use the dedicated non-watch script.
-        "pnpm --filter @homescout/api e2e:api",
+        "pnpm --filter @homeranger/api e2e:api",
       port: 3000,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
@@ -69,7 +69,7 @@ export default defineConfig({
         DATABASE_URL,
         MIGRATION_DATABASE_URL,
         REDIS_URL,
-        DEV_USER_EMAIL: "dev@homescout.local",
+        DEV_USER_EMAIL: "dev@homeranger.local",
         // The inbound webhook route verifies Svix signatures against this; the
         // M4 spec signs its POST with the same value.
         RESEND_INBOUND_WEBHOOK_SECRET: E2E_RESEND_INBOUND_SECRET,
@@ -84,7 +84,7 @@ export default defineConfig({
       // Anthropic calls): the fake hydrator derives a body from the webhook
       // metadata and the fake extractor parses the address/price from the
       // subject. /health on :9090 gates readiness.
-      command: "pnpm --filter @homescout/processor e2e:worker",
+      command: "pnpm --filter @homeranger/processor e2e:worker",
       port: 9090,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
@@ -103,7 +103,7 @@ export default defineConfig({
         // E2E can assert an OutreachMessage row lands. RESEND_FROM satisfies the
         // OutreachService boot config (the verified sending address).
         OUTREACH_FAKE: "1",
-        RESEND_FROM: "Homescout <outreach@homescout.test>",
+        RESEND_FROM: "HomeRanger <outreach@homeranger.test>",
         // M8 PR3: deterministic, network-free agent discovery (no Firecrawl /
         // web scrape / spend). The FakeAgentDiscoveryProvider mints stable
         // business-domain agents from the discovery input so the scout-launch
@@ -114,7 +114,7 @@ export default defineConfig({
       },
     },
     {
-      command: "pnpm --filter @homescout/web dev",
+      command: "pnpm --filter @homeranger/web dev",
       port: 5173,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

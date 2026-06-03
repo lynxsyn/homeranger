@@ -1,5 +1,5 @@
 {
-  "name": "@homescout/processor",
+  "name": "@homeranger/processor",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "test": "cd ../.. && vitest run --project unit"
   },
   "dependencies": {
-    "@homescout/backend-core": "workspace:*",
+    "@homeranger/backend-core": "workspace:*",
     "@prisma/client": "7.8.0",
     "bullmq": "5.77.6",
     "prom-client": "15.1.3",

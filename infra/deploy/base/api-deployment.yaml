@@ -1,6 +1,6 @@
-# homescout-api Deployment + Service. Pattern from doxus-infra api-deployment,
-# scoped to homescout: single replica, wait-for-postgres + prisma-migrate init
-# containers, /api/health probes on 3000, secrets from homescout-secret.
+# homeranger-api Deployment + Service. Pattern from doxus-infra api-deployment,
+# scoped to homeranger: single replica, wait-for-postgres + prisma-migrate init
+# containers, /api/health probes on 3000, secrets from homeranger-secret.
 #
 # Auth is Cloudflare Access (CF_ACCESS_* + ALLOWED_USER_EMAIL from the secret).
 # For M3 those keys are EMPTY in the secret → the api takes the dev-bypass path
@@ -9,16 +9,16 @@
 #
 # CHICKEN-AND-EGG: the image must exist in GHCR before Flux deploys this pod, or
 # the pod ImagePullBackOffs. The orchestrator builds + pushes ghcr.io/lynxsyn/
-# homescout-api:<tag> FIRST, then lets Flux reconcile this manifest. The
+# homeranger-api:<tag> FIRST, then lets Flux reconcile this manifest. The
 # $imagepolicy marker is rewritten by the ImageUpdateAutomation (image-automation.yaml).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: homescout-api
-  namespace: homescout
+  name: homeranger-api
+  namespace: homeranger
   labels:
-    app.kubernetes.io/name: homescout-api
-    app.kubernetes.io/part-of: homescout-app
+    app.kubernetes.io/name: homeranger-api
+    app.kubernetes.io/part-of: homeranger-app
 spec:
   revisionHistoryLimit: 3
   replicas: 1
@@ -29,12 +29,12 @@ spec:
       maxSurge: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: homescout-api
+      app.kubernetes.io/name: homeranger-api
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: homescout-api
-        app.kubernetes.io/part-of: homescout-app
+        app.kubernetes.io/name: homeranger-api
+        app.kubernetes.io/part-of: homeranger-app
     spec:
       automountServiceAccountToken: false
       priorityClassName: platform-critical
@@ -50,13 +50,13 @@ spec:
         # Block until Postgres accepts TCP — Prisma migrate then init can't race
         # the DB coming up on a cold namespace start.
         - name: wait-for-postgres
-          image: ghcr.io/lynxsyn/homescout-api:0.13.0 # {"$imagepolicy": "flux-system:homescout-api"}
+          image: ghcr.io/lynxsyn/homeranger-api:0.14.0 # {"$imagepolicy": "flux-system:homeranger-api"}
           imagePullPolicy: Always
           command:
             - sh
             - -c
             - |
-              until nc -z homescout-postgres.homescout.svc.cluster.local 5432; do
+              until nc -z homeranger-postgres.homeranger.svc.cluster.local 5432; do
                 echo "waiting for postgres..."; sleep 2;
               done
           securityContext:
@@ -66,7 +66,7 @@ spec:
               drop: ["ALL"]
         # Apply migrations as the migrator role before the app boots.
         - name: prisma-migrate
-          image: ghcr.io/lynxsyn/homescout-api:0.13.0 # {"$imagepolicy": "flux-system:homescout-api"}
+          image: ghcr.io/lynxsyn/homeranger-api:0.14.0 # {"$imagepolicy": "flux-system:homeranger-api"}
           imagePullPolicy: Always
           workingDir: /app/apps/api
           command: ["npx", "prisma", "migrate", "deploy"]
@@ -74,7 +74,7 @@ spec:
             - name: MIGRATION_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: homescout-secret
+                  name: homeranger-secret
                   key: MIGRATION_DATABASE_URL
           securityContext:
             allowPrivilegeEscalation: false
@@ -83,7 +83,7 @@ spec:
               drop: ["ALL"]
       containers:
         - name: api
-          image: ghcr.io/lynxsyn/homescout-api:0.13.0 # {"$imagepolicy": "flux-system:homescout-api"}
+          image: ghcr.io/lynxsyn/homeranger-api:0.14.0 # {"$imagepolicy": "flux-system:homeranger-api"}
           imagePullPolicy: Always
           ports:
             - name: http
@@ -96,7 +96,7 @@ spec:
             - name: NODE_ENV
               value: production
             - name: WEB_ORIGIN
-              value: https://app.aid-engineering.com
+              value: https://app.homeranger.app
             # GIT_SHA is baked into the image at BUILD time
             # (apps/api/Dockerfile ARG GIT_SHA ← release.yml build-arg
             # github.sha). It is NOT injected from the image tag here — the tag
@@ -106,38 +106,38 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: homescout-secret
+                  name: homeranger-secret
                   key: DATABASE_URL
             # M4: the Resend webhook routes ENQUEUE onto BullMQ, so the api needs
             # Redis. REDIS_HOST points at the in-cluster Service; redis-connection
-            # builds redis://:<REDIS_PASSWORD>@homescout-redis:6379 from these.
+            # builds redis://:<REDIS_PASSWORD>@homeranger-redis:6379 from these.
             - name: REDIS_HOST
-              value: homescout-redis.homescout.svc.cluster.local
+              value: homeranger-redis.homeranger.svc.cluster.local
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: homescout-secret
+                  name: homeranger-secret
                   key: REDIS_PASSWORD
             # M4: the inbound + events webhook routes verify Svix signatures
             # against these whsec_ secrets (one per Resend endpoint).
             - name: RESEND_INBOUND_WEBHOOK_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: homescout-secret
+                  name: homeranger-secret
                   key: RESEND_INBOUND_WEBHOOK_SECRET
             - name: RESEND_WEBHOOK_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: homescout-secret
+                  name: homeranger-secret
                   key: RESEND_WEBHOOK_SECRET
-            # M3: these four keys are NOT yet in homescout-secret (added in M4
+            # M3: these four keys are NOT yet in homeranger-secret (added in M4
             # with the Cloudflare tunnel). `optional: true` lets the kubelet
             # resolve them to UNSET rather than failing with
             # CreateContainerConfigError — unset CF_ACCESS_* takes the api's
             # documented dev-bypass path. M4 adds the real values to the secret
             # AND flips these back to required (a missing prod secret must fail
             # loud, which a non-optional ref guarantees).
-            # The live edge populates these in homescout-secret (CF Access app
+            # The live edge populates these in homeranger-secret (CF Access app
             # AUD + team domain + the single allowed owner email), so they are
             # now REQUIRED: a prod deploy missing the auth config must fail loud
             # (CreateContainerConfigError) rather than silently take the
@@ -146,22 +146,22 @@ spec:
             - name: CF_ACCESS_TEAM_DOMAIN
               valueFrom:
                 secretKeyRef:
-                  name: homescout-secret
+                  name: homeranger-secret
                   key: CF_ACCESS_TEAM_DOMAIN
             - name: CF_ACCESS_AUD
               valueFrom:
                 secretKeyRef:
-                  name: homescout-secret
+                  name: homeranger-secret
                   key: CF_ACCESS_AUD
             - name: ALLOWED_USER_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: homescout-secret
+                  name: homeranger-secret
                   key: ALLOWED_USER_EMAIL
             - name: DEV_USER_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: homescout-secret
+                  name: homeranger-secret
                   key: DEV_USER_EMAIL
                   optional: true
             # M6 one-click unsubscribe (RFC 8058): the HMAC key the api VERIFIES
@@ -172,7 +172,7 @@ spec:
             - name: UNSUBSCRIBE_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: homescout-secret
+                  name: homeranger-secret
                   key: UNSUBSCRIBE_TOKEN_SECRET
                   optional: true
           readinessProbe:
@@ -208,14 +208,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: homescout-api
-  namespace: homescout
+  name: homeranger-api
+  namespace: homeranger
   labels:
-    app.kubernetes.io/name: homescout-api
-    app.kubernetes.io/part-of: homescout-app
+    app.kubernetes.io/name: homeranger-api
+    app.kubernetes.io/part-of: homeranger-app
 spec:
   selector:
-    app.kubernetes.io/name: homescout-api
+    app.kubernetes.io/name: homeranger-api
   ports:
     - name: http
       port: 3000

@@ -6,7 +6,7 @@ import {
 
 const baseInput = {
   to: "branch@agency.test",
-  from: "Homescout <hi@homescout.test>",
+  from: "HomeRanger <hi@homeranger.test>",
   subject: "Hello",
   bodyText: "body",
   idempotencyKey: "outreach:send:agent-1",
@@ -39,11 +39,11 @@ describe("getOutreachEmailConfig", () => {
   });
 
   it("returns the from address (+ optional reply-to)", () => {
-    vi.stubEnv("RESEND_FROM", "Homescout <hi@homescout.test>");
-    vi.stubEnv("RESEND_REPLY_TO", "reply@homescout.test");
+    vi.stubEnv("RESEND_FROM", "HomeRanger <hi@homeranger.test>");
+    vi.stubEnv("RESEND_REPLY_TO", "reply@homeranger.test");
     expect(getOutreachEmailConfig()).toEqual({
-      from: "Homescout <hi@homescout.test>",
-      replyTo: "reply@homescout.test",
+      from: "HomeRanger <hi@homeranger.test>",
+      replyTo: "reply@homeranger.test",
     });
   });
 });

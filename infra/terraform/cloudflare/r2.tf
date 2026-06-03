@@ -5,10 +5,10 @@
 # objects directly; nothing serves them over a custom domain.
 #
 # The bucket lives in the SAME Cloudflare account as Doxus (account_id =
-# var.account_id) but is a distinct, homescout-owned bucket (zero shared state
+# var.account_id) but is a distinct, homeranger-owned bucket (zero shared state
 # with doxus-media / doxus-documents). The S3 API endpoint the worker uses is
 # https://<account-id>.r2.cloudflarestorage.com (R2_ENDPOINT in the secret) and
-# the bucket name is R2_BUCKET = homescout-attachments.
+# the bucket name is R2_BUCKET = homeranger-attachments.
 #
 # cloudflare_r2_bucket is supported by the pinned provider (cloudflare 5.19.1 —
 # same resource Doxus uses in doxus-infra/terraform/cloudflare/r2.tf).
@@ -18,6 +18,6 @@
 # browser-origin CORS requirement and no public domain binding.
 resource "cloudflare_r2_bucket" "attachments" {
   account_id = var.account_id
-  name       = "homescout-attachments"
+  name       = "homeranger-attachments"
   location   = "WEUR"
 }

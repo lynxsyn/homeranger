@@ -1,5 +1,5 @@
 /**
- * homescout scheduler — the leader-locked cadence driver (M6 AC#3).
+ * homeranger scheduler — the leader-locked cadence driver (M6 AC#3).
  *
  * A single elected instance (Redis SET NX PX leader lock) registers the
  * warmup:recalc repeatable job via BullMQ's job scheduler; the processor
@@ -11,22 +11,22 @@
  * Bootstrap mirrors apps/processor/src/worker.ts: fail fast on Redis, serve
  * GET /health LAST (real readiness), graceful SIGTERM/SIGINT shutdown that
  * releases the lock. Node16 resolution → relative imports carry `.js` (none
- * here); cross-package imports use the @homescout/backend-core subpaths.
+ * here); cross-package imports use the @homeranger/backend-core subpaths.
  */
 import http from "node:http";
 import os from "node:os";
 import {
   closeRedisConnection,
   getRedisConnection,
-} from "@homescout/backend-core/lib/queue/redis-connection";
-import { getQueueClient } from "@homescout/backend-core/lib/queue/queue-client";
-import { QUEUE_NAMES } from "@homescout/backend-core/lib/queue/queue-config";
+} from "@homeranger/backend-core/lib/queue/redis-connection";
+import { getQueueClient } from "@homeranger/backend-core/lib/queue/queue-client";
+import { QUEUE_NAMES } from "@homeranger/backend-core/lib/queue/queue-config";
 import {
   acquireOrRenewLeader,
   releaseLeader,
-} from "@homescout/backend-core/lib/scheduler/leader-lock";
+} from "@homeranger/backend-core/lib/scheduler/leader-lock";
 
-const LOCK_KEY = "homescout:scheduler:leader";
+const LOCK_KEY = "homeranger:scheduler:leader";
 // TTL must exceed the renew interval so a brief tick delay never drops the lease.
 const LOCK_TTL_MS = 90_000;
 const RENEW_MS = 30_000;

@@ -1,6 +1,6 @@
 /**
- * HomeScout UI primitives — a faithful React/TS port of the claude.ai/design
- * handoff (docs/design/homescout-design/project/app/components.jsx). The visual
+ * HomeRanger UI primitives — a faithful React/TS port of the claude.ai/design
+ * handoff (docs/design/homeranger-design/project/app/components.jsx). The visual
  * contract lives in the CSS component layer (src/styles/components.css); these
  * components only emit the right class names + structure.
  *
@@ -24,7 +24,7 @@ export function Logo({ size = 30, showWord = true, light = false }: LogoProps) {
         src="/logo-mark.svg"
         width={size}
         height={size}
-        alt="HomeScout"
+        alt="HomeRanger"
         style={{ display: "block" }}
       />
       {showWord && (

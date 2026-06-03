@@ -12,7 +12,7 @@
  * module-level seam (`_setProfileChangeTriggerForTesting`) so the unit test can
  * assert it fires without a live queue, mirroring the repository test setters.
  */
-import { searchProfileUpdateSchema } from "@homescout/shared";
+import { searchProfileUpdateSchema } from "@homeranger/shared";
 import { protectedProcedure, router } from "../trpc.js";
 import {
   searchProfileRepository,

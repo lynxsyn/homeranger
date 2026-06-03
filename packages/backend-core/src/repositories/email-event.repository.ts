@@ -4,7 +4,7 @@
  * repository for it; M4 needs one because the events path persists rows and the
  * `@@unique(providerEventId)` makes a redelivered Resend webhook idempotent.
  *
- * Mirrors the homescout repository conventions exactly
+ * Mirrors the homeranger repository conventions exactly
  * (listing-source-record.repository.ts + outreach.repository.ts):
  *   - `Prisma.validator<...Select>()` projection + `GetPayload` row type
  *   - optional-tx via `const db = tx ?? prisma`

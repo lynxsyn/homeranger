@@ -93,7 +93,7 @@ function makeHarness(opts: { agent?: AgentRecord | null } = {}): Harness {
       createOutboundMessage,
       applyThreadEvent,
     } as unknown as OutreachRepository,
-    emailConfig: { from: "Homescout <hi@homescout.test>" },
+    emailConfig: { from: "HomeRanger <hi@homeranger.test>" },
     config: {
       unsubscribeBaseUrl: "https://app.test/api/outreach/unsubscribe",
       followupCadenceHours: 72,
@@ -144,7 +144,7 @@ describe("OutreachService.sendOutreach", () => {
     const sendArg = h.send.mock.calls[0]![0] as SendEmailInput;
     expect(sendArg.idempotencyKey).toBe("outreach:send:agent-1");
     expect(sendArg.to).toBe("branch@agency.test");
-    expect(sendArg.from).toBe("Homescout <hi@homescout.test>");
+    expect(sendArg.from).toBe("HomeRanger <hi@homeranger.test>");
     expect(sendArg.headers?.["List-Unsubscribe"]).toContain("unsub-token");
     expect(sendArg.headers?.["List-Unsubscribe-Post"]).toBe(
       "List-Unsubscribe=One-Click",
@@ -223,7 +223,7 @@ describe("OutreachService.sendOutreach", () => {
         createOutboundMessage: h.createOutboundMessage,
         applyThreadEvent: h.applyThreadEvent,
       } as unknown as OutreachRepository,
-      emailConfig: { from: "Homescout <hi@homescout.test>" },
+      emailConfig: { from: "HomeRanger <hi@homeranger.test>" },
       config: {
         unsubscribeBaseUrl: "https://app.test/api/outreach/unsubscribe",
         followupCadenceHours: 72,
@@ -273,7 +273,7 @@ describe("OutreachService.sendOutreach", () => {
         createOutboundMessage: h.createOutboundMessage,
         applyThreadEvent: h.applyThreadEvent,
       } as unknown as OutreachRepository,
-      emailConfig: { from: "Homescout <hi@homescout.test>" },
+      emailConfig: { from: "HomeRanger <hi@homeranger.test>" },
       config: {
         unsubscribeBaseUrl: "https://app.test/api/outreach/unsubscribe",
         followupCadenceHours: 72,
@@ -314,7 +314,7 @@ describe("OutreachService.sendOutreach", () => {
         markContacted: h.markContacted,
       } as unknown as AgentRepository,
       outreachRepository: {} as unknown as OutreachRepository,
-      emailConfig: { from: "Homescout <hi@homescout.test>" },
+      emailConfig: { from: "HomeRanger <hi@homeranger.test>" },
       config: {
         unsubscribeBaseUrl: "https://app.test/api/outreach/unsubscribe",
         followupCadenceHours: 72,
@@ -440,7 +440,7 @@ describe("getOutreachService (lazy singleton)", () => {
     const send = vi.fn(async () => ({ providerMessageId: "x" }));
     const first = getOutreachService({
       emailProvider: { send } as unknown as EmailProvider,
-      emailConfig: { from: "Homescout <hi@homescout.test>" },
+      emailConfig: { from: "HomeRanger <hi@homeranger.test>" },
     });
     expect(getOutreachService()).toBe(first);
   });

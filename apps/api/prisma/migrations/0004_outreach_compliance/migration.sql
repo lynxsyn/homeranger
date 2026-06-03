@@ -9,7 +9,7 @@
 -- DDL only (no data backfill): both columns carry NOT NULL DEFAULTs, so existing
 -- rows (the single WarmupState row, any OutreachThread rows) adopt the default.
 -- Authored by hand to match the NNNN_name convention of 0002_pgvector /
--- 0003_grant_app_role (homescout does NOT use Prisma's timestamped dirs); the
+-- 0003_grant_app_role (homeranger does NOT use Prisma's timestamped dirs); the
 -- DDL is exactly what `prisma migrate diff` emits for these schema changes.
 
 -- The thread lifecycle enum (active → awaiting_reply → replied; → closed on opt-out).
