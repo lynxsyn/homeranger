@@ -208,10 +208,13 @@ const anthropicRequestDurationSeconds: Histogram<"model" | "status"> =
 
 /**
  * The `output_config.format.schema`. `additionalProperties: false` + all keys
- * required (nullable via `["string", "null"]`) forces the model to emit every
- * field, using `null` where the email is silent. Enums are the canonical
- * snake_case tuples from `@homeranger/shared`, so the result drops straight into
- * a Prisma upsert without remapping.
+ * required forces the model to emit every field, using `null` where the email is
+ * silent. Plain fields are nullable via `["string", "null"]`; the ENUM fields use
+ * `anyOf: [{enum}, {type:"null"}]` because Anthropic's strict structured-output
+ * validator REJECTS an array `type` combined with an `enum` (that shape 400'd
+ * EVERY extraction → drop → zero listings). Enums are the canonical snake_case
+ * tuples from `@homeranger/shared`, so the result drops straight into a Prisma
+ * upsert without remapping.
  */
 export const LISTING_EXTRACTION_SCHEMA = {
   type: "object",
@@ -250,21 +253,20 @@ export const LISTING_EXTRACTION_SCHEMA = {
     },
     bedrooms: { type: ["integer", "null"] },
     bathrooms: { type: ["integer", "null"] },
-    tenure: { type: ["string", "null"], enum: [...TENURES, null] },
+    tenure: {
+      anyOf: [{ type: "string", enum: [...TENURES] }, { type: "null" }],
+    },
     propertyType: {
-      type: ["string", "null"],
-      enum: [...PROPERTY_TYPES, null],
+      anyOf: [{ type: "string", enum: [...PROPERTY_TYPES] }, { type: "null" }],
     },
     epcRating: {
-      type: ["string", "null"],
-      enum: [...EPC_RATINGS, null],
       description: "EPC band lowercased a-g, or 'unknown'.",
+      anyOf: [{ type: "string", enum: [...EPC_RATINGS] }, { type: "null" }],
     },
     listingStatus: {
-      type: ["string", "null"],
-      enum: [...LISTING_STATUSES, null],
       description:
         "Use 'pre_market' for off-market/coming-soon agent tips; 'live' if publicly listed.",
+      anyOf: [{ type: "string", enum: [...LISTING_STATUSES] }, { type: "null" }],
     },
     listingUrl: {
       type: ["string", "null"],
