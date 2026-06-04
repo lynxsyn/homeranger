@@ -816,6 +816,10 @@ export function ListingsPage({
     ...(searchFilter && searchFilter.outcodes.length > 0
       ? { filter: { outcodes: searchFilter.outcodes } }
       : {}),
+    // Per-search scoring lens: when a search's "View homes" pushed us here, the
+    // Match ring + score sort reflect THAT search's taste (else the best across
+    // all the operator's searches).
+    ...(searchFilter ? { searchId: searchFilter.id } : {}),
     sortBy: "combinedScore",
     sortDir: "desc",
     limit: 100,

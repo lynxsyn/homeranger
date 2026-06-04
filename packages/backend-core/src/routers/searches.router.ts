@@ -76,6 +76,7 @@ import type {
   DiscoverAgentsJobPayload,
   OutreachSendJobPayload,
 } from "../lib/queue/queue-config.js";
+import { triggerSearchRecompute } from "../lib/queue/analyze-backfill.js";
 
 /** A single search row as the procedures return it. */
 export type SearchRow = SearchRecord;
@@ -154,6 +155,16 @@ export function _setSearchOutreachSendEnqueuerForTesting(
   searchOutreachSendEnqueuer = enqueuer ?? enqueueOutreachSend;
 }
 
+// Per-search match-scoring re-rank trigger. A swappable seam so the router unit
+// test asserts it fires (operator + active only) without a live queue.
+type SearchRecomputeTrigger = (searchId: string) => Promise<void>;
+let searchRecomputeTrigger: SearchRecomputeTrigger = triggerSearchRecompute;
+export function _setSearchRecomputeTriggerForTesting(
+  fn: SearchRecomputeTrigger | null,
+): void {
+  searchRecomputeTrigger = fn ?? triggerSearchRecompute;
+}
+
 /** One reviewed agent: eligible iff the ComplianceGuard precheck passes. */
 export interface SearchReviewAgent {
   id: string;
@@ -182,6 +193,35 @@ export interface SearchStatsResult {
   homesFound: number;
   agentsInPatch: number;
   agentsContacted: number;
+}
+
+/**
+ * Fire the per-search re-rank when an OPERATOR's ACTIVE search changes. Scoring
+ * is the operator's global-catalogue engine (ownerId === null), mirroring
+ * preferences.router; a non-operator's searches are stored but NOT scored
+ * (per-user matching is a future enhancement). A paused search never scores (it
+ * stops new outreach + scoring). Best-effort: a queue hiccup must not fail the
+ * write, so log + swallow (mirrors preferences.update's backfill trigger).
+ */
+async function maybeTriggerRecompute(
+  ownerId: string | null,
+  search: SearchRow,
+): Promise<void> {
+  if (ownerId !== null || search.status !== "active") {
+    return;
+  }
+  try {
+    await searchRecomputeTrigger(search.id);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        type: "error",
+        scope: "searches.recompute.failed",
+        searchId: search.id,
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
 }
 
 /** Remap Prisma's "record not found" (P2025) to a tRPC NOT_FOUND; rethrow else. */
@@ -221,7 +261,8 @@ export const searchesRouter = router({
   create: protectedProcedure
     .input(searchCreateInputSchema)
     .mutation(async ({ ctx, input }): Promise<SearchRow> => {
-      return searchRepository.create(
+      const ownerId = ownerKeyFor(ctx.user);
+      const created = await searchRepository.create(
         {
           name: input.name,
           location: input.location,
@@ -234,8 +275,11 @@ export const searchesRouter = router({
           keywords: input.keywords,
           status: input.status,
         },
-        ownerKeyFor(ctx.user),
+        ownerId,
       );
+      // Score the catalogue against the new search's taste (operator + active).
+      await maybeTriggerRecompute(ownerId, created);
+      return created;
     }),
 
   update: protectedProcedure
@@ -248,7 +292,7 @@ export const searchesRouter = router({
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Search not found" });
       }
-      return searchRepository.update(
+      const updated = await searchRepository.update(
         {
           id: input.id,
           name: input.name,
@@ -264,6 +308,9 @@ export const searchesRouter = router({
         },
         ownerId,
       );
+      // Re-rank against the (possibly changed) taste (operator + active).
+      await maybeTriggerRecompute(ownerId, updated);
+      return updated;
     }),
 
   /**
@@ -314,12 +361,16 @@ export const searchesRouter = router({
   setStatus: protectedProcedure
     .input(searchSetStatusInputSchema)
     .mutation(async ({ ctx, input }): Promise<SearchRow> => {
+      const ownerId = ownerKeyFor(ctx.user);
       try {
-        return await searchRepository.setStatus(
+        const updated = await searchRepository.setStatus(
           input.id,
           input.status,
-          ownerKeyFor(ctx.user),
+          ownerId,
         );
+        // Resuming a search (→ active) re-scores its patch; pausing is a no-op.
+        await maybeTriggerRecompute(ownerId, updated);
+        return updated;
       } catch (error) {
         return searchNotFound(error);
       }

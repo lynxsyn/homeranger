@@ -231,14 +231,21 @@ model PhotoAnalysis {
   @@index([listingId])
 }
 
-// Combined relevance score for a Listing against the SearchProfile.
-// `vectorScore` is cosine similarity; `llmScore` is the optional LLM re-rank;
-// `combinedScore` is the blended value used for ordering; `rationale` is the
-// human-readable explanation.
+// Combined relevance score for a Listing against ONE Search's taste (per-search
+// match scoring). `vectorScore` is cosine similarity of the listing embedding to
+// the search's `keywordsEmbedding`; `llmScore` is the optional LLM re-rank;
+// `combinedScore` is the blended value the listings table orders by; `rationale`
+// is the human-readable explanation. A listing has ONE score PER search (keyed by
+// the composite `(listingId, searchId)`), so two searches rank the same home
+// differently. The link-through shows the viewed search's score; the unfiltered
+// table shows MAX(combinedScore) across the operator's searches. A deleted search
+// or listing cascades its scores away.
 model ListingScore {
   id            String   @id @default(uuid(7)) @db.Uuid
   listingId     String   @db.Uuid
   listing       Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  searchId      String   @db.Uuid
+  search        Search   @relation(fields: [searchId], references: [id], onDelete: Cascade)
   vectorScore   Float
   llmScore      Float?
   combinedScore Float
@@ -247,8 +254,8 @@ model ListingScore {
   createdAt     DateTime @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @db.Timestamptz(6)
 
-  @@unique([listingId])
-  @@index([combinedScore(sort: Desc)])
+  @@unique([listingId, searchId])
+  @@index([searchId, combinedScore(sort: Desc)])
 }
 
 // Single-row search profile (single-user product). `preferenceEmbedding` is the
@@ -420,8 +427,18 @@ model Search {
   maxPricePence Int?
   keywords      String      @default("")
   status        SearchStatus @default(active)
+  // The Voyage voyage-3.5 vector(1024) of this search's taste (keywords +
+  // structured brief), used as the query vector to score listings in its
+  // outcodes (per-search match scoring). Unsupported (raw SQL read/write); no
+  // HNSW index — we read ONE search's vector and KNN-search Listings, never the
+  // reverse.
+  keywordsEmbedding Unsupported("vector(1024)")?
   createdAt     DateTime    @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime    @updatedAt @db.Timestamptz(6)
+
+  // Per-search match scores against the global listing catalogue (one row per
+  // listing scored against this search). Cascade-removed with the search.
+  scores ListingScore[]
 
   @@index([status])
   @@index([updatedAt(sort: Desc)])

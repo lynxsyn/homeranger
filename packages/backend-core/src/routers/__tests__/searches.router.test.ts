@@ -12,7 +12,7 @@
  *     numerics to null.
  *   - protectedProcedure rejects an anonymous caller with UNAUTHORIZED.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TRPCError } from "@trpc/server";
 import { Prisma } from "@prisma/client";
 import { appRouter } from "../index.js";
@@ -30,6 +30,7 @@ import {
   _setSearchOutreachSendEnqueuerForTesting,
   _setSearchRemovalCascadeForTesting,
   _setSearchRemovalPreviewerForTesting,
+  _setSearchRecomputeTriggerForTesting,
 } from "../searches.router.js";
 import {
   AgentRepository,
@@ -121,6 +122,16 @@ const partnerCaller = appRouter.createCaller({
   user: { id: PARTNER_ID, email: "partner@homeranger.test" },
 });
 
+// Per-search match-scoring re-rank trigger. Set to a no-op spy so the operator
+// create/update/setStatus paths don't hit a live queue, and tests can assert it.
+let recomputeTriggerSpy: ReturnType<typeof vi.fn>;
+beforeEach(() => {
+  recomputeTriggerSpy = vi.fn().mockResolvedValue(undefined);
+  _setSearchRecomputeTriggerForTesting(
+    recomputeTriggerSpy as unknown as (searchId: string) => Promise<void>,
+  );
+});
+
 afterEach(() => {
   _setSearchRepositoryForTesting(null);
   _setSearchComplianceGuardForTesting(null);
@@ -131,6 +142,7 @@ afterEach(() => {
   _setSearchOutreachSendEnqueuerForTesting(null);
   _setSearchRemovalCascadeForTesting(null);
   _setSearchRemovalPreviewerForTesting(null);
+  _setSearchRecomputeTriggerForTesting(null);
   vi.restoreAllMocks();
 });
 
@@ -227,6 +239,67 @@ describe("searchesRouter.create", () => {
     expect(arg.types).toEqual([]);
     expect(arg.saleMethods).toEqual(["Private treaty"]);
     expect(arg.status).toBe("active");
+  });
+});
+
+describe("searchesRouter per-search recompute trigger", () => {
+  it("fires the recompute for an OPERATOR's newly-created ACTIVE search", async () => {
+    const fake = injectRepo();
+    const created = makeSearch({ status: "active" });
+    vi.spyOn(fake, "create").mockResolvedValue(created);
+
+    await authedCaller.searches.create({
+      name: "Conwy coast",
+      keywords: "sea views",
+      status: "active",
+    });
+
+    expect(recomputeTriggerSpy).toHaveBeenCalledWith(created.id);
+  });
+
+  it("does NOT fire for a PAUSED new search (paused searches don't score)", async () => {
+    const fake = injectRepo();
+    vi.spyOn(fake, "create").mockResolvedValue(makeSearch({ status: "paused" }));
+
+    await authedCaller.searches.create({ name: "Later", status: "paused" });
+
+    expect(recomputeTriggerSpy).not.toHaveBeenCalled();
+  });
+
+  it("does NOT fire for a NON-operator's search (scoring is the operator's engine)", async () => {
+    const fake = injectRepo();
+    vi.spyOn(fake, "create").mockResolvedValue(makeSearch({ status: "active" }));
+
+    await partnerCaller.searches.create({ name: "Mine", status: "active" });
+
+    expect(recomputeTriggerSpy).not.toHaveBeenCalled();
+  });
+
+  it("fires when an operator RESUMES a search (setStatus → active) but not on pause", async () => {
+    const fake = injectRepo();
+    vi.spyOn(fake, "setStatus")
+      .mockResolvedValueOnce(makeSearch({ status: "active" }))
+      .mockResolvedValueOnce(makeSearch({ status: "paused" }));
+
+    await authedCaller.searches.setStatus({ id: makeSearch().id, status: "active" });
+    expect(recomputeTriggerSpy).toHaveBeenCalledTimes(1);
+
+    await authedCaller.searches.setStatus({ id: makeSearch().id, status: "paused" });
+    expect(recomputeTriggerSpy).toHaveBeenCalledTimes(1); // pause did not re-fire
+  });
+
+  it("does not fail the write when the recompute trigger throws (best-effort)", async () => {
+    const fake = injectRepo();
+    const created = makeSearch({ status: "active" });
+    vi.spyOn(fake, "create").mockResolvedValue(created);
+    recomputeTriggerSpy.mockRejectedValueOnce(new Error("queue down"));
+
+    const result = await authedCaller.searches.create({
+      name: "Conwy coast",
+      status: "active",
+    });
+
+    expect(result).toEqual(created);
   });
 });
 

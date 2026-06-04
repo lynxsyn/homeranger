@@ -134,3 +134,36 @@ test("the analysed (scored) listing sorts first by match score", async ({
     );
   }).toPass({ timeout: 45_000 });
 });
+
+test("the search link-through surfaces the analysed listing's PER-SEARCH score", async ({
+  page,
+}) => {
+  // The seeded operator search "Bright modern flats" covers EC1A (the ingest
+  // outcode), so analyze:listing scored the listing against THAT search. Reaching
+  // /listings via its "View homes found" link-through passes the search id as the
+  // scoring lens, and the row's ring must show that search's score (proving the
+  // per-search lens end-to-end, not just the unfiltered MAX path above).
+  await expect(async () => {
+    await page.goto("/searches");
+    const card = page.locator(
+      '[data-testid="search-card"][data-search-name="Bright modern flats"]',
+    );
+    await expect(card).toHaveCount(1, { timeout: 2000 });
+    await card.getByTestId("search-homes-link").click();
+
+    // Scoped to the search (the link-through banner is shown).
+    await expect(page.getByTestId("search-filter-banner")).toBeVisible({
+      timeout: 2000,
+    });
+
+    // The analysed EC1A listing is in the patch and shows its per-search ring.
+    const row = page.locator(
+      `[data-testid="listing-row"][data-address="${EXPECTED_ADDRESS_NORMALIZED}"]`,
+    );
+    await expect(row).toHaveCount(1, { timeout: 2000 });
+    await expect(row.getByTestId("match-score")).toHaveText(
+      /^(0|[1-9][0-9]?|100)$/,
+      { timeout: 2000 },
+    );
+  }).toPass({ timeout: 45_000 });
+});

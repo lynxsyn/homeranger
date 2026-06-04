@@ -19,8 +19,48 @@
 import { Prisma, type SearchStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { resolveSearchOutcodes } from "../lib/searches/search-brief.js";
+import { EMBEDDING_DIMENSIONS } from "./listing.repository.js";
 
 type PrismaLike = typeof prisma | Prisma.TransactionClient;
+
+/**
+ * Serialise a JS number[] into the pgvector text literal `'[a,b,c]'` (bound as a
+ * single `::vector` parameter — never concatenated, so it cannot inject).
+ * Mirrors search-profile.repository's helper; validates dimensionality + finite.
+ */
+function toVectorLiteral(embedding: number[]): string {
+  if (embedding.length !== EMBEDDING_DIMENSIONS) {
+    throw new Error(
+      `Embedding must have ${EMBEDDING_DIMENSIONS} dimensions, received ${embedding.length}`,
+    );
+  }
+  for (const value of embedding) {
+    if (!Number.isFinite(value)) {
+      throw new Error("Embedding contains a non-finite value");
+    }
+  }
+  return `[${embedding.join(",")}]`;
+}
+
+/** Parse a stored pgvector literal `[a,b,c]` back to a validated number[]. */
+function fromVectorLiteral(raw: string): number[] {
+  const inner = raw.trim().replace(/^\[/, "").replace(/\]$/, "").trim();
+  if (inner === "") {
+    throw new Error("Stored keywords embedding is empty");
+  }
+  const values = inner.split(",").map((value) => Number(value));
+  if (values.length !== EMBEDDING_DIMENSIONS) {
+    throw new Error(
+      `Stored embedding must have ${EMBEDDING_DIMENSIONS} dimensions, read ${values.length}`,
+    );
+  }
+  for (const value of values) {
+    if (!Number.isFinite(value)) {
+      throw new Error("Stored embedding contains a non-finite value");
+    }
+  }
+  return values;
+}
 
 /**
  * The Prisma "record not found" error the router's `searchNotFound` remaps to a
@@ -197,6 +237,79 @@ export class SearchRepository {
       throw recordNotFound();
     }
     return db.search.findUniqueOrThrow({ where: { id }, select: SEARCH_SELECT });
+  }
+
+  /**
+   * Active searches (for `ownerId`) whose `outcodes` contain `outcode` — the
+   * candidate searches a listing in that outcode is scored against. Ordered by
+   * `updatedAt` DESC so the per-listing cap (MATCH_MAX_SEARCHES_PER_LISTING)
+   * deterministically keeps the most-recently-edited searches. `limit` bounds the
+   * fan-out (paid LLM re-score per search). Paused searches never match (they
+   * stop new outreach + scoring).
+   */
+  async listActiveByOutcode(
+    outcode: string,
+    ownerId: string | null = null,
+    limit?: number,
+  ): Promise<SearchRecord[]> {
+    return prisma.search.findMany({
+      where: { status: "active", userId: ownerId, outcodes: { has: outcode } },
+      orderBy: [{ updatedAt: "desc" }],
+      ...(limit !== undefined ? { take: limit } : {}),
+      select: SEARCH_SELECT,
+    });
+  }
+
+  /** All active searches for `ownerId` — the full re-rank set (recomputeAll). */
+  async listActive(ownerId: string | null = null): Promise<SearchRecord[]> {
+    return prisma.search.findMany({
+      where: { status: "active", userId: ownerId },
+      orderBy: [{ updatedAt: "desc" }],
+      select: SEARCH_SELECT,
+    });
+  }
+
+  /**
+   * Write a search's keyword taste embedding (raw — `keywordsEmbedding` is
+   * Unsupported). Bound as a single `::vector` parameter; the id is bound + cast
+   * `::uuid`. Deliberately does NOT touch `updatedAt`: a scoring recompute must
+   * not reorder the user's search list (which sorts by `updatedAt` DESC) nor
+   * perturb the per-listing cap ordering. Returns rows updated (0 if id absent).
+   */
+  async writeKeywordsEmbedding(
+    searchId: string,
+    embedding: number[],
+    tx?: Prisma.TransactionClient,
+  ): Promise<number> {
+    const db: PrismaLike = tx ?? prisma;
+    const literal = toVectorLiteral(embedding);
+    return db.$executeRaw`
+      UPDATE "Search"
+      SET "keywordsEmbedding" = ${literal}::vector
+      WHERE "id" = ${searchId}::uuid
+    `;
+  }
+
+  /**
+   * Read a search's keyword embedding back as a JS number[] (or null if unset).
+   * Casts the Unsupported vector column to text in SQL and parses here so the raw
+   * vector type never leaks across the repo boundary.
+   */
+  async readKeywordsEmbedding(
+    searchId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<number[] | null> {
+    const db: PrismaLike = tx ?? prisma;
+    const rows = await db.$queryRaw<Array<{ embedding: string | null }>>`
+      SELECT "keywordsEmbedding"::text AS "embedding"
+      FROM "Search"
+      WHERE "id" = ${searchId}::uuid
+    `;
+    const raw = rows[0]?.embedding;
+    if (!raw) {
+      return null;
+    }
+    return fromVectorLiteral(raw);
   }
 }
 

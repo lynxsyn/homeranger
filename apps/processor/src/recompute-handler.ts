@@ -7,6 +7,7 @@
 import { UnrecoverableError } from "bullmq";
 import { analysisDroppedTotal } from "@homeranger/backend-core/lib/ai/analysis-metrics";
 import type { PreferenceMatchService } from "@homeranger/backend-core/services/preference-match.service";
+import type { AnalyzeRecomputeJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
 
 function isRetryable(error: unknown): boolean {
   const flag = (error as { retryable?: unknown } | null)?.retryable;
@@ -18,9 +19,16 @@ export interface RecomputeHandlerDeps {
 }
 
 export function makeRecomputeHandler(deps: RecomputeHandlerDeps) {
-  return async function handleRecompute(): Promise<void> {
+  return async function handleRecompute(job: {
+    data: AnalyzeRecomputeJobPayload;
+  }): Promise<void> {
     try {
-      await deps.preferenceMatchService.recompute();
+      // searchId present → re-rank that one search; absent → all active searches.
+      if (job.data.searchId) {
+        await deps.preferenceMatchService.recomputeSearch(job.data.searchId);
+      } else {
+        await deps.preferenceMatchService.recomputeAll();
+      }
     } catch (error) {
       if (!isRetryable(error)) {
         analysisDroppedTotal.inc();

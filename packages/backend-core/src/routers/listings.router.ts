@@ -97,14 +97,25 @@ const listingIdInput = z.object({ listingId: z.string().uuid() });
 /**
  * Attach each listing's match score (ONE batch query, no N+1) + the derived
  * `agency` label, turning `ListingRecord`s into `ListingListItem`s. Shared by
- * `list` and `saved` so both rows carry the Match ring + Agent column data.
+ * `list`, `saved`, and `dismissed` so every row carries the Match ring + Agent
+ * column data.
+ *
+ * `searchId` selects WHICH score: set → that search's score per listing (the
+ * link-through); absent → MAX(combinedScore) across the operator's searches (the
+ * unfiltered table + the saved/dismissed overlays). A listing with no matching
+ * score is `null` (the ring renders "–").
  */
 async function attachScores(
   items: ListingRecord[],
+  searchId?: string,
 ): Promise<ListingListItem[]> {
-  const scores = await listingScoreRepository.getCombinedScoresByListingIds(
-    items.map((item) => item.id),
-  );
+  const ids = items.map((item) => item.id);
+  const scores = searchId
+    ? await listingScoreRepository.getCombinedScoresByListingIdsForSearch(
+        ids,
+        searchId,
+      )
+    : await listingScoreRepository.getCombinedScoresByListingIds(ids);
   return items.map((item) => ({
     ...item,
     combinedScore: scores.get(item.id) ?? null,
@@ -151,9 +162,12 @@ export const listingsRouter = router({
         sort: toRepositorySort(input),
         cursor: input.cursor,
         limit: input.limit,
+        // Per-search scoring lens: order + display by THIS search's score when the
+        // table is reached via a search link-through; else MAX across searches.
+        searchId: input.searchId,
       });
       return {
-        items: await attachScores(page.items),
+        items: await attachScores(page.items, input.searchId),
         nextCursor: page.nextCursor,
       };
     }),
@@ -265,7 +279,9 @@ export const listingsRouter = router({
       }
       const [photos, score] = await Promise.all([
         photoAnalysisRepository.listByListingId(input.id),
-        listingScoreRepository.getByListingId(input.id),
+        // The listing's BEST score across searches (per-search keying); backs the
+        // dormant row-expand rationale.
+        listingScoreRepository.getBestByListingId(input.id),
       ]);
       return {
         id: row.id,

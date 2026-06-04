@@ -103,7 +103,7 @@ function makeHarness(opts: {
     metrics: { model: "voyage-3.5", totalTokens: 0, costPence: 0, durationMs: 0 },
   });
   const getPhotos = vi.fn().mockResolvedValue(opts.photos ?? [photo("h1")]);
-  const scoreListing = vi.fn().mockResolvedValue({ scored: true });
+  const scoreListing = vi.fn().mockResolvedValue({ scored: true, searchesScored: 1 });
   const getById = vi
     .fn()
     .mockResolvedValue(opts.listingRecord === undefined ? listing() : opts.listingRecord);
@@ -150,7 +150,7 @@ describe("DefaultListingAnalysisService.analyzeListing", () => {
     expect(result.photosAnalyzed).toBe(1);
     expect(result.photosSkipped).toBe(0);
     expect(result.embedded).toBe(true);
-    expect(result.match).toEqual({ scored: true });
+    expect(result.match).toEqual({ scored: true, searchesScored: 1 });
 
     // PhotoAnalysis persisted with the vision cost + model.
     const persisted = h.upsertByImageHash.mock.calls[0]![0] as {

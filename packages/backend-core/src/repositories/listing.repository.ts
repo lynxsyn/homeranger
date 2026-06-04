@@ -90,6 +90,14 @@ export interface ListListingsInput {
   sort?: ListListingsSort;
   cursor?: string;
   limit?: number;
+  /**
+   * Per-search scoring lens (NOT a row filter). When set, the combinedScore sort
+   * orders by THIS search's score (LEFT JOIN on `(listingId, searchId)`, unscored
+   * trail NULLS LAST). When absent, it orders by MAX(combinedScore) across all
+   * searches ("best match to any of my searches"). Either way the join yields one
+   * row per listing — a naive per-search LEFT JOIN would duplicate listings.
+   */
+  searchId?: string;
 }
 
 /** Idempotent upsert keyed on the dedup column `addressNormalized`. */
@@ -419,7 +427,13 @@ export class ListingRepository {
       // `combinedScore <dir> NULLS LAST, id <dir>` so unscored listings always
       // trail. Prisma can't orderBy a to-many relation field, so this is raw SQL
       // (the same pattern as vectorTopK), keyset-paginated over (combinedScore, id).
-      return this.listByCombinedScore(input.filter, input.cursor, dir, limit);
+      return this.listByCombinedScore(
+        input.filter,
+        input.cursor,
+        dir,
+        limit,
+        input.searchId,
+      );
     }
 
     // Sorted path: composite (column, id) keyset.
@@ -712,18 +726,28 @@ export class ListingRepository {
   }
 
   /**
-   * combinedScore-ordered page (M5 AC#7 — the listings table's default sort).
-   * LEFT JOINs ListingScore so unscored listings appear (with NULL score,
-   * ordered LAST), and keysets over (combinedScore, id). Raw SQL because Prisma
-   * cannot orderBy a to-many relation field. Columns are `l.`-qualified
-   * (id/createdAt/updatedAt collide across the join) and projected to match
-   * `LISTING_SELECT` exactly, so the returned rows ARE `ListingRecord`s.
+   * combinedScore-ordered page (the listings table's default sort). LEFT JOINs a
+   * per-listing score so unscored listings appear (NULL score, ordered LAST), and
+   * keysets over (combinedScore, id). Raw SQL because Prisma cannot orderBy a
+   * to-many relation field. Columns are `l.`-qualified (id/createdAt/updatedAt
+   * collide across the join) and projected to match `LISTING_SELECT` exactly, so
+   * the returned rows ARE `ListingRecord`s.
+   *
+   * `searchId` selects the per-listing score:
+   *   - set    → THIS search's score, via `LEFT JOIN ListingScore ON listingId
+   *     AND searchId` (the searchId predicate is in the ON clause, NOT WHERE, so
+   *     a listing this search has not scored still appears with a NULL ring).
+   *   - absent → MAX(combinedScore) across the operator's searches, via a
+   *     `GROUP BY listingId` subquery.
+   * Both yield EXACTLY one `ls` row per listing, so `ls."combinedScore"` is a
+   * single value and the (combinedScore, id) keyset stays unambiguous (id unique).
    */
   private async listByCombinedScore(
     filter: ListingFilter | undefined,
     cursor: string | undefined,
     dir: "asc" | "desc",
     limit: number,
+    searchId?: string,
   ): Promise<CursorPage<ListingRecord>> {
     const fragments = buildScoreFilterFragments(filter);
     if (cursor) {
@@ -735,6 +759,13 @@ export class ListingRepository {
       fragments.length > 0
         ? Prisma.sql`WHERE ${Prisma.join(fragments, " AND ")}`
         : Prisma.empty;
+    const joinSql = searchId
+      ? Prisma.sql`LEFT JOIN "ListingScore" ls ON ls."listingId" = l."id" AND ls."searchId" = ${searchId}::uuid`
+      : Prisma.sql`LEFT JOIN (
+          SELECT "listingId", MAX("combinedScore") AS "combinedScore"
+          FROM "ListingScore"
+          GROUP BY "listingId"
+        ) ls ON ls."listingId" = l."id"`;
     const orderBySql =
       dir === "asc"
         ? Prisma.sql`ORDER BY ls."combinedScore" ASC NULLS LAST, l."id" ASC`
@@ -771,7 +802,7 @@ export class ListingRepository {
         l."updatedAt",
         ls."combinedScore" AS "combinedScore"
       FROM "Listing" l
-      LEFT JOIN "ListingScore" ls ON ls."listingId" = l."id"
+      ${joinSql}
       ${whereSql}
       ${orderBySql}
       LIMIT ${limit + 1}

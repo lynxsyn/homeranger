@@ -24,8 +24,15 @@ export async function cleanupTestData(
 
   await prisma.$transaction(async (tx) => {
     // ── Listing children ──────────────────────────────────────────────────
+    // Per-search scores are keyed by (listingId, searchId); clear them by either
+    // a test listing OR a test search so the Search delete below never FK-fails.
     await tx.listingScore.deleteMany({
-      where: { listing: { addressNormalized: addressMatch } },
+      where: {
+        OR: [
+          { listing: { addressNormalized: addressMatch } },
+          { search: { name: { startsWith: pattern } } },
+        ],
+      },
     });
     await tx.photoAnalysis.deleteMany({
       where: { listing: { addressNormalized: addressMatch } },
@@ -41,6 +48,12 @@ export async function cleanupTestData(
     await tx.listing.deleteMany({
       where: { addressNormalized: addressMatch },
     });
+
+    // ── Searches (per-search match scoring) ───────────────────────────────
+    // Test searches are named with the `test-` prefix; their scores were cleared
+    // above, so this never FK-fails. Mirrors the per-test `cleanupSearches` the
+    // search-repo integration spec runs (idempotent if both fire).
+    await tx.search.deleteMany({ where: { name: { startsWith: pattern } } });
 
     // ── Outreach ──────────────────────────────────────────────────────────
     await tx.outreachMessage.deleteMany({
