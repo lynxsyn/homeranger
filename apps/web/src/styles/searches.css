@@ -356,11 +356,14 @@
   border-color: var(--ink-3);
   color: var(--ink-1);
 }
+/* Selected state changes only colour/background/border — NEVER width-affecting
+   properties (no check icon, no font-weight bump), so selecting a chip doesn't
+   reflow its neighbours. This matches the design (the checkmark + weight bump
+   were deliberately removed to stop the chip row jumping on toggle). */
 .chipselect__opt.is-on {
   background: var(--accent-soft);
   color: var(--accent-ink);
   border-color: transparent;
-  font-weight: var(--fw-semibold);
 }
 
 /* ---- Editor / confirm modal --------------------------------------------- */
