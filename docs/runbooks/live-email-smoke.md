@@ -100,15 +100,24 @@ LIVE_SMOKE_CONFIRM=1 pnpm --filter @homeranger/api db:seed:live-smoke
 - Your buyer identity in Settings → "Your details" signs the email — set it so
   the sign-off reads naturally.
 
-## 4. Send (no discovery / no Firecrawl spend)
+## 4. Send
 
-Firecrawl is dormant in prod (no key), so launch enqueues a discover job that is
-harmlessly dropped; the review modal then reads the **seeded** agents by outcode:
+> ⚠️ **Firecrawl is LIVE in prod.** Clicking **Launch** enqueues a real discovery
+> search for the search's outcode. The seed now defaults the search **location to
+> empty**, so the query falls back to the synthetic outcode (`estate agents in
+> SMOKE1, UK`) and matches no real town — but it is still ~1 Firecrawl call, and a
+> real `LIVE_SMOKE_SEARCH_LOCATION` would scrape real agents in that town into the
+> patch. **In the review, tick ONLY the "Smoke Test:" agents — never "approve
+> all"** (a stray discovered agent must not be cold-emailed). The review reads the
+> seeded agents by outcode regardless of discovery.
 
 1. `/searches` → open **"Live email smoke test"** → **Launch**.
-2. The review modal lists the configured inboxes as **eligible** (they pass the
-   guard precheck). Review the woven draft.
+2. The review modal lists your 6 **"Smoke Test:"** inboxes as eligible. Tick ONLY
+   those, and review the woven draft.
 3. **Approve & send.** Real emails dispatch to your inboxes via Resend.
+
+> To send with **zero Firecrawl** (skip Launch + discovery entirely), a
+> `smoke:send` direct-enqueue tool is the intended path — not yet built; ask for it.
 
 ## 5. Receive + reply
 
