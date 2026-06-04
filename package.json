@@ -22,7 +22,8 @@
     "dev:worker": "pnpm --filter @homeranger/processor dev",
     "dev:scheduler": "pnpm --filter @homeranger/scheduler dev",
     "dev:web": "pnpm --filter @homeranger/web dev",
-    "smoke:read": "tsx scripts/email-smoke-read.ts"
+    "smoke:read": "tsx scripts/email-smoke-read.ts",
+    "smoke:inspect": "tsx scripts/email-smoke-inspect.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

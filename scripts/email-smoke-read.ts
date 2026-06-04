@@ -22,6 +22,7 @@ import {
   buildBridgeImapConfig,
   senderAddress,
 } from "@homeranger/backend-core/lib/mailbox/bridge-config";
+import { analyzeOutreachBody } from "@homeranger/backend-core/lib/mailbox/outreach-body";
 
 interface Args {
   to?: string;
@@ -109,11 +110,8 @@ async function main(): Promise<void> {
           ? parsed.to.map((a) => a.text).join(", ")
           : parsed.to?.text ?? "";
         const html = typeof parsed.html === "string" ? parsed.html : "";
-        // The operator's deliverability preferences: no em dashes (an AI tell);
-        // a one-click unsubscribe link must be present.
-        const body = `${parsed.text ?? ""}\n${html}`;
-        const hasEmDash = body.includes("—") || body.includes("–");
-        const hasUnsub = /unsubscribe/i.test(body);
+        // Shared analysis (em dash = AI tell; unsubscribe link must be present).
+        const body = analyzeOutreachBody({ text: parsed.text, html });
 
         console.log(`#${index}  ${parsed.date?.toISOString() ?? "(no date)"}`);
         console.log(`  From:    ${parsed.from?.text ?? ""}`);
@@ -121,9 +119,9 @@ async function main(): Promise<void> {
         console.log(`  Subject: ${parsed.subject ?? ""}`);
         console.log(`  Text:    ${snippet(parsed.text)}`);
         console.log(
-          `  HTML:    ${html ? `${html.length} chars` : "none"}` +
-            `   em-dash: ${hasEmDash ? "PRESENT (AI tell!)" : "none"}` +
-            `   unsubscribe: ${hasUnsub ? "yes" : "MISSING"}`,
+          `  HTML:    ${body.htmlLength ? `${body.htmlLength} chars` : "none"}` +
+            `   em-dash: ${body.hasEmDash ? "PRESENT (AI tell!)" : "none"}` +
+            `   unsubscribe: ${body.hasUnsubscribe ? "yes" : "MISSING"}`,
         );
         if (args.dumpHtml && html) {
           const path = `/tmp/smoke-read-${index}.html`;
