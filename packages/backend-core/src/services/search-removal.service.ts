@@ -36,6 +36,7 @@ import { searchRepository } from "../repositories/search.repository.js";
 import { agentRepository } from "../repositories/agent.repository.js";
 import { listingRepository } from "../repositories/listing.repository.js";
 import { dismissedListingRepository } from "../repositories/dismissed-listing.repository.js";
+import { emailEventRepository } from "../repositories/email-event.repository.js";
 
 /** Counts the cascade actually applied (echoed to the SPA after a delete). */
 export interface SearchRemovalResult {
@@ -172,11 +173,17 @@ export async function removeSearchCascade(
   const agentIds = input.isOperator
     ? await resolveCascadeAgentIds(search.id, search.outcodes)
     : [];
+  // Resolve the agents' emails BEFORE the delete so the EmailEvent purge (keyed
+  // by email, no FK → would otherwise survive the cascade with the agent's
+  // address + webhook payload) erases them in the SAME transaction.
+  const agentEmails =
+    agentIds.length > 0 ? await agentRepository.findEmailsByIds(agentIds) : [];
 
   await txRunner(async (tx) => {
     await dismissedListingRepository.dismissMany(input.ownerId, listingIds, tx);
     if (agentIds.length > 0) {
       await agentRepository.deleteManyByIds(agentIds, tx);
+      await emailEventRepository.deleteByEmails(agentEmails, tx);
     }
     await searchRepository.delete(search.id, input.ownerId, tx);
   });

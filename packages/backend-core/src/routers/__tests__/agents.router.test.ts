@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TRPCError } from "@trpc/server";
 import { Prisma, type OutreachThreadStatus } from "@prisma/client";
 import { appRouter } from "../index.js";
+import { _setAgentEraserForTesting } from "../agents.router.js";
 import {
   AgentRepository,
   _setAgentRepositoryForTesting,
@@ -103,6 +104,7 @@ afterEach(() => {
   _setAgentRepositoryForTesting(null);
   _setOutreachRepositoryForTesting(null);
   _setListingRepositoryForTesting(null);
+  _setAgentEraserForTesting(null);
   vi.restoreAllMocks();
 });
 
@@ -288,34 +290,31 @@ describe("agentsRouter.stats aggregation", () => {
 describe("agentsRouter.remove", () => {
   const AGENT_ID = "00000000-0000-7000-8000-0000000000a9";
 
-  /** Inject just an AgentRepository spy on deleteById (the only call remove makes). */
-  function injectDeleteSpy(impl: () => Promise<void>) {
-    const agentRepo = new AgentRepository();
-    const spy = vi.spyOn(agentRepo, "deleteById").mockImplementation(impl);
-    _setAgentRepositoryForTesting(agentRepo);
-    return spy;
-  }
-
-  it("completely removes an agent and echoes { id }", async () => {
-    const spy = injectDeleteSpy(async () => undefined);
+  it("delegates to the GDPR eraser and echoes { id }", async () => {
+    const eraser = vi.fn().mockResolvedValue({ id: AGENT_ID });
+    _setAgentEraserForTesting(eraser);
     const result = await operatorCaller.agents.remove({ id: AGENT_ID });
     expect(result).toEqual({ id: AGENT_ID });
-    expect(spy).toHaveBeenCalledWith(AGENT_ID);
+    expect(eraser).toHaveBeenCalledWith(AGENT_ID);
   });
 
   it("maps Prisma P2025 (missing agent) to NOT_FOUND", async () => {
-    injectDeleteSpy(async () => {
-      throw new Prisma.PrismaClientKnownRequestError("not found", {
-        code: "P2025",
-        clientVersion: Prisma.prismaVersion.client,
-      });
-    });
+    _setAgentEraserForTesting(
+      vi.fn().mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError("not found", {
+          code: "P2025",
+          clientVersion: Prisma.prismaVersion.client,
+        }),
+      ),
+    );
     await expect(
       operatorCaller.agents.remove({ id: AGENT_ID }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("FORBIDS a non-operator and rejects anon with UNAUTHORIZED", async () => {
+  it("FORBIDS a non-operator and rejects anon with UNAUTHORIZED (before the eraser runs)", async () => {
+    const eraser = vi.fn();
+    _setAgentEraserForTesting(eraser);
     await expect(
       partnerCaller.agents.remove({ id: AGENT_ID }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -323,6 +322,7 @@ describe("agentsRouter.remove", () => {
     await expect(
       anon.agents.remove({ id: AGENT_ID }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(eraser).not.toHaveBeenCalled();
   });
 });
 

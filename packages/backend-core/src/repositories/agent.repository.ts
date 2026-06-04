@@ -158,6 +158,22 @@ export class AgentRepository {
   }
 
   /**
+   * The (normalised) email addresses for the given agent ids — used by the agent
+   * erasure to purge the EmailEvent delivery rows keyed by email (no FK, so they
+   * do not cascade with the Agent delete). An empty id list returns [].
+   */
+  async findEmailsByIds(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const rows = await prisma.agent.findMany({
+      where: { id: { in: ids } },
+      select: { email: true },
+    });
+    return rows.map((row) => row.email);
+  }
+
+  /**
    * COMPLETELY remove a single agent by id (GDPR erasure). The FK ON DELETE
    * CASCADE drops every OutreachThread → OutreachMessage, so the agent record AND
    * all its correspondence are erased ATOMICALLY in one statement. Throws Prisma

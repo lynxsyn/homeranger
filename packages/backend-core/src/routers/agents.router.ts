@@ -35,6 +35,16 @@ import { agentRepository, type AgentRecord } from "../repositories/agent.reposit
 import { outreachRepository } from "../repositories/outreach.repository.js";
 import { listingRepository } from "../repositories/listing.repository.js";
 import { summariseCoverage, type CoverageSummary } from "../lib/geo/coverage.js";
+import { eraseAgentById } from "../services/agent-removal.service.js";
+
+// The GDPR-complete erasure (agent + correspondence + EmailEvent feed) lives in
+// agent-removal.service; the router stubs it as ONE seam so the unit test asserts
+// wiring + error-mapping while the service has its own test.
+type AgentEraser = typeof eraseAgentById;
+let agentEraser: AgentEraser = eraseAgentById;
+export function _setAgentEraserForTesting(fn: AgentEraser | null): void {
+  agentEraser = fn ?? eraseAgentById;
+}
 
 /** The design's relationship status for an agent row. */
 export type AgentThreadStatus = "replied" | "awaiting" | "queued" | "opted_out";
@@ -205,8 +215,7 @@ export const agentsRouter = router({
     .input(agentByIdInputSchema)
     .mutation(async ({ input }): Promise<{ id: string }> => {
       try {
-        await agentRepository.deleteById(input.id);
-        return { id: input.id };
+        return await agentEraser(input.id);
       } catch (error) {
         if (
           error instanceof Prisma.PrismaClientKnownRequestError &&

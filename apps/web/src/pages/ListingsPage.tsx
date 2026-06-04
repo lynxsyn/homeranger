@@ -824,33 +824,61 @@ export function ListingsPage({
   // Recompute "now" only when the data changes, so relative times + age sort
   // keys are stable across re-sorts within the same fetched page.
   const now = useMemo(() => new Date(), [data]);
-  const rows = useMemo(() => {
-    const mapped = (data?.items ?? []).map((item) => toViewRow(item, now));
-    return mapped.sort((a, b) => compare(a, b, sort.key, sort.dir));
-  }, [data, now, sort]);
 
-  // Bucket counts over the loaded page: Active = not dismissed, Saved =
-  // bookmarked AND not dismissed, Dismissed = dismissed. (A home is at most one
-  // of Active/Dismissed; Saved is a refinement of Active.)
+  // The Active feed is the score-ordered LIST page (top matches). The Saved +
+  // Dismissed buckets, by contrast, draw from the FULL per-user overlays
+  // (listings.saved / listings.dismissed) so a bookmarked or hidden home is
+  // reachable even when it falls outside the top-100 page — otherwise a dismissed
+  // home could never be restored. A unified id→row lookup merges all three
+  // sources (the page WINS for in-page homes so optimistic toggles show
+  // instantly; the overlays supply rows for homes outside the page).
+  const pageRows = useMemo(
+    () => (data?.items ?? []).map((item) => toViewRow(item, now)),
+    [data, now],
+  );
+  const savedViewRows = useMemo(
+    () => (savedRows ?? []).map((item) => toViewRow(item, now)),
+    [savedRows, now],
+  );
+  const dismissedViewRows = useMemo(
+    () => (dismissedServerRows ?? []).map((item) => toViewRow(item, now)),
+    [dismissedServerRows, now],
+  );
+  const byId = useMemo(() => {
+    const m = new Map<string, ViewRow>();
+    for (const r of savedViewRows) m.set(r.id, r);
+    for (const r of dismissedViewRows) m.set(r.id, r);
+    for (const r of pageRows) m.set(r.id, r); // page last → wins for in-page homes
+    return m;
+  }, [pageRows, savedViewRows, dismissedViewRows]);
+
+  // Bucket counts: Active = page minus dismissed; Saved = bookmarked AND not
+  // dismissed (full overlay); Dismissed = the full hidden overlay.
   const counts = useMemo(
     () => ({
-      active: rows.filter((l) => !dismissed.includes(l.id)).length,
-      saved: rows.filter((l) => interested.includes(l.id) && !dismissed.includes(l.id)).length,
-      dismissed: rows.filter((l) => dismissed.includes(l.id)).length,
+      active: pageRows.filter((l) => !dismissed.includes(l.id)).length,
+      saved: interested.filter((id) => !dismissed.includes(id) && byId.has(id)).length,
+      dismissed: dismissed.filter((id) => byId.has(id)).length,
     }),
-    [rows, interested, dismissed],
+    [pageRows, interested, dismissed, byId],
   );
 
-  // The rows the current bucket renders.
+  // The rows the current bucket renders, sorted by the active sort.
   const displayRows = useMemo(() => {
+    const sortRows = (rs: ViewRow[]) =>
+      [...rs].sort((a, b) => compare(a, b, sort.key, sort.dir));
+    const hydrate = (ids: string[]) =>
+      ids
+        .map((id) => byId.get(id))
+        .filter((r): r is ViewRow => r !== undefined);
     if (bucket === "saved") {
-      return rows.filter((l) => interested.includes(l.id) && !dismissed.includes(l.id));
+      return sortRows(hydrate(interested.filter((id) => !dismissed.includes(id))));
     }
     if (bucket === "dismissed") {
-      return rows.filter((l) => dismissed.includes(l.id));
+      return sortRows(hydrate(dismissed));
     }
-    return rows.filter((l) => !dismissed.includes(l.id));
-  }, [rows, bucket, interested, dismissed]);
+    return sortRows(pageRows.filter((l) => !dismissed.includes(l.id)));
+  }, [bucket, pageRows, interested, dismissed, byId, sort]);
 
   // The map modal plots the CURRENT bucket's rows; project to its lean shape.
   const mapRows = useMemo<MapListing[]>(
@@ -876,12 +904,16 @@ export function ListingsPage({
     );
   }
 
-  // Only the bookmarked homes still in the page AND not dismissed can be drafted
-  // — a dismissed home drops out of the follow-up bar (its bookmark persists, so
-  // restoring brings it back to Saved).
+  // The follow-up bar drafts the bookmarked (not-dismissed) homes — drawn from
+  // the full saved overlay so an off-page bookmark still counts; a dismissed home
+  // drops out (its bookmark persists, so restoring returns it to Saved).
   const interestedRows = useMemo(
-    () => rows.filter((l) => interested.includes(l.id) && !dismissed.includes(l.id)),
-    [rows, interested, dismissed],
+    () =>
+      interested
+        .filter((id) => !dismissed.includes(id))
+        .map((id) => byId.get(id))
+        .filter((r): r is ViewRow => r !== undefined),
+    [interested, dismissed, byId],
   );
 
   const hasMore = Boolean(data?.nextCursor);
@@ -949,10 +981,10 @@ export function ListingsPage({
             <span className="ctrl-left">
               <span className="count" data-testid="listings-count">
                 <b>
-                  {rows.length}
+                  {pageRows.length}
                   {hasMore ? "+" : ""}
                 </b>{" "}
-                {rows.length === 1 ? "home" : "homes"} from your agents
+                {pageRows.length === 1 ? "home" : "homes"} from your agents
               </span>
               <InfoTip label="About listings">
                 Homes your agents have sent in, read from their emails and scored
@@ -1085,7 +1117,7 @@ export function ListingsPage({
 
           {undo &&
             (() => {
-              const home = rows.find((l) => l.id === undo.id);
+              const home = byId.get(undo.id);
               return (
                 <div className="toast" role="status" data-testid="dismiss-toast">
                   <span className="toast__msg">

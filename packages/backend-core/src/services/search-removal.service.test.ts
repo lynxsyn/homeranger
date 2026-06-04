@@ -31,6 +31,10 @@ import {
   DismissedListingRepository,
   _setDismissedListingRepositoryForTesting,
 } from "../repositories/dismissed-listing.repository.js";
+import {
+  EmailEventRepository,
+  _setEmailEventRepositoryForTesting,
+} from "../repositories/email-event.repository.js";
 
 function makeSearch(overrides: Partial<SearchRecord> = {}): SearchRecord {
   return {
@@ -59,7 +63,9 @@ interface Spies {
   listingIds: ReturnType<typeof vi.fn>;
   listingCount: ReturnType<typeof vi.fn>;
   findIds: ReturnType<typeof vi.fn>;
+  findEmails: ReturnType<typeof vi.fn>;
   deleteAgents: ReturnType<typeof vi.fn>;
+  deleteEvents: ReturnType<typeof vi.fn>;
   dismissMany: ReturnType<typeof vi.fn>;
 }
 
@@ -69,6 +75,7 @@ function inject(opts: {
   listingIds?: string[];
   listingCount?: number;
   candidates?: Array<{ id: string; coveredOutcodes: string[] }>;
+  agentEmails?: string[];
 }): Spies {
   const search = opts.search === undefined ? makeSearch() : opts.search;
 
@@ -97,7 +104,18 @@ function inject(opts: {
   const deleteAgents = vi
     .spyOn(agentRepo, "deleteManyByIds")
     .mockResolvedValue(0) as unknown as ReturnType<typeof vi.fn>;
+  const findEmails = vi
+    .spyOn(agentRepo, "findEmailsByIds")
+    .mockResolvedValue(opts.agentEmails ?? []) as unknown as ReturnType<
+    typeof vi.fn
+  >;
   _setAgentRepositoryForTesting(agentRepo);
+
+  const eventRepo = new EmailEventRepository();
+  const deleteEvents = vi
+    .spyOn(eventRepo, "deleteByEmails")
+    .mockResolvedValue(0) as unknown as ReturnType<typeof vi.fn>;
+  _setEmailEventRepositoryForTesting(eventRepo);
 
   const listingRepo = new ListingRepository();
   const listingIds = vi
@@ -131,7 +149,9 @@ function inject(opts: {
     listingIds,
     listingCount,
     findIds,
+    findEmails,
     deleteAgents,
+    deleteEvents,
     dismissMany,
   };
 }
@@ -141,6 +161,7 @@ afterEach(() => {
   _setAgentRepositoryForTesting(null);
   _setListingRepositoryForTesting(null);
   _setDismissedListingRepositoryForTesting(null);
+  _setEmailEventRepositoryForTesting(null);
   _setTransactionRunnerForTesting(null);
   vi.restoreAllMocks();
 });
@@ -206,6 +227,7 @@ describe("removeSearchCascade", () => {
         { id: "ag-here", coveredOutcodes: ["LL55"] },
         { id: "ag-shared", coveredOutcodes: ["LL40", "NW3"] }, // shared with NW3 → kept
       ],
+      agentEmails: ["ag-here@x.test"],
     });
 
     const result = await removeSearchCascade(OPERATOR);
@@ -213,6 +235,9 @@ describe("removeSearchCascade", () => {
     expect(result).toEqual({ id: "self", dismissedCount: 3, removedAgentCount: 1 });
     expect(spies.dismissMany).toHaveBeenCalledWith(null, ["l1", "l2", "l3"], expect.anything());
     expect(spies.deleteAgents).toHaveBeenCalledWith(["ag-here"], expect.anything());
+    // GDPR: the removed agents' EmailEvent feed is purged in the same tx.
+    expect(spies.findEmails).toHaveBeenCalledWith(["ag-here"]);
+    expect(spies.deleteEvents).toHaveBeenCalledWith(["ag-here@x.test"], expect.anything());
     expect(spies.searchDelete).toHaveBeenCalledWith("self", null, expect.anything());
   });
 
@@ -227,6 +252,7 @@ describe("removeSearchCascade", () => {
 
     expect(result.removedAgentCount).toBe(0);
     expect(spies.deleteAgents).not.toHaveBeenCalled();
+    expect(spies.deleteEvents).not.toHaveBeenCalled();
     expect(spies.findIds).not.toHaveBeenCalled(); // no agent resolution for a non-operator
     expect(spies.dismissMany).toHaveBeenCalledWith(USER.ownerId, ["l1"], expect.anything());
     expect(spies.searchDelete).toHaveBeenCalledWith(OPERATOR.searchId, USER.ownerId, expect.anything());
@@ -237,6 +263,7 @@ describe("removeSearchCascade", () => {
     const result = await removeSearchCascade(OPERATOR);
     expect(result).toEqual({ id: OPERATOR.searchId, dismissedCount: 0, removedAgentCount: 0 });
     expect(spies.deleteAgents).not.toHaveBeenCalled();
+    expect(spies.deleteEvents).not.toHaveBeenCalled();
     expect(spies.dismissMany).toHaveBeenCalledWith(null, [], expect.anything());
   });
 

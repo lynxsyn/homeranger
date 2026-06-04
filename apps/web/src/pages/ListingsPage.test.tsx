@@ -140,14 +140,26 @@ function withData(items: unknown[] = ITEMS, nextCursor: string | null = null) {
   });
 }
 
-/** Seed the per-user saved set the page rehydrates its bookmarks from. */
-function withSaved(ids: string[]) {
-  savedQueryMock.mockReturnValue({ data: ids.map((id) => ({ id })) });
+// The real listings.saved / listings.dismissed procedures return FULLY HYDRATED
+// rows (the page maps them via toViewRow so the Saved/Dismissed buckets include
+// homes outside the score-ordered list page), so the mocks must too. Resolve
+// each id to its full item from ITEMS, falling back to a minimal item.
+function fullItemsFor(ids: string[]) {
+  return ids.map(
+    (id) =>
+      ITEMS.find((it) => it.id === id) ??
+      makeItem({ addressNormalized: id.replace(/^id-/, "") }),
+  );
 }
 
-/** Seed the per-user dismissed set the page rehydrates its hidden homes from. */
+/** Seed the per-user saved overlay the page rehydrates its bookmarks from. */
+function withSaved(ids: string[]) {
+  savedQueryMock.mockReturnValue({ data: fullItemsFor(ids) });
+}
+
+/** Seed the per-user dismissed overlay the page rehydrates its hidden homes from. */
 function withDismissed(ids: string[]) {
-  dismissedQueryMock.mockReturnValue({ data: ids.map((id) => ({ id })) });
+  dismissedQueryMock.mockReturnValue({ data: fullItemsFor(ids) });
 }
 
 /** Click a bucket filter chip by id (active | saved | dismissed). */
