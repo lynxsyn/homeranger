@@ -56,6 +56,16 @@ export R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-dev}"
 export R2_BUCKET_NAME="${R2_BUCKET_NAME:-homeranger-dev}"
 ok "fake provider seams on (override any in .env to hit real APIs)"
 
+# ---- dependencies (self-heal a fresh clone, or a pull that added a dep) ------
+step "Dependencies"
+if pnpm exec concurrently --version >/dev/null 2>&1; then
+  ok "workspace deps present"
+else
+  warn "installing workspace deps (first run, or a new dependency landed)…"
+  pnpm install --frozen-lockfile
+  ok "installed"
+fi
+
 # ---- infra: postgres + redis (idempotent) -----------------------------------
 step "Postgres + Redis"
 # 'up -d --wait' only starts/recreates what is missing or unhealthy and waits for
