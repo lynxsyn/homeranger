@@ -10,6 +10,7 @@
 @import "./styles/interest.css";
 @import "./styles/settings.css";
 @import "./styles/auth.css";
+@import "./styles/map.css";
 
 /*
  * Screen-reader-only utility — used for table <caption>s and visually-hidden

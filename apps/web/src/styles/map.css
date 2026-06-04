@@ -1,0 +1,269 @@
+/* ---- Map view -------------------------------------------------------------
+   The "homes on a map" modal: a near-full-height dialog with a synced list and
+   a Leaflet canvas. Ported from the design handoff (project/app/styles.css).
+   The pre-market gold pins/notes are intentionally omitted — listing status is
+   not surfaced in this product. Pins style themselves; we only reset Leaflet's
+   default div-icon chrome and tune its controls to the design system. */
+.modal-scrim--map {
+  align-items: center;
+  padding: 28px 20px;
+}
+.modal--map {
+  max-width: 1080px;
+  height: min(780px, calc(100vh - 56px));
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.modal--map .modal__head {
+  flex-shrink: 0;
+}
+.modal--map .modal__head .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.modal--map .modal__head .eyebrow svg {
+  color: var(--accent-ink);
+}
+
+.mapmodal {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+/* Loading + "nothing could be placed" share a centred message panel. */
+.mapmodal--state {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.map-state {
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+  max-width: 38ch;
+}
+
+.maplist {
+  width: 322px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* List row — compact, mirrors the active map pin. */
+.maprow {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  padding: 9px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.maprow:hover {
+  border-color: var(--border-strong);
+}
+.maprow.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-sm);
+  background: var(--accent-soft);
+}
+.maprow__photo {
+  width: 50px;
+  height: 50px;
+  flex-shrink: 0;
+  border-radius: var(--r-sm);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--premarket));
+}
+.maprow__photo svg {
+  opacity: 0.9;
+}
+.maprow__body {
+  min-width: 0;
+  flex: 1;
+}
+.maprow__top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: nowrap;
+}
+.maprow__price {
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-body);
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.maprow__addr {
+  font-size: var(--fs-sm);
+  color: var(--ink-1);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.maprow__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 3px;
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+}
+.maprow__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.maprow__right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.intbtn--sm {
+  width: 28px;
+  height: 28px;
+}
+
+.mapcanvas {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-3);
+}
+.mapcanvas .leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: var(--surface-3);
+  font-family: var(--font-sans);
+}
+
+/* Reset Leaflet's default white div-icon chrome — pins style themselves. */
+.map-pin-anchor {
+  background: transparent;
+  border: 0;
+}
+.map-pin {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 11px;
+  border: 1.5px solid #fff;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--r-full);
+  font-family: var(--font-sans);
+  font-weight: var(--fw-bold);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1;
+  box-shadow: var(--shadow-md);
+  transition:
+    transform var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+/* downward pointer */
+.map-pin::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--accent);
+  margin-top: -1px;
+  filter: drop-shadow(0 1px 0 #fff);
+}
+.map-pin:hover {
+  transform: scale(1.06);
+}
+.map-pin.is-active {
+  background: var(--accent-hover);
+  transform: scale(1.12);
+  z-index: 5;
+  box-shadow: var(--shadow-lg);
+}
+
+.mapmodal__foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.map-foot-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+}
+.map-foot-note svg {
+  color: var(--accent);
+}
+.src-none--foot {
+  font-size: var(--fs-sm);
+}
+
+/* Leaflet control polish to match the system. */
+.leaflet-bar a,
+.leaflet-control-zoom a {
+  background: var(--surface);
+  color: var(--ink-2);
+  border-color: var(--border) !important;
+}
+.leaflet-bar a:hover {
+  background: var(--surface-2);
+  color: var(--ink-1);
+}
+.leaflet-control-attribution {
+  background: color-mix(in oklch, var(--surface) 82%, transparent) !important;
+  color: var(--ink-3) !important;
+  font-family: var(--font-sans);
+}
+.leaflet-control-attribution a {
+  color: var(--ink-2) !important;
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--surface);
+  color: var(--ink-1);
+}
+
+@media (max-width: 720px) {
+  .mapmodal {
+    flex-direction: column;
+  }
+  .maplist {
+    width: 100%;
+    max-height: 38%;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}
