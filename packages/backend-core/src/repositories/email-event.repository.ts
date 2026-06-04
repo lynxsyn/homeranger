@@ -108,6 +108,30 @@ export class EmailEventRepository {
       where: { eventType, occurredAt: { gte: since } },
     });
   }
+
+  /**
+   * Erase every delivery/bounce/complaint event for the given email addresses —
+   * the GDPR-erasure leg for a removed agent. EmailEvent is keyed by the email
+   * STRING (no FK to Agent), so deleting the Agent does NOT cascade these rows,
+   * yet each carries the recipient's address + a full webhook `payload` snapshot.
+   * Composed into the SAME transaction as the agent delete so the erasure is
+   * atomic + complete. Emails are matched lower-cased (both Agent.email and
+   * EmailEvent.email are stored normalised). An empty list is a no-op (0).
+   */
+  async deleteByEmails(
+    emails: string[],
+    tx?: Prisma.TransactionClient,
+  ): Promise<number> {
+    if (emails.length === 0) {
+      return 0;
+    }
+    const db: PrismaLike = tx ?? prisma;
+    const normalised = emails.map((email) => email.trim().toLowerCase());
+    const result = await db.emailEvent.deleteMany({
+      where: { email: { in: normalised } },
+    });
+    return result.count;
+  }
 }
 
 const defaultEmailEventRepository = new EmailEventRepository();

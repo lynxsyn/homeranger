@@ -10,18 +10,25 @@
  * is needed; the component is imported AFTER the mock.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 
-const { listQueryMock, statsQueryMock } = vi.hoisted(() => ({
+const { listQueryMock, statsQueryMock, removeMutateMock } = vi.hoisted(() => ({
   listQueryMock: vi.fn(),
   statsQueryMock: vi.fn(),
+  removeMutateMock: vi.fn(),
 }));
 
 vi.mock("../lib/trpc", () => ({
   trpc: {
+    useUtils: () => ({
+      agents: { list: { invalidate: vi.fn() }, stats: { invalidate: vi.fn() } },
+    }),
     agents: {
       list: { useQuery: listQueryMock },
       stats: { useQuery: statsQueryMock },
+      remove: {
+        useMutation: () => ({ mutate: removeMutateMock, isPending: false }),
+      },
     },
   },
 }));
@@ -109,6 +116,7 @@ function withStats(stats: unknown = STATS) {
 beforeEach(() => {
   listQueryMock.mockReset();
   statsQueryMock.mockReset();
+  removeMutateMock.mockReset();
   withAgents();
   withStats();
 });
@@ -259,6 +267,40 @@ describe("AgentsPage status filter", () => {
     const rows = screen.getAllByTestId("agent-row");
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveTextContent("Roy Brooks");
+  });
+});
+
+describe("AgentsPage remove", () => {
+  it("kebab → Remove → confirm dialog → calls agents.remove with the agent id", () => {
+    render(<AgentsPage filter={null} onClearFilter={vi.fn()} />);
+    const replied = screen
+      .getAllByTestId("agent-row")
+      .find((r) => r.dataset.agency === "Field & Sons")!;
+
+    // Open the row's actions menu (portaled to body) and click Remove.
+    fireEvent.click(within(replied).getByTestId("agent-actions"));
+    fireEvent.click(screen.getByTestId("agent-remove"));
+
+    // The confirm dialog names the agency; confirming fires the mutation by id.
+    const confirm = screen.getByTestId("agent-remove-confirm");
+    expect(confirm).toHaveTextContent(/remove field & sons\?/i);
+    fireEvent.click(screen.getByTestId("agent-remove-confirm-btn"));
+    expect(removeMutateMock).toHaveBeenCalledWith({ id: "agent-replied" });
+  });
+
+  it("cancel keeps the agent (no remove call, dialog closes)", () => {
+    render(<AgentsPage filter={null} onClearFilter={vi.fn()} />);
+    const acorn = screen
+      .getAllByTestId("agent-row")
+      .find((r) => r.dataset.agency === "Acorn")!;
+
+    fireEvent.click(within(acorn).getByTestId("agent-actions"));
+    fireEvent.click(screen.getByTestId("agent-remove"));
+    expect(screen.getByTestId("agent-remove-confirm")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /keep agent/i }));
+    expect(screen.queryByTestId("agent-remove-confirm")).not.toBeInTheDocument();
+    expect(removeMutateMock).not.toHaveBeenCalled();
   });
 });
 

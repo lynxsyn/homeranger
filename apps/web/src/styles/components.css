@@ -35,6 +35,10 @@
 .hs-btn--ghost { background: transparent; color: var(--ink-2); }
 .hs-btn--ghost:hover { background: var(--surface-2); color: var(--ink-1); }
 
+/* Destructive confirm action (remove agent / remove search cascade). */
+.hs-btn--danger { background: var(--danger); color: #fff; }
+.hs-btn--danger:hover { background: color-mix(in oklch, var(--danger) 86%, black); }
+
 .hs-btn--sm { padding: 7px 12px; font-size: var(--fs-sm); border-radius: var(--r-xs); }
 .hs-btn--icon { padding: 9px; border-radius: var(--r-sm); }
 .hs-btn--icon svg { width: 18px; height: 18px; }

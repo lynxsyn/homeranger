@@ -59,6 +59,12 @@ import {
   searchProfileRepository as defaultSearchProfileRepository,
   type SearchProfileRepository,
 } from "../repositories/search-profile.repository.js";
+import {
+  previewSearchRemoval,
+  removeSearchCascade,
+  type SearchRemovalPreview,
+  type SearchRemovalResult,
+} from "../services/search-removal.service.js";
 import { currentSenderName } from "../lib/email/email-provider.js";
 import { resolveSender } from "@homeranger/shared";
 import {
@@ -73,6 +79,25 @@ import type {
 
 /** A single search row as the procedures return it. */
 export type SearchRow = SearchRecord;
+
+// The delete-a-search cascade (hide homes + remove agents + delete the search)
+// lives in search-removal.service; the router stubs it as ONE seam so the router
+// unit test asserts wiring + error-mapping while the service has its own test.
+type RemoveSearchCascade = typeof removeSearchCascade;
+let searchRemovalCascade: RemoveSearchCascade = removeSearchCascade;
+export function _setSearchRemovalCascadeForTesting(
+  fn: RemoveSearchCascade | null,
+): void {
+  searchRemovalCascade = fn ?? removeSearchCascade;
+}
+
+type PreviewSearchRemoval = typeof previewSearchRemoval;
+let searchRemovalPreviewer: PreviewSearchRemoval = previewSearchRemoval;
+export function _setSearchRemovalPreviewerForTesting(
+  fn: PreviewSearchRemoval | null,
+): void {
+  searchRemovalPreviewer = fn ?? previewSearchRemoval;
+}
 
 // ── Swappable seams (mirror outreach.router's _set*ForTesting pattern) so unit
 // tests assert the launch loop without a live Redis or DB. The guard +
@@ -241,11 +266,46 @@ export const searchesRouter = router({
       );
     }),
 
+  /**
+   * DELETE a search as a CASCADE (design + operator ask: "removing a search hides
+   * those listings and completely removes the agents"). Delegates to
+   * search-removal.service, which atomically: HIDES the search's homes for the
+   * owner (per-user DismissedListing rows — restorable, never deleted), and — for
+   * the OPERATOR only — COMPLETELY removes the agents the search found that no
+   * other search still covers (GDPR erasure cascading their threads + messages),
+   * then deletes the search row. Returns the cascade counts so the SPA can echo
+   * what happened. P2025 (missing/foreign id) → NOT_FOUND, as before.
+   */
   delete: protectedProcedure
     .input(searchByIdInputSchema)
-    .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
+    .mutation(async ({ ctx, input }): Promise<SearchRemovalResult> => {
+      const ownerId = ownerKeyFor(ctx.user);
       try {
-        return await searchRepository.delete(input.id, ownerKeyFor(ctx.user));
+        return await searchRemovalCascade({
+          searchId: input.id,
+          ownerId,
+          isOperator: ownerId === null,
+        });
+      } catch (error) {
+        return searchNotFound(error);
+      }
+    }),
+
+  /**
+   * PREVIEW the delete cascade for the confirm dialog (no mutation): how many
+   * homes will be hidden + how many agents will be completely removed (0 for a
+   * non-operator). Owner-scoped; P2025 → NOT_FOUND.
+   */
+  removalPreview: protectedProcedure
+    .input(searchByIdInputSchema)
+    .query(async ({ ctx, input }): Promise<SearchRemovalPreview> => {
+      const ownerId = ownerKeyFor(ctx.user);
+      try {
+        return await searchRemovalPreviewer({
+          searchId: input.id,
+          ownerId,
+          isOperator: ownerId === null,
+        });
       } catch (error) {
         return searchNotFound(error);
       }

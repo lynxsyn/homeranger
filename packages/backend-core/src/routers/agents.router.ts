@@ -23,13 +23,28 @@
  * `outreachRepository` / `listingRepository` singletons (ESM live bindings), so
  * a unit test injects fakes via each repo's own `_setXRepositoryForTesting` seam.
  */
-import type { OutreachThreadStatus } from "@prisma/client";
-import { agentsListInputSchema, agentsStatsInputSchema } from "@homeranger/shared";
+import { Prisma, type OutreachThreadStatus } from "@prisma/client";
+import { TRPCError } from "@trpc/server";
+import {
+  agentByIdInputSchema,
+  agentsListInputSchema,
+  agentsStatsInputSchema,
+} from "@homeranger/shared";
 import { operatorProcedure, router } from "../trpc.js";
 import { agentRepository, type AgentRecord } from "../repositories/agent.repository.js";
 import { outreachRepository } from "../repositories/outreach.repository.js";
 import { listingRepository } from "../repositories/listing.repository.js";
 import { summariseCoverage, type CoverageSummary } from "../lib/geo/coverage.js";
+import { eraseAgentById } from "../services/agent-removal.service.js";
+
+// The GDPR-complete erasure (agent + correspondence + EmailEvent feed) lives in
+// agent-removal.service; the router stubs it as ONE seam so the unit test asserts
+// wiring + error-mapping while the service has its own test.
+type AgentEraser = typeof eraseAgentById;
+let agentEraser: AgentEraser = eraseAgentById;
+export function _setAgentEraserForTesting(fn: AgentEraser | null): void {
+  agentEraser = fn ?? eraseAgentById;
+}
 
 /** The design's relationship status for an agent row. */
 export type AgentThreadStatus = "replied" | "awaiting" | "queued" | "opted_out";
@@ -183,5 +198,32 @@ export const agentsRouter = router({
         homesIngested += row.homesCount;
       }
       return { contacted, replied, awaiting, homesIngested };
+    }),
+
+  /**
+   * COMPLETELY remove an agent from the pool — the GDPR-compliant erasure behind
+   * the Agents table's row "Remove" action. A single atomic delete cascades the
+   * agent's OutreachThreads + OutreachMessages (FK ON DELETE CASCADE), so the
+   * agent record AND all its correspondence are erased in one statement. The
+   * listings it already sent STAY (a global, still-valid catalogue — "you're
+   * dropping one agency, not the hunt"); only their denormalised agentEmail now
+   * points at a gone agent. OPERATOR-ONLY (the agent pool is global, same
+   * boundary as `list`/`stats`). A missing id maps to NOT_FOUND (Prisma P2025),
+   * mirroring searches.delete; the agent can be re-discovered by a future search.
+   */
+  remove: operatorProcedure
+    .input(agentByIdInputSchema)
+    .mutation(async ({ input }): Promise<{ id: string }> => {
+      try {
+        return await agentEraser(input.id);
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2025"
+        ) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Agent not found" });
+        }
+        throw error;
+      }
     }),
 });

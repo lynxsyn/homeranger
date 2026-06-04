@@ -185,6 +185,7 @@ model Listing {
   photoAnalyses PhotoAnalysis[]
   scores        ListingScore[]
   savedBy       SavedListing[]
+  dismissedBy   DismissedListing[]
 
   @@index([outcode])
   @@index([postcode])
@@ -436,6 +437,29 @@ model Search {
 // raw migration (Prisma cannot express a NULL-safe expression index), so the
 // operator's NULL-namespaced saves are also deduped per listing.
 model SavedListing {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  userId    String?  @db.Uuid
+  listingId String   @db.Uuid
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([listingId])
+}
+
+// A user's dismissed ("hidden") listing — the per-user overlay that hides a home
+// from the working feed. The exact mirror of SavedListing (same nullable
+// owner-key convention, same COALESCE-based NULL-safe unique index in the raw
+// migration), but the OPPOSITE intent: a save surfaces a home, a dismiss buries
+// it. Dismissing is REVERSIBLE (restore deletes the row) and SILENT — it is
+// never communicated to the agent; it only tunes the buyer's own feed/scoring.
+// The two overlays are INDEPENDENT: a home can be neither, saved, dismissed, or
+// (transiently) both — the UI computes the Active / Saved / Dismissed buckets
+// from the two id sets. The search-removal cascade hides a search's homes by
+// inserting DismissedListing rows for the owner (restorable from the Dismissed
+// view), never deleting the global Listing rows.
+model DismissedListing {
   id        String   @id @default(uuid(7)) @db.Uuid
   userId    String?  @db.Uuid
   listingId String   @db.Uuid

@@ -20,3 +20,14 @@ export const agentsStatsInputSchema = z
   .object({ outcodes: z.array(z.string()).max(100).optional() })
   .strict();
 export type AgentsStatsInput = z.infer<typeof agentsStatsInputSchema>;
+
+/**
+ * Address a single agent by id — the input for the GDPR-compliant complete
+ * removal (`agents.remove`). The delete cascades the agent's OutreachThreads +
+ * OutreachMessages (FK ON DELETE CASCADE), so it ERASES the agent record and all
+ * its correspondence atomically. Operator-only (the agent pool is global).
+ */
+export const agentByIdInputSchema = z
+  .object({ id: z.uuid() })
+  .strict();
+export type AgentByIdInput = z.infer<typeof agentByIdInputSchema>;

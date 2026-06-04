@@ -79,6 +79,16 @@ export default defineConfig({
         // real token. Explicit because direnv may export a real SUPABASE_URL
         // from .env into the shell Playwright inherits.
         SUPABASE_URL: "",
+        // Pin the operator identity to the dev-bypass user. Without this, direnv
+        // exports OPERATOR_USER_EMAIL/ALLOWED_USER_EMAIL from the gitignored .env
+        // into the shell Playwright inherits (same reason SUPABASE_URL is forced
+        // empty above), so the dev-bypass user (dev@homeranger.local) would NOT
+        // resolve as the operator → the operator-only Agents tab + agents.* +
+        // search-cascade agent removal would be FORBIDDEN locally (they pass in
+        // CI, which has no .env). Pinning these matches CI's resolution
+        // (operatorEmail() falls back to DEV_USER_EMAIL when both are unset).
+        OPERATOR_USER_EMAIL: "dev@homeranger.local",
+        ALLOWED_USER_EMAIL: "dev@homeranger.local",
         NODE_ENV: "development",
       },
     },

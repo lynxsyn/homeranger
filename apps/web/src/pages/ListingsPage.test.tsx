@@ -11,21 +11,39 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
-const { useQueryMock, savedQueryMock, saveMutateMock, unsaveMutateMock } =
-  vi.hoisted(() => ({
-    useQueryMock: vi.fn(),
-    savedQueryMock: vi.fn(() => ({ data: [] as Array<{ id: string }> })),
-    saveMutateMock: vi.fn(),
-    unsaveMutateMock: vi.fn(),
-  }));
+const {
+  useQueryMock,
+  savedQueryMock,
+  saveMutateMock,
+  unsaveMutateMock,
+  dismissedQueryMock,
+  dismissMutateMock,
+  restoreMutateMock,
+} = vi.hoisted(() => ({
+  useQueryMock: vi.fn(),
+  savedQueryMock: vi.fn(() => ({ data: [] as Array<{ id: string }> })),
+  saveMutateMock: vi.fn(),
+  unsaveMutateMock: vi.fn(),
+  dismissedQueryMock: vi.fn(() => ({ data: [] as Array<{ id: string }> })),
+  dismissMutateMock: vi.fn(),
+  restoreMutateMock: vi.fn(),
+}));
 vi.mock("../lib/trpc", () => ({
   trpc: {
-    useUtils: () => ({ listings: { saved: { invalidate: vi.fn() } } }),
+    useUtils: () => ({
+      listings: {
+        saved: { invalidate: vi.fn() },
+        dismissed: { invalidate: vi.fn() },
+      },
+    }),
     listings: {
       list: { useQuery: useQueryMock },
       saved: { useQuery: savedQueryMock },
       save: { useMutation: () => ({ mutate: saveMutateMock }) },
       unsave: { useMutation: () => ({ mutate: unsaveMutateMock }) },
+      dismissed: { useQuery: dismissedQueryMock },
+      dismiss: { useMutation: () => ({ mutate: dismissMutateMock }) },
+      restore: { useMutation: () => ({ mutate: restoreMutateMock }) },
     },
     outreach: { senderName: { useQuery: () => ({ data: { name: "Bryan" } }) } },
   },
@@ -122,9 +140,31 @@ function withData(items: unknown[] = ITEMS, nextCursor: string | null = null) {
   });
 }
 
-/** Seed the per-user saved set the page rehydrates its bookmarks from. */
+// The real listings.saved / listings.dismissed procedures return FULLY HYDRATED
+// rows (the page maps them via toViewRow so the Saved/Dismissed buckets include
+// homes outside the score-ordered list page), so the mocks must too. Resolve
+// each id to its full item from ITEMS, falling back to a minimal item.
+function fullItemsFor(ids: string[]) {
+  return ids.map(
+    (id) =>
+      ITEMS.find((it) => it.id === id) ??
+      makeItem({ addressNormalized: id.replace(/^id-/, "") }),
+  );
+}
+
+/** Seed the per-user saved overlay the page rehydrates its bookmarks from. */
 function withSaved(ids: string[]) {
-  savedQueryMock.mockReturnValue({ data: ids.map((id) => ({ id })) });
+  savedQueryMock.mockReturnValue({ data: fullItemsFor(ids) });
+}
+
+/** Seed the per-user dismissed overlay the page rehydrates its hidden homes from. */
+function withDismissed(ids: string[]) {
+  dismissedQueryMock.mockReturnValue({ data: fullItemsFor(ids) });
+}
+
+/** Click a bucket filter chip by id (active | saved | dismissed). */
+function selectBucket(id: "active" | "saved" | "dismissed") {
+  fireEvent.click(screen.getByTestId(`bucket-${id}`));
 }
 
 function renderedAddresses(): string[] {
@@ -136,8 +176,11 @@ function renderedAddresses(): string[] {
 beforeEach(() => {
   localStorage.clear();
   savedQueryMock.mockReturnValue({ data: [] });
+  dismissedQueryMock.mockReturnValue({ data: [] });
   saveMutateMock.mockReset();
   unsaveMutateMock.mockReset();
+  dismissMutateMock.mockReset();
+  restoreMutateMock.mockReset();
 });
 
 afterEach(() => {
@@ -435,5 +478,87 @@ describe("ListingsPage interest + follow-ups", () => {
     fireEvent.click(screen.getByTestId("draft-followups"));
     const modal = screen.getByTestId("followup-modal");
     expect(within(modal).getByText("your agent")).toBeInTheDocument();
+  });
+});
+
+describe("ListingsPage dismiss + buckets", () => {
+  it("renders Active/Saved/Dismissed chips with counts, Active selected by default", () => {
+    withSaved(["id-alpha road"]);
+    withDismissed(["id-charlie lane"]);
+    withData();
+    render(<ListingsPage />);
+
+    // Active = not dismissed (bravo + alpha); Saved = bookmarked & not dismissed
+    // (alpha); Dismissed = charlie.
+    expect(screen.getByTestId("bucket-active")).toHaveTextContent("2");
+    expect(screen.getByTestId("bucket-saved")).toHaveTextContent("1");
+    expect(screen.getByTestId("bucket-dismissed")).toHaveTextContent("1");
+    expect(screen.getByTestId("bucket-active")).toHaveAttribute("aria-pressed", "true");
+    // The Active view excludes the dismissed home.
+    expect(renderedAddresses()).not.toContain("charlie lane");
+  });
+
+  it("dismissing a row hides it from Active, shows the undo snackbar, and persists via dismiss()", () => {
+    withData();
+    render(<ListingsPage />);
+    expect(screen.getAllByTestId("listing-row")).toHaveLength(3);
+
+    // Top row is bravo (score 90). Dismiss it.
+    fireEvent.click(screen.getAllByTestId("listing-dismiss")[0]!);
+
+    expect(dismissMutateMock).toHaveBeenCalledWith(
+      { listingId: "id-bravo street" },
+      expect.anything(),
+    );
+    expect(screen.getByTestId("dismiss-toast")).toBeInTheDocument();
+    // It left the Active view + the active count dropped.
+    expect(screen.getAllByTestId("listing-row")).toHaveLength(2);
+    expect(renderedAddresses()).not.toContain("bravo street");
+    expect(screen.getByTestId("bucket-active")).toHaveTextContent("2");
+    expect(screen.getByTestId("bucket-dismissed")).toHaveTextContent("1");
+
+    // Undo restores it straight back.
+    fireEvent.click(screen.getByTestId("dismiss-undo"));
+    expect(restoreMutateMock).toHaveBeenCalledWith(
+      { listingId: "id-bravo street" },
+      expect.anything(),
+    );
+    expect(screen.getAllByTestId("listing-row")).toHaveLength(3);
+  });
+
+  it("the Dismissed bucket shows hidden homes with a restore control; restore un-hides", () => {
+    withDismissed(["id-bravo street"]);
+    withData();
+    render(<ListingsPage />);
+
+    selectBucket("dismissed");
+    expect(renderedAddresses()).toEqual(["bravo street"]);
+    const restoreBtn = screen.getByTestId("listing-restore");
+    expect(screen.queryByTestId("listing-dismiss")).not.toBeInTheDocument();
+
+    fireEvent.click(restoreBtn);
+    expect(restoreMutateMock).toHaveBeenCalledWith(
+      { listingId: "id-bravo street" },
+      expect.anything(),
+    );
+    // It leaves the Dismissed view (now empty → empty state).
+    expect(screen.queryByTestId("listing-row")).not.toBeInTheDocument();
+    expect(screen.getByTestId("listings-empty")).toHaveTextContent(/nothing dismissed/i);
+  });
+
+  it("a saved-then-dismissed home is in NEITHER Saved nor Active, only Dismissed; no interest bar", () => {
+    withSaved(["id-alpha road"]);
+    withDismissed(["id-alpha road"]); // alpha is both bookmarked AND dismissed
+    withData();
+    render(<ListingsPage />);
+
+    // Dismiss overrides bookmark: alpha is out of Active + Saved.
+    expect(renderedAddresses()).not.toContain("alpha road");
+    expect(screen.getByTestId("bucket-saved")).toHaveTextContent("0");
+    // The interest bar excludes dismissed homes, so it stays hidden.
+    expect(screen.queryByTestId("interest-bar")).not.toBeInTheDocument();
+
+    selectBucket("dismissed");
+    expect(renderedAddresses()).toEqual(["alpha road"]);
   });
 });

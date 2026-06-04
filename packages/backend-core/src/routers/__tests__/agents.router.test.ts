@@ -18,8 +18,9 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TRPCError } from "@trpc/server";
-import type { OutreachThreadStatus } from "@prisma/client";
+import { Prisma, type OutreachThreadStatus } from "@prisma/client";
 import { appRouter } from "../index.js";
+import { _setAgentEraserForTesting } from "../agents.router.js";
 import {
   AgentRepository,
   _setAgentRepositoryForTesting,
@@ -103,6 +104,7 @@ afterEach(() => {
   _setAgentRepositoryForTesting(null);
   _setOutreachRepositoryForTesting(null);
   _setListingRepositoryForTesting(null);
+  _setAgentEraserForTesting(null);
   vi.restoreAllMocks();
 });
 
@@ -282,6 +284,45 @@ describe("agentsRouter.stats aggregation", () => {
       includeOptedOut: true,
       limit: 100,
     });
+  });
+});
+
+describe("agentsRouter.remove", () => {
+  const AGENT_ID = "00000000-0000-7000-8000-0000000000a9";
+
+  it("delegates to the GDPR eraser and echoes { id }", async () => {
+    const eraser = vi.fn().mockResolvedValue({ id: AGENT_ID });
+    _setAgentEraserForTesting(eraser);
+    const result = await operatorCaller.agents.remove({ id: AGENT_ID });
+    expect(result).toEqual({ id: AGENT_ID });
+    expect(eraser).toHaveBeenCalledWith(AGENT_ID);
+  });
+
+  it("maps Prisma P2025 (missing agent) to NOT_FOUND", async () => {
+    _setAgentEraserForTesting(
+      vi.fn().mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError("not found", {
+          code: "P2025",
+          clientVersion: Prisma.prismaVersion.client,
+        }),
+      ),
+    );
+    await expect(
+      operatorCaller.agents.remove({ id: AGENT_ID }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("FORBIDS a non-operator and rejects anon with UNAUTHORIZED (before the eraser runs)", async () => {
+    const eraser = vi.fn();
+    _setAgentEraserForTesting(eraser);
+    await expect(
+      partnerCaller.agents.remove({ id: AGENT_ID }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const anon = appRouter.createCaller({ user: null });
+    await expect(
+      anon.agents.remove({ id: AGENT_ID }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(eraser).not.toHaveBeenCalled();
   });
 });
 

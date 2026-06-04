@@ -125,6 +125,10 @@ export default defineConfig({
         // exercised by the saved-listing integration test, not unit. Same
         // rationale as the M2–M8 repository excludes above.
         "packages/backend-core/src/repositories/saved-listing.repository.ts",
+        // Multi-user dismissed-listings overlay — Prisma I/O (dismiss/restore/
+        // list/dismissMany), exercised by the dismissed-listing integration test,
+        // not unit. Same rationale as the saved-listing exclude above.
+        "packages/backend-core/src/repositories/dismissed-listing.repository.ts",
       ],
       thresholds: {
         // Floor with deliberate HEADROOM, not floor(measured). Measured M3 is

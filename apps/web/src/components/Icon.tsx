@@ -43,6 +43,9 @@ import {
   User,
   Phone,
   LogOut,
+  EyeOff,
+  RotateCcw,
+  MoreHorizontal,
   type LucideIcon,
 } from "lucide-react";
 
@@ -84,6 +87,9 @@ const ICONS: Record<string, LucideIcon> = {
   user: User,
   phone: Phone,
   "log-out": LogOut,
+  "eye-off": EyeOff,
+  "rotate-ccw": RotateCcw,
+  "more-horizontal": MoreHorizontal,
 };
 
 export interface IconProps {

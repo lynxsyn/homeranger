@@ -19,6 +19,7 @@ const {
   createMutateMock,
   updateMutateMock,
   deleteMutateMock,
+  removalPreviewMock,
   setStatusMutateMock,
   launchMutateMock,
   launchStateMock,
@@ -34,6 +35,10 @@ const {
   createMutateMock: vi.fn(),
   updateMutateMock: vi.fn(),
   deleteMutateMock: vi.fn(),
+  removalPreviewMock: vi.fn(() => ({
+    data: { listingsToHide: 0, agentsToRemove: 0 },
+    isLoading: false,
+  })),
   setStatusMutateMock: vi.fn(),
   launchMutateMock: vi.fn(),
   // Mutable state the mocked launch mutation reports back to the component.
@@ -50,6 +55,9 @@ vi.mock("../lib/trpc", () => ({
   trpc: {
     useUtils: () => ({
       searches: { list: { invalidate: invalidateMock } },
+      // The delete cascade also refreshes Listings' Dismissed bucket + Agents.
+      listings: { dismissed: { invalidate: vi.fn() } },
+      agents: { list: { invalidate: vi.fn() }, stats: { invalidate: vi.fn() } },
     }),
     // The page gates the operator-only launch UI on auth.me.isOperator; an
     // overridable hoisted mock (defaulted to the operator in beforeEach) lets a
@@ -60,6 +68,8 @@ vi.mock("../lib/trpc", () => ({
       create: { useMutation: () => ({ mutate: createMutateMock, isPending: false }) },
       update: { useMutation: () => ({ mutate: updateMutateMock, isPending: false }) },
       delete: { useMutation: () => ({ mutate: deleteMutateMock, isPending: false }) },
+      // The cascade confirm fetches a live preview of what the delete touches.
+      removalPreview: { useQuery: removalPreviewMock },
       setStatus: {
         useMutation: () => ({ mutate: setStatusMutateMock, isPending: false }),
       },
@@ -212,6 +222,10 @@ beforeEach(() => {
   createMutateMock.mockClear();
   updateMutateMock.mockClear();
   deleteMutateMock.mockClear();
+  removalPreviewMock.mockReturnValue({
+    data: { listingsToHide: 0, agentsToRemove: 0 },
+    isLoading: false,
+  });
   setStatusMutateMock.mockClear();
   launchMutateMock.mockClear();
   reviewQueryMock.mockClear();
@@ -467,7 +481,31 @@ describe("SearchesPage editor", () => {
     expect(updateMutateMock.mock.calls[0]![0]).toMatchObject({ id: "search-snowdonia" });
   });
 
-  it("deletes an existing search from the editor", () => {
+  it("deletes an existing search via the cascade confirm (with live counts)", () => {
+    withSearches();
+    removalPreviewMock.mockReturnValue({
+      data: { listingsToHide: 3, agentsToRemove: 2 },
+      isLoading: false,
+    });
+    render(<SearchesPage onViewHomes={vi.fn()} />);
+    const snowdonia = screen.getByText("Snowdonia — detached with a view").closest(
+      "[data-testid='search-card']",
+    ) as HTMLElement;
+    fireEvent.click(snowdonia);
+
+    // Delete in the editor opens the cascade confirm — it does NOT delete yet.
+    fireEvent.click(screen.getByTestId("search-delete"));
+    expect(deleteMutateMock).not.toHaveBeenCalled();
+    const confirm = screen.getByTestId("search-remove-confirm");
+    expect(confirm).toHaveTextContent(/2 agents/i);
+    expect(confirm).toHaveTextContent(/3 homes/i);
+
+    // Confirming runs the delete with the search id.
+    fireEvent.click(screen.getByTestId("search-remove-confirm-btn"));
+    expect(deleteMutateMock).toHaveBeenCalledWith({ id: "search-snowdonia" });
+  });
+
+  it("cancelling the cascade confirm keeps the search (no delete)", () => {
     withSearches();
     render(<SearchesPage onViewHomes={vi.fn()} />);
     const snowdonia = screen.getByText("Snowdonia — detached with a view").closest(
@@ -475,7 +513,11 @@ describe("SearchesPage editor", () => {
     ) as HTMLElement;
     fireEvent.click(snowdonia);
     fireEvent.click(screen.getByTestId("search-delete"));
-    expect(deleteMutateMock).toHaveBeenCalledWith({ id: "search-snowdonia" });
+    expect(screen.getByTestId("search-remove-confirm")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /keep search/i }));
+    expect(screen.queryByTestId("search-remove-confirm")).not.toBeInTheDocument();
+    expect(deleteMutateMock).not.toHaveBeenCalled();
   });
 
   it("suggests UK locations as you type and fills the field on pick", () => {

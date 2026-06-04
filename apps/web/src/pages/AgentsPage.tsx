@@ -16,7 +16,8 @@
  *
  * apps/web is moduleResolution=bundler → relative imports carry NO `.js`.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@homeranger/backend-core";
@@ -119,6 +120,182 @@ const SORT_WEIGHT: Record<AgentThreadStatus, number> = {
   opted_out: 2,
 };
 
+/* ---- Row actions menu -----------------------------------------------------
+ * Portaled (the agents table's .tablewrap is overflow:hidden, which would clip
+ * an inline popover — same reason CoverageCell portals). One destructive action
+ * today (Remove), built as a menu so it can grow. */
+interface RowActionsProps {
+  agent: AgentRow;
+  onAskRemove: (agent: AgentRow) => void;
+}
+
+function RowActions({ agent, onAskRemove }: RowActionsProps) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const wrap = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const place = () => {
+      const el = btnRef.current;
+      if (!el) {
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      const menuW = 188;
+      setPos({ left: Math.max(12, r.right - menuW), top: r.bottom + 6 });
+    };
+    place();
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (wrap.current?.contains(t) || popRef.current?.contains(t)) {
+        return;
+      }
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    const onScroll = () => setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [open]);
+
+  const menu =
+    open && pos
+      ? createPortal(
+          <div
+            className="rowmenu"
+            role="menu"
+            ref={popRef}
+            data-testid="agent-menu"
+            style={{ left: pos.left, top: pos.top }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="rowmenu__item rowmenu__item--danger"
+              data-testid="agent-remove"
+              onClick={() => {
+                setOpen(false);
+                onAskRemove(agent);
+              }}
+            >
+              <Icon name="trash-2" size={16} /> Remove from list
+            </button>
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <div className="rowactions" ref={wrap}>
+      <button
+        type="button"
+        ref={btnRef}
+        className={`rowactions__btn${open ? " is-open" : ""}`}
+        data-testid="agent-actions"
+        aria-label={`Actions for ${agentName(agent)}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        <Icon name="more-horizontal" size={18} />
+      </button>
+      {menu}
+    </div>
+  );
+}
+
+/* ---- Remove confirmation --------------------------------------------------
+ * Removing an agent is consequential + irreversible (it ERASES the agency and
+ * all its correspondence — GDPR), so unlike hiding a listing it asks first, in
+ * the candid HomeRanger voice. The homes it already sent STAY in your listings. */
+interface ConfirmRemoveProps {
+  agent: AgentRow;
+  removing: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+function ConfirmRemove({ agent, removing, onCancel, onConfirm }: ConfirmRemoveProps) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onCancel();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onCancel]);
+
+  const name = agentName(agent);
+  const homes = agent.homesCount;
+  return (
+    <div className="modal-scrim" onMouseDown={onCancel}>
+      <div
+        className="modal modal--confirm"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Remove agent"
+        data-testid="agent-remove-confirm"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="confirm-body">
+          <div className="confirm-mark confirm-mark--danger">
+            <Icon name="trash-2" size={22} />
+          </div>
+          <h2 className="confirm-title">Remove {name}?</h2>
+          <p className="confirm-text">
+            This permanently removes <b>{name}</b> and every message exchanged
+            with them. They drop off your agents list and out of your metrics, and
+            HomeRanger won&rsquo;t contact them again unless a future search finds
+            them and you approve it.{" "}
+            {homes > 0
+              ? `The ${homes} ${homes === 1 ? "home" : "homes"} they’ve already sent in ${homes === 1 ? "stays" : "stay"} in your listings.`
+              : "Anything they’ve already sent in stays in your listings."}
+          </p>
+        </div>
+        <div className="modal__foot modal__foot--end">
+          <Button variant="secondary" onClick={onCancel} disabled={removing}>
+            Keep agent
+          </Button>
+          <Button
+            variant="danger"
+            icon="trash-2"
+            data-testid="agent-remove-confirm-btn"
+            disabled={removing}
+            onClick={onConfirm}
+          >
+            {removing ? "Removing…" : "Remove"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---- Screen --------------------------------------------------------------- */
 export interface AgentsPageProps {
   /** When set, the list is scoped to a search's outcodes + a banner is shown. */
@@ -129,6 +306,8 @@ export interface AgentsPageProps {
 
 export function AgentsPage({ filter, onClearFilter }: AgentsPageProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // The agent awaiting removal confirmation (null = no dialog open).
+  const [removing, setRemoving] = useState<AgentRow | null>(null);
 
   // Scope both queries to the drill-in's outcodes (absent → all agents); list +
   // stats are built from the same server-side row set so the metrics and the
@@ -141,6 +320,17 @@ export function AgentsPage({ filter, onClearFilter }: AgentsPageProps) {
     refetch,
   } = trpc.agents.list.useQuery({ outcodes });
   const { data: stats } = trpc.agents.stats.useQuery({ outcodes });
+
+  // Complete (GDPR) removal: erase the agent + its threads/messages, then refresh
+  // the table AND the metric tiles (both read the same server rows).
+  const utils = trpc.useUtils();
+  const removeMut = trpc.agents.remove.useMutation({
+    onSuccess: () => {
+      void utils.agents.list.invalidate();
+      void utils.agents.stats.invalidate();
+      setRemoving(null);
+    },
+  });
 
   const allRows = listData ?? [];
 
@@ -308,6 +498,7 @@ export function AgentsPage({ filter, onClearFilter }: AgentsPageProps) {
                     <th scope="col" className="num col-seen">
                       Last contact
                     </th>
+                    <th scope="col" className="col-act" aria-label="Actions" />
                   </tr>
                 </thead>
                 <tbody>
@@ -352,6 +543,9 @@ export function AgentsPage({ filter, onClearFilter }: AgentsPageProps) {
                               : "—"}
                           </span>
                         </td>
+                        <td className="col-act">
+                          <RowActions agent={a} onAskRemove={setRemoving} />
+                        </td>
                       </tr>
                     );
                   })}
@@ -366,6 +560,15 @@ export function AgentsPage({ filter, onClearFilter }: AgentsPageProps) {
             corporate subscribers, never opted-out, within the warm-up cap
           </div>
         </>
+      )}
+
+      {removing && (
+        <ConfirmRemove
+          agent={removing}
+          removing={removeMut.isPending}
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => removeMut.mutate({ id: removing.id })}
+        />
       )}
     </main>
   );
