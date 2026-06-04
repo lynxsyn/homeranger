@@ -157,6 +157,9 @@ describe("OutreachService.sendOutreach", () => {
         toEmail: "branch@agency.test",
         providerMessageId: fakeProviderId("outreach:send:agent-1"),
         sentAt: new Date("2026-06-02T12:00:00Z"),
+        // The rendered HTML is persisted too (not just bodyText) so a draft can
+        // be inspected from the DB without reading the mailbox.
+        bodyHtml: expect.stringContaining("<p>"),
       }),
     );
     expect(h.applyThreadEvent).toHaveBeenCalledWith(

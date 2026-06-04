@@ -361,6 +361,7 @@ export class DefaultOutreachService implements OutreachService {
       toEmail: agent.email,
       subject: draft.subject,
       bodyText: draft.bodyText,
+      bodyHtml: draft.bodyHtml,
       sentAt: now,
     });
     const status = await this.outreachRepository.applyThreadEvent({
