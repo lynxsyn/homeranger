@@ -111,6 +111,31 @@ describe("OutreachReplyService.linkReply", () => {
     // The durable suppression is NOT linkReply's responsibility.
     expect(h.suppress).not.toHaveBeenCalled();
   });
+
+  it("does NOT forge thread state when the sender is unauthenticated (spoofed From)", async () => {
+    // The webhook is signed by Resend (the forwarder), not the sender, so the
+    // `From` is spoofable. A tracked agent's address on mail that fails BOTH
+    // SPF and DKIM is a likely spoof — refuse to advance the thread / attach a
+    // fake inbound reply. (The listing already ingested as generic inbound.)
+    const h = makeHarness(true);
+    await h.service.linkReply(
+      { ...PAYLOAD, spfVerdict: "fail", dkimVerdict: "fail" },
+      RESULT,
+    );
+    expect(h.findOrCreateOpenThreadByAgent).not.toHaveBeenCalled();
+    expect(h.createInboundMessageOrIgnore).not.toHaveBeenCalled();
+    expect(h.applyThreadEvent).not.toHaveBeenCalled();
+  });
+
+  it("still links when DKIM passes even if SPF softfails (legit forwarded mail is not over-blocked)", async () => {
+    const h = makeHarness(true);
+    await h.service.linkReply(
+      { ...PAYLOAD, spfVerdict: "softfail", dkimVerdict: "pass" },
+      RESULT,
+    );
+    expect(h.createInboundMessageOrIgnore).toHaveBeenCalled();
+    expect(h.applyThreadEvent).toHaveBeenCalled();
+  });
 });
 
 describe("OutreachReplyService.handleOptOut (durable, non-swallowed)", () => {
@@ -134,6 +159,26 @@ describe("OutreachReplyService.handleOptOut (durable, non-swallowed)", () => {
     await h.service.handleOptOut(PAYLOAD);
     expect(h.suppress).not.toHaveBeenCalled();
     expect(h.markOptedOut).not.toHaveBeenCalled();
+  });
+
+  it("STILL suppresses an unauthenticated STOP (over-suppression is compliance-safe; a real opt-out is never dropped)", async () => {
+    // Opt-out is deliberately NOT gated on SPF/DKIM: dropping a genuine STOP is
+    // a PECR/GDPR violation, whereas honouring a spoofed STOP only over-
+    // suppresses (the sabotage vector is logged, not enforced).
+    const h = makeHarness(true);
+    await h.service.handleOptOut({
+      ...PAYLOAD,
+      bodyText: "STOP",
+      spfVerdict: "fail",
+      dkimVerdict: "fail",
+    });
+    expect(h.suppress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: PAYLOAD.senderEmail,
+        reason: "unsubscribe",
+      }),
+    );
+    expect(h.markOptedOut).toHaveBeenCalledWith(PAYLOAD.senderEmail);
   });
 });
 

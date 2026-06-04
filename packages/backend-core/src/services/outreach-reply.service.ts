@@ -21,6 +21,7 @@ import {
   suppressionEntryRepository as defaultSuppressionEntryRepository,
   type SuppressionEntryRepository,
 } from "../repositories/suppression-entry.repository.js";
+import { isAuthenticatedSender } from "../lib/inbound/email-authentication.js";
 import type {
   InboundEmailPayload,
   IngestInboundEmailResult,
@@ -86,6 +87,20 @@ export class DefaultOutreachReplyService implements OutreachReplyService {
     if (!isUnsubscribeIntent(payload.bodyText)) {
       return;
     }
+    if (!isAuthenticatedSender(payload.spfVerdict, payload.dkimVerdict)) {
+      // The `From` is spoofable. We STILL honour the opt-out — dropping a real
+      // STOP is a PECR/GDPR violation and over-suppression is harmless — but an
+      // unauthenticated STOP is a denial-of-outreach sabotage signal, so flag it
+      // for operator visibility (no PII: no email/body in the log).
+      console.warn(
+        JSON.stringify({
+          type: "warn",
+          scope: "outreach.reply.optout_unauthenticated",
+          spf: payload.spfVerdict,
+          dkim: payload.dkimVerdict,
+        }),
+      );
+    }
     // Email-keyed + idempotent — works even if the sender is not (yet) a tracked
     // agent. The guard gates on the PERSISTED suppression/opt-out at every send.
     await this.suppressionEntryRepository.suppress({
@@ -107,6 +122,23 @@ export class DefaultOutreachReplyService implements OutreachReplyService {
     const agent = await this.agentRepository.findByEmail(payload.senderEmail);
     if (!agent) {
       // Not a reply to our outreach — a generic inbound listing email.
+      return;
+    }
+    if (!isAuthenticatedSender(payload.spfVerdict, payload.dkimVerdict)) {
+      // A tracked agent's address arriving on mail that fails BOTH SPF and DKIM
+      // is a likely spoof. Do NOT forge thread state (advance to replied / attach
+      // a fabricated inbound reply) for a real agent on spoofable mail. The
+      // listing already ingested upstream as generic inbound; we just refuse to
+      // attribute a "reply" we cannot trust. Logged for operator visibility.
+      console.warn(
+        JSON.stringify({
+          type: "warn",
+          scope: "outreach.reply.unauthenticated",
+          agentId: agent.id,
+          spf: payload.spfVerdict,
+          dkim: payload.dkimVerdict,
+        }),
+      );
       return;
     }
     const thread = await this.outreachRepository.findOrCreateOpenThreadByAgent({

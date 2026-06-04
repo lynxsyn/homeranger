@@ -57,6 +57,41 @@ function fakeStorage(): R2Storage {
   } as unknown as R2Storage;
 }
 
+/** A fake Resend whose received-email carries a chosen `from` + headers (no
+ *  attachments), for exercising the SPF/DKIM alignment downgrade. */
+function fakeResendAuth(from: string, headers: Record<string, string>): Resend {
+  return {
+    emails: {
+      receiving: {
+        async get() {
+          return {
+            data: {
+              created_at: new Date().toISOString(),
+              to: ["inbox@homeranger.app"],
+              from,
+              subject: "s",
+              text: "body",
+              html: null,
+              headers,
+              attachments: [],
+            },
+            error: null,
+          };
+        },
+        attachments: {
+          async get() {
+            return { data: { download_url: "x" }, error: null };
+          },
+        },
+      },
+    },
+  } as unknown as Resend;
+}
+
+function authResults(line: string): Record<string, string> {
+  return { "authentication-results": `mx.resend.com; ${line}` };
+}
+
 function meta(): InboundEmailJobPayload {
   return {
     email_id: "email-caps-1",
@@ -130,5 +165,72 @@ describe("RealResendHydrator — attachment caps", () => {
 
     const result = await hydrator.hydrate(meta());
     expect(result.attachments.length).toBe(0);
+  });
+});
+
+describe("RealResendHydrator — SPF/DKIM alignment (anti-spoofing)", () => {
+  it("keeps a pass when the auth identity aligns with the From domain", async () => {
+    const hydrator = new RealResendHydrator({
+      resend: fakeResendAuth(
+        "Branch <branch@agency.co.uk>",
+        authResults(
+          "spf=pass smtp.mailfrom=branch@agency.co.uk; dkim=pass header.d=agency.co.uk",
+        ),
+      ),
+      storage: fakeStorage(),
+    });
+    const result = await hydrator.hydrate(meta());
+    expect(result.spfVerdict).toBe("pass");
+    expect(result.dkimVerdict).toBe("pass");
+  });
+
+  it("DOWNGRADES a DKIM pass signed by a non-aligned domain (d=attacker.com vs From agency.co.uk)", async () => {
+    // The L1 spoof: attacker DKIM-signs as their OWN domain, so the bare token
+    // is dkim=pass but it does not attest the spoofed From.
+    const hydrator = new RealResendHydrator({
+      resend: fakeResendAuth(
+        "branch@agency.co.uk",
+        authResults("dkim=pass header.d=attacker.com; spf=fail"),
+      ),
+      storage: fakeStorage(),
+    });
+    const result = await hydrator.hydrate(meta());
+    expect(result.dkimVerdict).toBe("fail");
+    expect(result.spfVerdict).toBe("fail");
+  });
+
+  it("DOWNGRADES an SPF pass whose mailfrom domain does not align with From", async () => {
+    const hydrator = new RealResendHydrator({
+      resend: fakeResendAuth(
+        "branch@agency.co.uk",
+        authResults("spf=pass smtp.mailfrom=bounce@attacker.com; dkim=none"),
+      ),
+      storage: fakeStorage(),
+    });
+    const result = await hydrator.hydrate(meta());
+    expect(result.spfVerdict).toBe("fail");
+  });
+
+  it("treats a signing subdomain as aligned (relaxed/organizational alignment)", async () => {
+    const hydrator = new RealResendHydrator({
+      resend: fakeResendAuth(
+        "branch@agency.co.uk",
+        authResults("dkim=pass header.d=mail.agency.co.uk"),
+      ),
+      storage: fakeStorage(),
+    });
+    const result = await hydrator.hydrate(meta());
+    expect(result.dkimVerdict).toBe("pass");
+  });
+
+  it("leaves a pass untouched when the identity domain is unparseable (no false-negative)", async () => {
+    // A pass with no header.d=/smtp.mailfrom= token: we cannot prove
+    // misalignment, so we must NOT block legitimate mail.
+    const hydrator = new RealResendHydrator({
+      resend: fakeResendAuth("branch@agency.co.uk", authResults("dkim=pass")),
+      storage: fakeStorage(),
+    });
+    const result = await hydrator.hydrate(meta());
+    expect(result.dkimVerdict).toBe("pass");
   });
 });

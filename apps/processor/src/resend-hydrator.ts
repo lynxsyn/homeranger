@@ -24,6 +24,7 @@ import {
   type HydratedInboundEmail,
   type ResendHydrator,
 } from "@homeranger/backend-core/lib/inbound/resend-hydrator";
+import { emailDomain } from "@homeranger/backend-core/lib/email/email-domain";
 import type { InboundEmailJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
 import type { DecodedAttachment } from "@homeranger/backend-core/services/inbound-ingestion.service";
 
@@ -75,9 +76,61 @@ function warnAttachmentDropped(
   );
 }
 
+/** The bare email address from a From header value ("Name <a@b>" or "a@b"). */
+function fromAddress(from: string | null | undefined): string {
+  if (!from) {
+    return "";
+  }
+  const angle = /<([^>]+)>/.exec(from);
+  return (angle ? angle[1] : from).trim();
+}
+
+/**
+ * The domain a `pass` actually attests — its auth IDENTITY — so the verdict can
+ * be DMARC-style alignment-checked against the From domain. A bare `dkim=pass`
+ * attests only the SIGNING domain (`header.d=`), and `spf=pass` only the
+ * envelope `smtp.mailfrom=` domain; neither is the From unless they align. A
+ * spoofer who DKIM-signs as their own domain still yields `dkim=pass`, so the
+ * identity is what we must check. Returns null when no identity token parses.
+ */
+function authIdentityDomain(
+  authResults: string,
+  kind: "spf" | "dkim",
+): string | null {
+  const patterns =
+    kind === "dkim"
+      ? [/header\.d=([a-z0-9.-]+)/i, /header\.i=@?([a-z0-9.-]+)/i]
+      : [
+          /smtp\.mailfrom=(?:[^@\s;]*@)?([a-z0-9.-]+)/i,
+          /smtp\.helo=([a-z0-9.-]+)/i,
+        ];
+  for (const re of patterns) {
+    const m = re.exec(authResults);
+    if (m?.[1]) {
+      return m[1].toLowerCase().replace(/\.+$/, "");
+    }
+  }
+  return null;
+}
+
+/** Relaxed (organizational) alignment: equal, or one a subdomain of the other. */
+function domainsAligned(a: string, b: string): boolean {
+  return a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
+}
+
+/**
+ * Read an SPF/DKIM verdict from the Authentication-Results header, then
+ * DMARC-align it: a `pass` is only trustworthy as proof of the `From` domain if
+ * its auth identity (signing / envelope domain) aligns with From. A POSITIVELY
+ * misaligned pass (e.g. `dkim=pass header.d=attacker.com` for a From at
+ * `agency.co.uk`) is downgraded to `fail`. If the identity domain can't be
+ * parsed, or From is unknown, the pass is left as-is — we never block legitimate
+ * mail on a parse miss (downgrade only on PROVEN misalignment; no false-negative).
+ */
 function authVerdict(
   headers: Record<string, string> | null | undefined,
   kind: "spf" | "dkim",
+  fromDomain: string | undefined,
 ): string | undefined {
   if (!headers) {
     return undefined;
@@ -87,8 +140,16 @@ function authVerdict(
   if (typeof authResults !== "string") {
     return undefined;
   }
-  const match = new RegExp(`${kind}=([a-z]+)`, "i").exec(authResults);
-  return match?.[1];
+  const verdict = new RegExp(`${kind}=([a-z]+)`, "i")
+    .exec(authResults)?.[1]
+    ?.toLowerCase();
+  if (verdict === "pass" && fromDomain) {
+    const identity = authIdentityDomain(authResults, kind);
+    if (identity && !domainsAligned(identity, fromDomain)) {
+      return "fail";
+    }
+  }
+  return verdict;
 }
 
 export class RealResendHydrator implements ResendHydrator {
@@ -200,6 +261,10 @@ export class RealResendHydrator implements ResendHydrator {
       });
     }
 
+    // The From domain anchors the SPF/DKIM alignment check below.
+    const fromDomain =
+      emailDomain(fromAddress(data.from ?? metadata.from)) ?? undefined;
+
     return {
       messageId: metadata.email_id,
       receivedAt: data.created_at ? new Date(data.created_at) : new Date(),
@@ -209,8 +274,10 @@ export class RealResendHydrator implements ResendHydrator {
       subject: data.subject ?? metadata.subject ?? null,
       bodyText: data.text ?? null,
       bodyHtml: data.html ?? null,
-      spfVerdict: normaliseAuthVerdict(authVerdict(data.headers, "spf")),
-      dkimVerdict: normaliseAuthVerdict(authVerdict(data.headers, "dkim")),
+      spfVerdict: normaliseAuthVerdict(authVerdict(data.headers, "spf", fromDomain)),
+      dkimVerdict: normaliseAuthVerdict(
+        authVerdict(data.headers, "dkim", fromDomain),
+      ),
       attachments,
     };
   }
