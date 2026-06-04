@@ -38,6 +38,10 @@ import {
   DismissedListingRepository,
   _setDismissedListingRepositoryForTesting,
 } from "../../repositories/dismissed-listing.repository.js";
+import {
+  SearchRepository,
+  _setSearchRepositoryForTesting,
+} from "../../repositories/search.repository.js";
 
 function makeRow(overrides: Partial<ListingRecord> = {}): ListingRecord {
   const now = new Date("2026-01-01T00:00:00.000Z");
@@ -82,8 +86,19 @@ afterEach(() => {
   _setListingScoreRepositoryForTesting(null);
   _setSavedListingRepositoryForTesting(null);
   _setDismissedListingRepositoryForTesting(null);
+  _setSearchRepositoryForTesting(null);
   vi.restoreAllMocks();
 });
+
+/** Inject a fake SearchRepository so the searchId-lens ownership check resolves. */
+function injectSearchRepo(found: boolean): SearchRepository {
+  const fake = new SearchRepository();
+  vi.spyOn(fake, "getById").mockResolvedValue(
+    found ? ({ id: "owned" } as never) : null,
+  );
+  _setSearchRepositoryForTesting(fake);
+  return fake;
+}
 
 /**
  * Inject a fake ListingScoreRepository whose `getCombinedScoresByListingIds`
@@ -255,9 +270,13 @@ describe("listingsRouter.list", () => {
       .spyOn(fakeScore, "getCombinedScoresByListingIdsForSearch")
       .mockResolvedValue(new Map([[row.id, 0.81]]));
     _setListingScoreRepositoryForTesting(fakeScore);
+    const searchSpy = vi.spyOn(injectSearchRepo(true), "getById");
 
     const SEARCH_ID = "00000000-0000-7000-8000-00000000f001";
     const result = await authedCaller.listings.list({ searchId: SEARCH_ID });
+
+    // The lens is validated as one of the caller's own searches first.
+    expect(searchSpy).toHaveBeenCalledWith(SEARCH_ID, null); // operator → null owner
 
     // The scoring lens reaches the repository's combinedScore sort path.
     expect((listSpy.mock.calls[0]![0] as ListListingsInput).searchId).toBe(SEARCH_ID);
@@ -265,6 +284,24 @@ describe("listingsRouter.list", () => {
     expect(perSearchSpy).toHaveBeenCalledWith([row.id], SEARCH_ID);
     expect(maxSpy).not.toHaveBeenCalled();
     expect(result.items[0]!.combinedScore).toBe(0.81);
+  });
+
+  it("rejects a searchId the caller does not own with NOT_FOUND (no score lookup)", async () => {
+    const fake = new ListingRepository();
+    const listSpy = vi
+      .spyOn(fake, "list")
+      .mockResolvedValue({ items: [], nextCursor: null });
+    _setListingRepositoryForTesting(fake);
+    injectScoreRepo();
+    injectSearchRepo(false); // getById → null → not the caller's search
+
+    await expect(
+      authedCaller.listings.list({
+        searchId: "00000000-0000-7000-8000-00000000f0ff",
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    // The repo list is never reached when the lens is unauthorised.
+    expect(listSpy).not.toHaveBeenCalled();
   });
 });
 

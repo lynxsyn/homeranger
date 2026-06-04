@@ -19,48 +19,12 @@
 import { Prisma, type SearchStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { resolveSearchOutcodes } from "../lib/searches/search-brief.js";
-import { EMBEDDING_DIMENSIONS } from "./listing.repository.js";
+// Shared pgvector (de)serialisers — the canonical pair lives in listing.repository
+// so the parse + dimension/finite guards are defined ONCE across every repo that
+// reads/writes an Unsupported("vector(1024)") column.
+import { fromVectorLiteral, toVectorLiteral } from "./listing.repository.js";
 
 type PrismaLike = typeof prisma | Prisma.TransactionClient;
-
-/**
- * Serialise a JS number[] into the pgvector text literal `'[a,b,c]'` (bound as a
- * single `::vector` parameter — never concatenated, so it cannot inject).
- * Mirrors search-profile.repository's helper; validates dimensionality + finite.
- */
-function toVectorLiteral(embedding: number[]): string {
-  if (embedding.length !== EMBEDDING_DIMENSIONS) {
-    throw new Error(
-      `Embedding must have ${EMBEDDING_DIMENSIONS} dimensions, received ${embedding.length}`,
-    );
-  }
-  for (const value of embedding) {
-    if (!Number.isFinite(value)) {
-      throw new Error("Embedding contains a non-finite value");
-    }
-  }
-  return `[${embedding.join(",")}]`;
-}
-
-/** Parse a stored pgvector literal `[a,b,c]` back to a validated number[]. */
-function fromVectorLiteral(raw: string): number[] {
-  const inner = raw.trim().replace(/^\[/, "").replace(/\]$/, "").trim();
-  if (inner === "") {
-    throw new Error("Stored keywords embedding is empty");
-  }
-  const values = inner.split(",").map((value) => Number(value));
-  if (values.length !== EMBEDDING_DIMENSIONS) {
-    throw new Error(
-      `Stored embedding must have ${EMBEDDING_DIMENSIONS} dimensions, read ${values.length}`,
-    );
-  }
-  for (const value of values) {
-    if (!Number.isFinite(value)) {
-      throw new Error("Stored embedding contains a non-finite value");
-    }
-  }
-  return values;
-}
 
 /**
  * The Prisma "record not found" error the router's `searchNotFound` remaps to a

@@ -214,6 +214,32 @@ export function toVectorLiteral(embedding: number[]): string {
 }
 
 /**
+ * Parse a pgvector text literal `[a,b,c]` back into a validated number[]. The
+ * canonical inverse of `toVectorLiteral`, shared by every repository that reads
+ * an `Unsupported("vector(1024)")` column (Listing / SearchProfile / Search) so
+ * the parse + dimension/finite guards live in ONE place. Casting the column to
+ * text in SQL keeps the raw vector type from leaking across the repo boundary.
+ */
+export function fromVectorLiteral(raw: string): number[] {
+  const inner = raw.trim().replace(/^\[/, "").replace(/\]$/, "").trim();
+  if (inner === "") {
+    throw new Error("Stored embedding is empty");
+  }
+  const values = inner.split(",").map((value) => Number(value));
+  if (values.length !== EMBEDDING_DIMENSIONS) {
+    throw new Error(
+      `Stored embedding must have ${EMBEDDING_DIMENSIONS} dimensions, read ${values.length}`,
+    );
+  }
+  for (const value of values) {
+    if (!Number.isFinite(value)) {
+      throw new Error("Stored embedding contains a non-finite value");
+    }
+  }
+  return values;
+}
+
+/**
  * Raw filter fragments for the combinedScore list path, qualified with the
  * `l.` (Listing) alias so they are unambiguous across the LEFT JOIN to
  * ListingScore (`id`/`createdAt`/`updatedAt` exist on both tables). No embedding

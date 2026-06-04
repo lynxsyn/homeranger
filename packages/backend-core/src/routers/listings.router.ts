@@ -44,6 +44,7 @@ import {
 } from "../repositories/listing.repository.js";
 import { photoAnalysisRepository } from "../repositories/photo-analysis.repository.js";
 import { listingScoreRepository } from "../repositories/listing-score.repository.js";
+import { searchRepository } from "../repositories/search.repository.js";
 import { savedListingRepository } from "../repositories/saved-listing.repository.js";
 import { dismissedListingRepository } from "../repositories/dismissed-listing.repository.js";
 import type { CursorPage } from "../lib/pagination/cursor.js";
@@ -156,7 +157,20 @@ function toRepositorySort(input: SharedListListingsInput): ListListingsSort {
 export const listingsRouter = router({
   list: protectedProcedure
     .input(listListingsInputSchema)
-    .query(async ({ input }): Promise<ListListingsOutput> => {
+    .query(async ({ ctx, input }): Promise<ListListingsOutput> => {
+      if (input.searchId) {
+        // The per-search lens must be one of the CALLER's own searches — without
+        // this an owner could pass a foreign search id and read its per-search
+        // scores off the shared catalogue. Owner-scoped; unknown/foreign id →
+        // NOT_FOUND (consistent with searchesRouter's contract).
+        const ownsSearch = await searchRepository.getById(
+          input.searchId,
+          ownerKeyFor(ctx.user),
+        );
+        if (!ownsSearch) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Search not found" });
+        }
+      }
       const page = await listingRepository.list({
         filter: toRepositoryFilter(input.filter),
         sort: toRepositorySort(input),

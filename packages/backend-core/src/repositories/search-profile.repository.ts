@@ -13,7 +13,9 @@
  */
 import { Prisma, type Tenure } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import { EMBEDDING_DIMENSIONS } from "./listing.repository.js";
+// Shared pgvector (de)serialisers — the canonical pair lives in listing.repository
+// (one definition for every repo with an Unsupported vector column).
+import { fromVectorLiteral, toVectorLiteral } from "./listing.repository.js";
 
 type PrismaLike = typeof prisma | Prisma.TransactionClient;
 
@@ -58,45 +60,6 @@ export interface UpdateSearchProfileInput {
   lastName?: string;
   phone?: string;
   urgency?: string;
-}
-
-function toVectorLiteral(embedding: number[]): string {
-  if (embedding.length !== EMBEDDING_DIMENSIONS) {
-    throw new Error(
-      `Embedding must have ${EMBEDDING_DIMENSIONS} dimensions, received ${embedding.length}`,
-    );
-  }
-  for (const value of embedding) {
-    if (!Number.isFinite(value)) {
-      throw new Error("Embedding contains a non-finite value");
-    }
-  }
-  return `[${embedding.join(",")}]`;
-}
-
-/**
- * Parse a pgvector text literal `[a,b,c]` back into a validated number[].
- * Mirrors the write-path guarantees (exactly EMBEDDING_DIMENSIONS, all finite)
- * so a malformed/wrong-dimension stored vector surfaces as a clear error rather
- * than a silent bad array (e.g. an empty literal parsing to [NaN]).
- */
-function fromVectorLiteral(raw: string): number[] {
-  const inner = raw.trim().replace(/^\[/, "").replace(/\]$/, "").trim();
-  if (inner === "") {
-    throw new Error("Stored preference embedding is empty");
-  }
-  const values = inner.split(",").map((value) => Number(value));
-  if (values.length !== EMBEDDING_DIMENSIONS) {
-    throw new Error(
-      `Stored embedding must have ${EMBEDDING_DIMENSIONS} dimensions, read ${values.length}`,
-    );
-  }
-  for (const value of values) {
-    if (!Number.isFinite(value)) {
-      throw new Error("Stored embedding contains a non-finite value");
-    }
-  }
-  return values;
 }
 
 export class SearchProfileRepository {
