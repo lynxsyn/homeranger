@@ -30,12 +30,24 @@ import { AgentsPage } from "./AgentsPage";
 
 const NOW = new Date();
 
+/** A single-outcode coverage summary (the server-computed AgentRow.coverage). */
+const COVERAGE_SE16 = {
+  count: 1,
+  region: "Southwark",
+  regions: ["Southwark"],
+  groups: { Bermondsey: ["SE16"] },
+  towns: ["Bermondsey"],
+  primary: "SE16",
+  primaryTown: "Bermondsey",
+};
+
 function makeAgent(overrides: Record<string, unknown> = {}) {
   return {
     id: "agent-x",
     agencyName: "Finch & Co",
     email: "sales@finch.co.uk",
     outcodes: ["SE16", "SE1"],
+    coverage: COVERAGE_SE16,
     status: "awaiting" as const,
     homesCount: 0,
     lastContactedAt: NOW,
@@ -157,18 +169,26 @@ describe("AgentsPage rows + metrics", () => {
       makeAgent({
         id: "agent-wide",
         agencyName: "Wide Reach Estates",
-        outcodes: ["SE16", "SE1", "SE15"],
         status: "replied",
+        coverage: {
+          count: 3,
+          region: "Gwynedd",
+          regions: ["Gwynedd"],
+          groups: { Bangor: ["LL57"], Caernarfon: ["LL55", "LL54"] },
+          towns: ["Bangor", "Caernarfon"],
+          primary: "LL57",
+          primaryTown: "Bangor",
+        },
       }),
     ]);
     render(<AgentsPage filter={null} onClearFilter={vi.fn()} />);
     const roll = screen.getByTestId("agent-coverage-roll");
-    expect(roll).toHaveTextContent("South East London");
+    expect(roll).toHaveTextContent("Gwynedd");
     expect(roll).toHaveTextContent("3 outcodes");
   });
 
   it("shows a single-outcode agent's coverage as a town + code, no rollup", () => {
-    withAgents([makeAgent({ id: "agent-one", outcodes: ["SE16"] })]);
+    withAgents([makeAgent({ id: "agent-one" })]);
     render(<AgentsPage filter={null} onClearFilter={vi.fn()} />);
     const cov = screen.getByTestId("agent-coverage");
     expect(cov).toHaveTextContent("Bermondsey");

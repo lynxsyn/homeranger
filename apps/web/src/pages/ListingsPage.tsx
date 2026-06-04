@@ -19,7 +19,7 @@
  *
  * apps/web is moduleResolution=bundler → relative imports carry NO `.js`.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@homeranger/backend-core";
 import type { SearchFilter } from "./SearchesPage";
@@ -42,6 +42,13 @@ import {
   relativeTime,
 } from "../lib/format";
 import { useStored } from "../lib/useStored";
+import type { MapListing } from "../components/MapModal";
+
+// Leaflet (~140 kB) is only pulled in when the map modal is actually opened, so
+// it stays out of the initial listings bundle.
+const MapModal = lazy(() =>
+  import("../components/MapModal").then((m) => ({ default: m.MapModal })),
+);
 
 type ListItem =
   inferRouterOutputs<AppRouter>["listings"]["list"]["items"][number];
@@ -624,6 +631,7 @@ export function ListingsPage({
   ]);
   const [sort, setSort] = useState<SortState>({ key: "score", dir: "desc" });
   const [followUp, setFollowUp] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
 
   // Saved ("interested") listings are now persisted PER USER on the server (was
   // localStorage hs-interested) so they survive across devices + sessions. Seed
@@ -687,6 +695,22 @@ export function ListingsPage({
     const mapped = (data?.items ?? []).map((item) => toViewRow(item, now));
     return mapped.sort((a, b) => compare(a, b, sort.key, sort.dir));
   }, [data, now, sort]);
+
+  // The map modal plots the same rows; project to the lean shape it needs.
+  const mapRows = useMemo<MapListing[]>(
+    () =>
+      rows.map((r) => ({
+        id: r.id,
+        address: r.address,
+        postcode: r.postcode,
+        price: r.price,
+        bedrooms: r.bedrooms,
+        bathrooms: r.bathrooms,
+        score: r.score,
+        listingUrl: r.listingUrl,
+      })),
+    [rows],
+  );
 
   function onSort(key: SortKey) {
     setSort((s) =>
@@ -819,6 +843,16 @@ export function ListingsPage({
                 >
                   <Icon name="layout-grid" size={17} />
                 </button>
+                <button
+                  type="button"
+                  data-testid="view-map"
+                  onClick={() => setMapOpen(true)}
+                  disabled={rows.length === 0}
+                  aria-label="Map view"
+                  title="See these homes on a map"
+                >
+                  <Icon name="map-pin" size={17} />
+                </button>
               </div>
             </div>
           </div>
@@ -877,6 +911,18 @@ export function ListingsPage({
                 setFollowUp(false);
               }}
             />
+          )}
+
+          {mapOpen && (
+            <Suspense fallback={null}>
+              <MapModal
+                rows={mapRows}
+                areaLabel={searchFilter ? searchFilter.name : null}
+                interested={interested}
+                onToggleInterest={toggleInterest}
+                onClose={() => setMapOpen(false)}
+              />
+            </Suspense>
           )}
         </>
       )}

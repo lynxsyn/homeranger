@@ -1,31 +1,34 @@
 /**
- * CoverageCell — the Agents table's Coverage column. Ported from the
- * claude.ai/design handoff (project/app/agents.jsx: CoverageCell), adapted to
- * the real AgentRow, which carries `outcodes` (= Agent.coveredOutcodes) rather
- * than the prototype's `coverage` + `scoutName` — so there is no search-name
- * subline here.
- *
- * Postcode letters are a sorting code, not a place. A wide patch rolls up to its
- * dominant county/region + a count ("Gwynedd · 5 outcodes") on ONE fixed-height
- * line, with the town-by-town breakdown (HQ marked) in a click-to-open popover.
- * A single-outcode agent reads as its town + the code, with no popover. The
- * fixed-height summary is what stops the row growing with the patch.
+ * CoverageCell — the Agents table's Coverage column. Renders the place-led
+ * coverage rollup the agents router computes server-side (`AgentRow.coverage`)
+ * from the bundled UK outcode index. Postcode letters are a sorting code, not a
+ * place: a wide patch rolls up to its dominant principal area + a count
+ * ("Gwynedd · 5 outcodes") on ONE fixed-height line, with the town-by-town
+ * breakdown (HQ marked) in a click-to-open popover; a single-outcode agent reads
+ * as its town + the code, with no popover. The fixed-height summary is what
+ * stops the row growing with the patch.
  *
  * The popover is PORTALED to document.body and positioned `fixed`: the table
  * wrapper has `overflow:hidden`, which would clip an in-cell popover. It closes
- * on outside mousedown, Escape, or any scroll/resize (which would strand it) —
- * the same interaction contract as the design prototype.
+ * on outside mousedown, Escape, or a PAGE/table scroll (which would strand the
+ * fixed popover) — but NOT on a scroll INSIDE the popover, so a long list stays
+ * open while you scroll it.
  *
  * apps/web is moduleResolution=bundler → relative imports carry NO `.js`.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@homeranger/backend-core";
 import { Icon } from "./Icon";
-import { coverageSummary } from "../lib/coverage";
+
+/** The server-computed coverage rollup for one agent (= AgentRow.coverage). */
+type AgentCoverage =
+  inferRouterOutputs<AppRouter>["agents"]["list"][number]["coverage"];
 
 export interface CoverageCellProps {
-  /** The agent's covered outcodes (= AgentRow.outcodes / Agent.coveredOutcodes). */
-  outcodes: string[];
+  /** The agent's coverage rollup, computed server-side from its outcodes. */
+  coverage: AgentCoverage;
 }
 
 /** Fixed-position rect for the portaled popover (top XOR bottom anchored). */
@@ -36,14 +39,12 @@ interface PopPosition {
   maxHeight: number;
 }
 
-export function CoverageCell({ outcodes }: CoverageCellProps) {
+export function CoverageCell({ coverage: s }: CoverageCellProps) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<PopPosition | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-
-  const s = useMemo(() => coverageSummary(outcodes), [outcodes]);
 
   useEffect(() => {
     if (!open) {
@@ -85,7 +86,17 @@ export function CoverageCell({ outcodes }: CoverageCellProps) {
         triggerRef.current?.focus();
       }
     };
-    const onScroll = () => setOpen(false);
+    // Close when the PAGE/table scrolls (the fixed popover would detach from the
+    // trigger) — but NOT when the scroll originates INSIDE the popover, so a
+    // long coverage list stays open while the user scrolls it. `resize` reuses
+    // this with a non-Node target, which the guard treats as an outside scroll.
+    const onScroll = (e: Event) => {
+      const t = e.target;
+      if (t instanceof Node && popRef.current?.contains(t)) {
+        return;
+      }
+      setOpen(false);
+    };
 
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);

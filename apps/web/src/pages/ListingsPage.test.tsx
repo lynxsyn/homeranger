@@ -31,6 +31,17 @@ vi.mock("../lib/trpc", () => ({
   },
 }));
 
+// MapModal pulls in Leaflet + the geocoder; stub it so these tests assert only
+// the open/close wiring (the modal itself is covered by MapModal.test.tsx).
+vi.mock("../components/MapModal", () => ({
+  MapModal: ({ rows, onClose }: { rows: unknown[]; onClose: () => void }) => (
+    <div data-testid="map-modal">
+      <span data-testid="map-modal-rows">{rows.length}</span>
+      <button onClick={onClose}>close map</button>
+    </div>
+  ),
+}));
+
 import { ListingsPage } from "./ListingsPage";
 
 const NOW = new Date("2026-01-10T12:00:00.000Z");
@@ -204,6 +215,34 @@ describe("ListingsPage table", () => {
     const link = screen.getAllByTestId("listing-source-link")[0]!;
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
+  });
+});
+
+describe("ListingsPage map view", () => {
+  it("opens the map modal from the view-toggle map button with the loaded rows", async () => {
+    withData();
+    render(<ListingsPage />);
+    expect(screen.queryByTestId("map-modal")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("view-map"));
+    // MapModal is lazy-loaded, so it resolves asynchronously.
+    expect(await screen.findByTestId("map-modal")).toBeInTheDocument();
+    expect(screen.getByTestId("map-modal-rows")).toHaveTextContent("3");
+  });
+
+  it("closes the map modal via its onClose", async () => {
+    withData();
+    render(<ListingsPage />);
+    fireEvent.click(screen.getByTestId("view-map"));
+    await screen.findByTestId("map-modal");
+    fireEvent.click(screen.getByRole("button", { name: /close map/i }));
+    expect(screen.queryByTestId("map-modal")).not.toBeInTheDocument();
+  });
+
+  it("disables the map button when there are no homes to plot", () => {
+    withData([]);
+    render(<ListingsPage />);
+    expect(screen.getByTestId("view-map")).toBeDisabled();
   });
 });
 
