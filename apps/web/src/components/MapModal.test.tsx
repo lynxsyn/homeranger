@@ -161,4 +161,22 @@ describe("MapModal", () => {
     const dialog = await screen.findByTestId("map-modal");
     await waitFor(() => expect(within(dialog).getByTestId("map-empty")).toBeInTheDocument());
   });
+
+  it("does not re-geocode when the same homes are reordered", async () => {
+    const props = {
+      areaLabel: null,
+      interested: [] as string[],
+      onToggleInterest: vi.fn(),
+      onClose: vi.fn(),
+    };
+    const { rerender } = render(<MapModal rows={ROWS} {...props} />);
+    const dialog = await screen.findByTestId("map-modal");
+    await waitFor(() => expect(within(dialog).getAllByTestId("maprow")).toHaveLength(2));
+    expect(geocodeMock).toHaveBeenCalledTimes(1);
+
+    // Same homes, reversed order → the postcode key must be unchanged, so no
+    // second geocode (and no Leaflet teardown/rebuild).
+    rerender(<MapModal rows={[...ROWS].reverse()} {...props} />);
+    await waitFor(() => expect(geocodeMock).toHaveBeenCalledTimes(1));
+  });
 });

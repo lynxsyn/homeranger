@@ -75,9 +75,13 @@ export function MapModal({
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState<string | null>(null);
 
-  // A stable key over the homes' postcodes so geocoding runs once per distinct
-  // set, not on every parent re-render.
-  const pcKey = useMemo(() => rows.map((r) => r.postcode ?? "").join(","), [rows]);
+  // A stable key over the homes' DISTINCT postcodes so geocoding runs once per
+  // distinct set. Sorted + de-duped so re-sorting the underlying list (same
+  // homes, new order) does NOT re-trigger a geocode + Leaflet teardown/rebuild.
+  const pcKey = useMemo(
+    () => [...new Set(rows.map((r) => r.postcode ?? "").filter(Boolean))].sort().join(","),
+    [rows],
+  );
 
   // Esc to close + lock background scroll.
   useEffect(() => {
