@@ -493,6 +493,11 @@
   background: var(--surface-3);
   color: var(--ink-2);
 }
+/* Destructive confirm (remove agent / remove search cascade). */
+.confirm-mark--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
 .confirm-title {
   margin: 0 0 10px;
   font-family: var(--font-display);

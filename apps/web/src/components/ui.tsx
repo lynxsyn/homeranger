@@ -47,7 +47,7 @@ export function Logo({ size = 30, showWord = true, light = false }: LogoProps) {
 
 /* ---- Button -------------------------------------------------------------- */
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "ghost";
+  variant?: "primary" | "secondary" | "ghost" | "danger";
   size?: "sm";
   icon?: string;
 }

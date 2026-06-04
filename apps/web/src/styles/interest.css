@@ -70,3 +70,46 @@ tr.row.is-interested:hover { background: var(--accent-soft); }
 .fg-draft { border: 0; border-top: 1px solid var(--border); border-radius: 0;
   margin-top: 12px; background: var(--surface); }
 .confirm-mark--ok { background: var(--success-soft); color: var(--success); }
+
+/* ---- Dismiss / restore (paired with the bookmark) ----------------------- */
+/* The leading table cell now holds two controls side by side. */
+.rowacts { display: inline-flex; align-items: center; gap: 2px; }
+.dismissbtn { display: inline-grid; place-items: center; width: 32px; height: 34px;
+  border: 0; background: transparent; border-radius: var(--r-sm); cursor: pointer;
+  color: var(--ink-3);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.dismissbtn:hover { background: var(--surface-2); color: var(--ink-1); }
+.dismissbtn.is-restore { color: var(--accent); }
+.dismissbtn.is-restore:hover { color: var(--accent-hover); }
+
+/* card: overlay restore/dismiss sits to the LEFT of the bookmark overlay */
+.dismissbtn--overlay { position: absolute; top: 10px; right: 52px; width: 36px; height: 36px;
+  background: rgba(20, 18, 15, 0.42); backdrop-filter: blur(4px); color: #fff; }
+.dismissbtn--overlay:hover { background: rgba(20, 18, 15, 0.62); color: #fff; }
+.dismissbtn--overlay.is-restore { background: var(--accent); color: #fff; }
+
+/* dismissed rows/cards read as muted (they are hidden from the Active feed) */
+tr.row.is-dismissed { opacity: 0.6; }
+tr.row.is-dismissed:hover { opacity: 0.85; }
+.pcard.is-dismissed { opacity: 0.62; }
+.pcard.is-dismissed:hover { opacity: 0.85; }
+
+/* ---- Undo snackbar (dismiss) -------------------------------------------- */
+/* Sits just above the interest bar's slot so the two never overlap. */
+.toast { position: fixed; left: 50%; bottom: 80px; z-index: 65; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 14px;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--r-full); box-shadow: var(--shadow-lg);
+  padding: 10px 12px 10px 18px;
+  animation: bar-in var(--dur-slow) var(--ease); }
+.toast__msg { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-sm);
+  color: var(--ink-2); white-space: nowrap; }
+.toast__msg svg { color: var(--ink-3); }
+.toast__action { border: 0; background: transparent; color: var(--accent); cursor: pointer;
+  font-family: var(--font-sans); font-size: var(--fs-sm); font-weight: var(--fw-semibold);
+  padding: 7px 12px; border-radius: var(--r-xs);
+  transition: background var(--dur-fast) var(--ease); }
+.toast__action:hover { background: var(--surface-2); }
+@media (max-width: 560px) {
+  .toast { left: 16px; right: 16px; transform: none; justify-content: space-between; }
+}

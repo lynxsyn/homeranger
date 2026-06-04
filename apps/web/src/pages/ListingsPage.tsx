@@ -82,6 +82,20 @@ interface SortDef {
   dir: "asc" | "desc"; // default direction when this key is first chosen
 }
 
+/** The listings feed buckets (Active / Saved / Dismissed). */
+type Bucket = "active" | "saved" | "dismissed";
+
+interface BucketDef {
+  id: Bucket;
+  label: string;
+}
+
+const BUCKETS: BucketDef[] = [
+  { id: "active", label: "Active" },
+  { id: "saved", label: "Saved" },
+  { id: "dismissed", label: "Dismissed" },
+];
+
 const SORTS: Record<SortKey, SortDef> = {
   score: { label: "Match score", type: "num", dir: "desc" },
   ageHours: { label: "Newest first", type: "num", dir: "asc" },
@@ -176,6 +190,37 @@ function InterestButton({ on, onToggle, size = 18, className = "" }: InterestBut
   );
 }
 
+/* ---- Dismiss / restore --------------------------------------------------- */
+interface DismissButtonProps {
+  dismissed: boolean;
+  onToggle: () => void;
+  size?: number;
+  className?: string;
+}
+
+/**
+ * Hide a home from the working feed (a silent taste signal — never sent to the
+ * agent). Reversible: the Dismissed bucket shows it with a restore affordance.
+ */
+function DismissButton({ dismissed, onToggle, size = 17, className = "" }: DismissButtonProps) {
+  return (
+    <button
+      type="button"
+      className={`dismissbtn${dismissed ? " is-restore" : ""} ${className}`.trim()}
+      data-testid={dismissed ? "listing-restore" : "listing-dismiss"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      aria-pressed={dismissed}
+      title={dismissed ? "Restore to your listings" : "Dismiss — stop showing me this"}
+      aria-label={dismissed ? "Restore home" : "Dismiss home"}
+    >
+      <Icon name={dismissed ? "rotate-ccw" : "eye-off"} size={size} />
+    </button>
+  );
+}
+
 /* ---- Table view ---------------------------------------------------------- */
 interface SortHeaderProps {
   id: SortKey;
@@ -219,9 +264,19 @@ interface TableProps {
   onSort: (key: SortKey) => void;
   interested: string[];
   onToggleInterest: (id: string) => void;
+  dismissed: string[];
+  onToggleDismiss: (id: string) => void;
 }
 
-function ListingsTable({ rows, sort, onSort, interested, onToggleInterest }: TableProps) {
+function ListingsTable({
+  rows,
+  sort,
+  onSort,
+  interested,
+  onToggleInterest,
+  dismissed,
+  onToggleDismiss,
+}: TableProps) {
   return (
     <div className="tablewrap">
       <table className="listings" data-testid="listings-table">
@@ -255,20 +310,27 @@ function ListingsTable({ rows, sort, onSort, interested, onToggleInterest }: Tab
         <tbody>
           {rows.map((l) => {
             const on = interested.includes(l.id);
+            const hidden = dismissed.includes(l.id);
             return (
               <tr
                 key={l.id}
-                className={`row${l.listingUrl ? " clickable" : ""}${on ? " is-interested" : ""}`}
+                className={`row${l.listingUrl ? " clickable" : ""}${on ? " is-interested" : ""}${hidden ? " is-dismissed" : ""}`}
                 data-testid="listing-row"
                 data-address={l.address}
                 onClick={() => openSource(l.listingUrl)}
               >
                 <td className="col-int">
-                  <InterestButton
-                    on={on}
-                    onToggle={() => onToggleInterest(l.id)}
-                    size={17}
-                  />
+                  <div className="rowacts">
+                    <InterestButton
+                      on={on}
+                      onToggle={() => onToggleInterest(l.id)}
+                      size={17}
+                    />
+                    <DismissButton
+                      dismissed={hidden}
+                      onToggle={() => onToggleDismiss(l.id)}
+                    />
+                  </div>
                 </td>
                 <td>
                   <div className="cell-addr">
@@ -348,13 +410,21 @@ interface CardProps {
   row: ViewRow;
   interested: boolean;
   onToggleInterest: () => void;
+  dismissed: boolean;
+  onToggleDismiss: () => void;
 }
 
-function ListingCard({ row: l, interested, onToggleInterest }: CardProps) {
+function ListingCard({
+  row: l,
+  interested,
+  onToggleInterest,
+  dismissed,
+  onToggleDismiss,
+}: CardProps) {
   const clickable = Boolean(l.listingUrl);
   return (
     <div
-      className={`hs-card pcard${clickable ? " hs-card--interactive" : ""}${interested ? " is-interested" : ""}`}
+      className={`hs-card pcard${clickable ? " hs-card--interactive" : ""}${interested ? " is-interested" : ""}${dismissed ? " is-dismissed" : ""}`}
       data-testid="listing-row"
       data-address={l.address}
       onClick={() => openSource(l.listingUrl)}
@@ -366,6 +436,12 @@ function ListingCard({ row: l, interested, onToggleInterest }: CardProps) {
           onToggle={onToggleInterest}
           className="intbtn--overlay"
           size={18}
+        />
+        <DismissButton
+          dismissed={dismissed}
+          onToggle={onToggleDismiss}
+          className="dismissbtn--overlay"
+          size={16}
         />
       </div>
       <div className="body">
@@ -632,6 +708,12 @@ export function ListingsPage({
   const [sort, setSort] = useState<SortState>({ key: "score", dir: "desc" });
   const [followUp, setFollowUp] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  // The three feed buckets: Active (not dismissed), Saved (bookmarked, not
+  // dismissed), Dismissed (hidden). The buckets read off two per-user id sets
+  // (interested + dismissed); the Listing catalogue itself is shared + global.
+  const [bucket, setBucket] = useState<Bucket>("active");
+  // The dismiss snackbar — { id } of the just-dismissed home, with an Undo.
+  const [undo, setUndo] = useState<{ id: string } | null>(null);
 
   // Saved ("interested") listings are now persisted PER USER on the server (was
   // localStorage hs-interested) so they survive across devices + sessions. Seed
@@ -659,6 +741,57 @@ export function ListingsPage({
       { listingId: id },
       { onSettled: () => void utils.listings.saved.invalidate() },
     );
+  }
+
+  // Dismissed ("hidden") listings — the same per-user server overlay as saved,
+  // seeded once from listings.dismissed, then toggled optimistically + persisted
+  // via dismiss/restore. A home is hidden, never deleted; restoring brings it
+  // back. Dismissing is silent to the agent.
+  const { data: dismissedServerRows } = trpc.listings.dismissed.useQuery();
+  const dismissMut = trpc.listings.dismiss.useMutation();
+  const restoreMut = trpc.listings.restore.useMutation();
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const dismissSeeded = useRef(false);
+  useEffect(() => {
+    if (!dismissSeeded.current && dismissedServerRows) {
+      setDismissed(dismissedServerRows.map((r) => r.id));
+      dismissSeeded.current = true;
+    }
+  }, [dismissedServerRows]);
+
+  // Auto-clear the undo snackbar after a few seconds (matches the design).
+  useEffect(() => {
+    if (!undo) {
+      return;
+    }
+    const t = window.setTimeout(() => setUndo(null), 6000);
+    return () => window.clearTimeout(t);
+  }, [undo]);
+
+  function dismiss(id: string) {
+    setDismissed((s) => (s.includes(id) ? s : [...s, id]));
+    setUndo({ id });
+    dismissMut.mutate(
+      { listingId: id },
+      { onSettled: () => void utils.listings.dismissed.invalidate() },
+    );
+  }
+
+  function restore(id: string) {
+    setDismissed((s) => s.filter((x) => x !== id));
+    setUndo((u) => (u && u.id === id ? null : u));
+    restoreMut.mutate(
+      { listingId: id },
+      { onSettled: () => void utils.listings.dismissed.invalidate() },
+    );
+  }
+
+  function toggleDismiss(id: string) {
+    if (dismissed.includes(id)) {
+      restore(id);
+    } else {
+      dismiss(id);
+    }
   }
 
   // Clear the SHOWN interested homes — locally AND on the server (so a reload
@@ -696,10 +829,33 @@ export function ListingsPage({
     return mapped.sort((a, b) => compare(a, b, sort.key, sort.dir));
   }, [data, now, sort]);
 
-  // The map modal plots the same rows; project to the lean shape it needs.
+  // Bucket counts over the loaded page: Active = not dismissed, Saved =
+  // bookmarked AND not dismissed, Dismissed = dismissed. (A home is at most one
+  // of Active/Dismissed; Saved is a refinement of Active.)
+  const counts = useMemo(
+    () => ({
+      active: rows.filter((l) => !dismissed.includes(l.id)).length,
+      saved: rows.filter((l) => interested.includes(l.id) && !dismissed.includes(l.id)).length,
+      dismissed: rows.filter((l) => dismissed.includes(l.id)).length,
+    }),
+    [rows, interested, dismissed],
+  );
+
+  // The rows the current bucket renders.
+  const displayRows = useMemo(() => {
+    if (bucket === "saved") {
+      return rows.filter((l) => interested.includes(l.id) && !dismissed.includes(l.id));
+    }
+    if (bucket === "dismissed") {
+      return rows.filter((l) => dismissed.includes(l.id));
+    }
+    return rows.filter((l) => !dismissed.includes(l.id));
+  }, [rows, bucket, interested, dismissed]);
+
+  // The map modal plots the CURRENT bucket's rows; project to its lean shape.
   const mapRows = useMemo<MapListing[]>(
     () =>
-      rows.map((r) => ({
+      displayRows.map((r) => ({
         id: r.id,
         address: r.address,
         postcode: r.postcode,
@@ -709,7 +865,7 @@ export function ListingsPage({
         score: r.score,
         listingUrl: r.listingUrl,
       })),
-    [rows],
+    [displayRows],
   );
 
   function onSort(key: SortKey) {
@@ -720,10 +876,12 @@ export function ListingsPage({
     );
   }
 
-  // Only the bookmarked homes that are still in the current page can be drafted.
+  // Only the bookmarked homes still in the page AND not dismissed can be drafted
+  // — a dismissed home drops out of the follow-up bar (its bookmark persists, so
+  // restoring brings it back to Saved).
   const interestedRows = useMemo(
-    () => rows.filter((l) => interested.includes(l.id)),
-    [rows, interested],
+    () => rows.filter((l) => interested.includes(l.id) && !dismissed.includes(l.id)),
+    [rows, interested, dismissed],
   );
 
   const hasMore = Boolean(data?.nextCursor);
@@ -799,9 +957,24 @@ export function ListingsPage({
               <InfoTip label="About listings">
                 Homes your agents have sent in, read from their emails and scored
                 against your taste. Click a home to open the agent&rsquo;s page;
-                bookmark the ones you like to draft a follow-up to their agency.
+                bookmark the ones you like to draft a follow-up to their agency,
+                or dismiss the ones you don&rsquo;t to tune your scoring.
               </InfoTip>
             </span>
+            <div className="statusfilter" role="group" aria-label="Filter listings">
+              {BUCKETS.map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  className={`sf-chip${bucket === b.id ? " is-on" : ""}`}
+                  data-testid={`bucket-${b.id}`}
+                  aria-pressed={bucket === b.id}
+                  onClick={() => setBucket(b.id)}
+                >
+                  {b.label} <span className="sf-chip__n">{counts[b.id]}</span>
+                </button>
+              ))}
+            </div>
             <div className="controls__right">
               <div className="sortwrap">
                 <label htmlFor="sortby">Sort</label>
@@ -847,7 +1020,7 @@ export function ListingsPage({
                   type="button"
                   data-testid="view-map"
                   onClick={() => setMapOpen(true)}
-                  disabled={rows.length === 0}
+                  disabled={displayRows.length === 0}
                   aria-label="Map view"
                   title="See these homes on a map"
                 >
@@ -857,30 +1030,37 @@ export function ListingsPage({
             </div>
           </div>
 
-          {rows.length === 0 ? (
+          {displayRows.length === 0 ? (
             <div className="empty" data-testid="listings-empty">
               <Photo style={{ aspectRatio: "1" }} />
               <p>
-                No listings yet. Once your agents reply, the homes they send
-                appear here.
+                {bucket === "saved"
+                  ? "No saved homes yet — bookmark ones you like to gather them here."
+                  : bucket === "dismissed"
+                    ? "Nothing dismissed. Homes you hide land here, and you can restore them any time."
+                    : "No listings yet. Once your agents reply, the homes they send appear here."}
               </p>
             </div>
           ) : view === "table" ? (
             <ListingsTable
-              rows={rows}
+              rows={displayRows}
               sort={sort}
               onSort={onSort}
               interested={interested}
               onToggleInterest={toggleInterest}
+              dismissed={dismissed}
+              onToggleDismiss={toggleDismiss}
             />
           ) : (
             <div className="grid-cards">
-              {rows.map((l) => (
+              {displayRows.map((l) => (
                 <ListingCard
                   key={l.id}
                   row={l}
                   interested={interested.includes(l.id)}
                   onToggleInterest={() => toggleInterest(l.id)}
+                  dismissed={dismissed.includes(l.id)}
+                  onToggleDismiss={() => toggleDismiss(l.id)}
                 />
               ))}
             </div>
@@ -888,8 +1068,9 @@ export function ListingsPage({
 
           <div className="foot-note">
             <Icon name="shield-check" size={14} />
-            Click a home to open the agent&rsquo;s page · bookmark homes you like
-            to follow up with their agents
+            {bucket === "dismissed"
+              ? "Dismissed homes are hidden from your feed and help tune your scoring — nothing is sent to the agent. Restore any time."
+              : "Bookmark homes you like to follow up · dismiss the ones you don’t to tune your scoring, silently — never to the agent."}
           </div>
 
           {interestedRows.length > 0 && (
@@ -901,6 +1082,27 @@ export function ListingsPage({
               }
             />
           )}
+
+          {undo &&
+            (() => {
+              const home = rows.find((l) => l.id === undo.id);
+              return (
+                <div className="toast" role="status" data-testid="dismiss-toast">
+                  <span className="toast__msg">
+                    <Icon name="eye-off" size={15} />
+                    Dismissed{home ? ` ${home.address}` : ""}
+                  </span>
+                  <button
+                    type="button"
+                    className="toast__action"
+                    data-testid="dismiss-undo"
+                    onClick={() => restore(undo.id)}
+                  >
+                    Undo
+                  </button>
+                </div>
+              );
+            })()}
 
           {followUp && interestedRows.length > 0 && (
             <FollowUpModal

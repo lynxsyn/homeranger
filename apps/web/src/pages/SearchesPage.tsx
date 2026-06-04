@@ -862,6 +862,129 @@ function ConfirmPause({ search, pausing, onCancel, onConfirm }: ConfirmPauseProp
   );
 }
 
+/* ---- Remove-search confirmation (the cascade) ----------------------------
+ * Deleting a search HIDES its homes for you (restorable from Dismissed, never
+ * deleted) and — for the operator — COMPLETELY removes the agents it found that
+ * no other search still covers (a GDPR erasure of those agents + their
+ * correspondence). The live `removalPreview` counts are shown so there is no
+ * surprise about what else the delete touches. */
+interface ConfirmRemoveSearchProps {
+  search: Search;
+  removing: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+function ConfirmRemoveSearch({
+  search,
+  removing,
+  onCancel,
+  onConfirm,
+}: ConfirmRemoveSearchProps) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onCancel();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onCancel]);
+
+  const { data: preview, isLoading } = trpc.searches.removalPreview.useQuery({
+    id: search.id,
+  });
+  const homes = preview?.listingsToHide ?? 0;
+  const agents = preview?.agentsToRemove ?? 0;
+  const nothing = !isLoading && homes === 0 && agents === 0;
+
+  return (
+    <div className="modal-scrim" onMouseDown={onCancel}>
+      <div
+        className="modal modal--confirm"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Remove search"
+        data-testid="search-remove-confirm"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="confirm-body">
+          <div className="confirm-mark confirm-mark--danger">
+            <Icon name="trash-2" size={22} />
+          </div>
+          <h2 className="confirm-title">Remove this search?</h2>
+          <p className="confirm-text">
+            {isLoading ? (
+              <>
+                Working out what removing <b>{search.name}</b> affects…
+              </>
+            ) : nothing ? (
+              <>
+                Removing <b>{search.name}</b> deletes this search. It hasn&rsquo;t
+                brought in any agents or homes yet, so nothing else is affected.
+              </>
+            ) : (
+              <>
+                Removing <b>{search.name}</b>{" "}
+                {agents > 0 && (
+                  <>
+                    completely removes the{" "}
+                    <b>
+                      {agents} {agents === 1 ? "agent" : "agents"}
+                    </b>{" "}
+                    it found
+                  </>
+                )}
+                {agents > 0 && homes > 0 && " and "}
+                {homes > 0 && (
+                  <>
+                    hides the{" "}
+                    <b>
+                      {homes} {homes === 1 ? "home" : "homes"}
+                    </b>{" "}
+                    it brought in
+                  </>
+                )}
+                .{" "}
+                {homes > 0 && (
+                  <>
+                    The homes aren&rsquo;t deleted &mdash; restore them any time
+                    from <b>Dismissed</b>.{" "}
+                  </>
+                )}
+                {agents > 0 && (
+                  <>
+                    The agents are erased and won&rsquo;t be contacted again unless
+                    another search finds them.
+                  </>
+                )}
+              </>
+            )}
+          </p>
+        </div>
+        <div className="modal__foot modal__foot--end">
+          <Button variant="secondary" onClick={onCancel} disabled={removing}>
+            Keep search
+          </Button>
+          <Button
+            variant="danger"
+            icon="trash-2"
+            data-testid="search-remove-confirm-btn"
+            disabled={removing || isLoading}
+            onClick={onConfirm}
+          >
+            {removing ? "Removing…" : "Remove search"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---- Launch loop modal ---------------------------------------------------- */
 /**
  * The Search Launch loop, operator-driven and send-safe end to end:
@@ -1170,6 +1293,7 @@ export function SearchesPage({
 
   const [editing, setEditing] = useState<EditingState>(null);
   const [pausing, setPausing] = useState<Search | null>(null);
+  const [removingSearch, setRemovingSearch] = useState<Search | null>(null);
   const [launching, setLaunching] = useState<Search | null>(null);
 
   const invalidate = () => {
@@ -1188,10 +1312,17 @@ export function SearchesPage({
       setEditing(null);
     },
   });
+  // Delete is a CASCADE (hides the search's homes + removes its agents); refresh
+  // the searches list AND the screens the cascade touches (Listings' Dismissed
+  // bucket + the Agents table/metrics) so they reflect it without a reload.
   const remove = trpc.searches.delete.useMutation({
     onSuccess: () => {
       invalidate();
+      void utils.listings.dismissed.invalidate();
+      void utils.agents.list.invalidate();
+      void utils.agents.stats.invalidate();
       setEditing(null);
+      setRemovingSearch(null);
     },
   });
   const setStatus = trpc.searches.setStatus.useMutation({
@@ -1341,7 +1472,17 @@ export function SearchesPage({
           saving={saving}
           deleting={remove.isPending}
           onSave={save}
-          onDelete={(id) => remove.mutate({ id })}
+          // Delete opens the cascade confirm (it does more than delete the row);
+          // close the editor and surface the confirm with live preview counts.
+          onDelete={(id) => {
+            const target =
+              (editing.kind === "edit" ? editing.search : undefined) ??
+              searches.find((s) => s.id === id);
+            if (target) {
+              setEditing(null);
+              setRemovingSearch(target);
+            }
+          }}
           onClose={() => setEditing(null)}
         />
       )}
@@ -1352,6 +1493,15 @@ export function SearchesPage({
           pausing={setStatus.isPending}
           onCancel={() => setPausing(null)}
           onConfirm={() => setStatus.mutate({ id: pausing.id, status: "paused" })}
+        />
+      )}
+
+      {removingSearch && (
+        <ConfirmRemoveSearch
+          search={removingSearch}
+          removing={remove.isPending}
+          onCancel={() => setRemovingSearch(null)}
+          onConfirm={() => remove.mutate({ id: removingSearch.id })}
         />
       )}
 

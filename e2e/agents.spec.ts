@@ -44,6 +44,15 @@ const RUN_ID = Date.now().toString(36);
 // SE16), so "View agents" narrows to a non-empty, strict subset of the pool.
 const DRILL_SEARCH_NAME = `E2E Agents Drill ${RUN_ID}`;
 
+// The removal test seeds its OWN contacted agent into a DEDICATED synthetic
+// outcode (ZZ6) so removing it can never sweep a seeded demo agent the other
+// agents tests assert on, and a unique agency label so the row locator is
+// unambiguous. `lastContactedAt` is set so the agent counts toward the
+// "Contacted" metric tile (the removal test asserts that tile decrements).
+const REMOVE_OUTCODE = "ZZ6";
+const REMOVE_AGENCY = `E2E Remove Agency ${RUN_ID}`;
+const REMOVE_EMAIL = `e2e-remove-${RUN_ID}@agency.test`;
+
 // The agents table + metrics strip are a tall, scrollable page; a desktop-height
 // viewport keeps the filter chips and table body reachable without a fragile
 // scroll dance.
@@ -68,14 +77,59 @@ async function renderedAgencies(page: import("@playwright/test").Page) {
     .evaluateAll((rows) => rows.map((r) => r.getAttribute("data-agency") ?? ""));
 }
 
-test.afterAll(async () => {
+async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: DB_URL });
   await client.connect();
   try {
-    await client.query(`DELETE FROM "Search" WHERE "name" LIKE 'E2E Agents%'`);
+    return await fn(client);
   } finally {
     await client.end();
   }
+}
+
+/**
+ * Seed one CONTACTED agent (lastContactedAt set → counts toward the Contacted
+ * tile) in the dedicated ZZ6 patch via a raw INSERT — Prisma's @updatedAt has no
+ * DB default, so a raw INSERT must set it. corporate_subscriber keeps the row
+ * shape consistent with the demo pool. Idempotent on email (re-run safe).
+ */
+async function seedRemovableAgent(): Promise<void> {
+  await withClient(async (client) => {
+    await client.query(
+      `INSERT INTO "Agent"
+         (id, email, "agencyName", "mailboxType", "optedOut", "coveredOutcodes",
+          "lastContactedAt", "updatedAt")
+       VALUES (gen_random_uuid(), $1, $2, 'corporate_subscriber'::"MailboxType",
+               false, ARRAY[$3]::text[], now(), now())
+       ON CONFLICT (email) DO UPDATE
+         SET "agencyName" = EXCLUDED."agencyName",
+             "coveredOutcodes" = EXCLUDED."coveredOutcodes",
+             "lastContactedAt" = EXCLUDED."lastContactedAt"`,
+      [REMOVE_EMAIL, REMOVE_AGENCY, REMOVE_OUTCODE],
+    );
+  });
+}
+
+/** The integer value rendered inside a metric tile (e.g. agents-metric-contacted). */
+async function metricValue(
+  page: import("@playwright/test").Page,
+  testId: string,
+): Promise<number> {
+  const text = (await page.getByTestId(testId).textContent()) ?? "";
+  const match = text.match(/\d+/);
+  return match ? Number(match[0]) : 0;
+}
+
+test.afterAll(async () => {
+  await withClient(async (client) => {
+    await client.query(`DELETE FROM "Search" WHERE "name" LIKE 'E2E Agents%'`);
+    // Sweep the removal test's seeded agent + its (cascading) threads/messages
+    // in case the test failed before deleting it through the UI.
+    await client.query(
+      `DELETE FROM "Agent" WHERE "coveredOutcodes" @> ARRAY[$1]::text[]`,
+      [REMOVE_OUTCODE],
+    );
+  });
 });
 
 test("the Agents tab renders the metrics strip and the seeded agent rows", async ({
@@ -214,4 +268,65 @@ test("drilling in from a search's View agents link filters /agents, and clear re
   await expect(page.getByTestId("agent-filter-banner")).toHaveCount(0);
   await expect(page.getByTestId("agent-row").first()).toBeVisible();
   expect(await page.getByTestId("agent-row").count()).toBe(allCount);
+});
+
+test("removing an agent from its row erases it and decrements the Contacted metric", async ({
+  page,
+}) => {
+  // Seed one CONTACTED agent in the dedicated ZZ6 patch (operator-only erase via
+  // agents.remove; e2e runs under the dev-operator bypass, so the kebab + remove
+  // action are reachable).
+  await seedRemovableAgent();
+
+  await page.goto("/agents");
+  await expect(page.getByTestId("agents-table")).toBeVisible();
+
+  const targetRow = page.locator(
+    `[data-testid="agent-row"][data-agency="${REMOVE_AGENCY}"]`,
+  );
+  await expect(targetRow).toHaveCount(1);
+
+  // Baselines: the total row count + the Contacted tile value (the seeded agent
+  // has lastContactedAt set, so it is counted). Derived from the page, never
+  // hard-coded against the seed.
+  const totalBefore = await page.getByTestId("agent-row").count();
+  const contactedBefore = await metricValue(page, "agents-metric-contacted");
+  expect(contactedBefore).toBeGreaterThan(0);
+
+  // Open the row kebab → Remove → the confirm modal. The kebab sits in a row that
+  // can scroll under the sticky topbar, so invoke the React onClick directly (the
+  // documented center-point hit-test workaround the other specs use).
+  await targetRow.getByTestId("agent-actions").evaluate((el) => (el as HTMLElement).click());
+  await page
+    .getByTestId("agent-remove")
+    .evaluate((el) => (el as HTMLElement).click());
+
+  const confirm = page.getByTestId("agent-remove-confirm");
+  await expect(confirm).toBeVisible();
+  // The confirm dialog names the agency it is about to erase.
+  await expect(confirm).toContainText(REMOVE_AGENCY);
+
+  await confirm
+    .getByTestId("agent-remove-confirm-btn")
+    .evaluate((el) => (el as HTMLElement).click());
+
+  // The row is gone, the modal closes, and the table shrinks by exactly one.
+  await expect(targetRow).toHaveCount(0);
+  await expect(page.getByTestId("agent-remove-confirm")).toHaveCount(0);
+  await expect(page.getByTestId("agent-row")).toHaveCount(totalBefore - 1);
+
+  // The Contacted metric tracks the erase — it drops by one.
+  await expect
+    .poll(() => metricValue(page, "agents-metric-contacted"))
+    .toBe(contactedBefore - 1);
+
+  // Belt-and-braces: the agent is really gone from the pool (not just hidden).
+  const remaining = await withClient(async (client) => {
+    const { rows } = await client.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM "Agent" WHERE email = $1`,
+      [REMOVE_EMAIL],
+    );
+    return Number(rows[0]?.count ?? "0");
+  });
+  expect(remaining).toBe(0);
 });
