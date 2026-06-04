@@ -99,31 +99,27 @@ export function anthropicGatewayClientOptions(
   return options;
 }
 
-/** The Voyage embeddings endpoint to POST to, direct or via the AI Gateway. */
+/** The Voyage embeddings endpoint to POST to (always Voyage's direct API). */
 export interface VoyageEndpoint {
   url: string;
-  /** Extra headers to merge (the gateway bearer, when an authenticated gateway). */
+  /** Extra headers to merge — always empty (Voyage bypasses the AI Gateway);
+   *  retained so the call site stays gateway-ready if Cloudflare adds Voyage. */
   headers: Record<string, string>;
 }
 
 /**
- * Resolve the Voyage `/embeddings` endpoint. With the gateway configured the
- * request rides `.../voyage/v1/embeddings` (the path the AI Gateway Voyage
- * provider expects) and an authenticated gateway adds `cf-aig-authorization`;
- * otherwise it posts straight to Voyage's `directBaseUrl` (default
- * https://api.voyageai.com/v1). Mirrors `anthropicGatewayClientOptions` but for
- * a fetch-based provider (Voyage has no first-party SDK we depend on), so it
- * returns the full URL + headers rather than SDK client options.
+ * Resolve the Voyage `/embeddings` endpoint — ALWAYS Voyage's direct API
+ * (`directBaseUrl`, default https://api.voyageai.com/v1). Unlike the Anthropic
+ * calls, Voyage does NOT ride the Cloudflare AI Gateway: the gateway has no
+ * Voyage provider, so a `.../voyage/...` path is rejected with AiGatewayError
+ * 2008 "Invalid provider" (the live failure that left analyze:listing producing
+ * zero embeddings). Returns the full URL + (empty) headers rather than SDK
+ * client options because Voyage has no first-party SDK we depend on; the caller
+ * adds the Voyage `Authorization: Bearer` itself. If Cloudflare ever adds a
+ * Voyage provider, restore a gateway branch mirroring anthropicGatewayClientOptions.
  */
 export function voyageEmbeddingsEndpoint(
   directBaseUrl = "https://api.voyageai.com/v1",
-  config: AiGatewayConfig | null = getAiGatewayConfig(),
 ): VoyageEndpoint {
-  if (!config) {
-    return { url: `${directBaseUrl}/embeddings`, headers: {} };
-  }
-  const headers: Record<string, string> = config.token
-    ? { "cf-aig-authorization": `Bearer ${config.token}` }
-    : {};
-  return { url: `${gatewayBaseUrl("voyage", config)}/v1/embeddings`, headers };
+  return { url: `${directBaseUrl}/embeddings`, headers: {} };
 }

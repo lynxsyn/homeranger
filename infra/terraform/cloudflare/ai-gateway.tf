@@ -1,9 +1,10 @@
 # ── Cloudflare AI Gateway (transparent proxy for outbound LLM calls) ──
-# A single gateway fronts homeranger's Anthropic traffic (M4 Claude extraction;
-# Voyage + Haiku join in M5) for token/cost analytics, response caching, retries
-# and a queryable request log — WITHOUT changing the model, the prompt, or the
-# call sites. The app keeps its own ANTHROPIC_API_KEY and only points the SDK
-# baseURL at:
+# A single gateway fronts homeranger's Anthropic traffic (M4 Claude extraction +
+# M5 Haiku vision + match-scoring) for token/cost analytics, response caching,
+# retries and a queryable request log — WITHOUT changing the model, the prompt,
+# or the call sites. (Voyage embeddings do NOT ride the gateway — CF has no
+# Voyage provider; they post direct to api.voyageai.com.) The app keeps its own
+# ANTHROPIC_API_KEY and only points the SDK baseURL at:
 #   https://gateway.ai.cloudflare.com/v1/<account_id>/<var.ai_gateway_id>/anthropic
 #
 # Activation is env-driven in the app (CF_AI_GATEWAY_ACCOUNT_ID / CF_AI_GATEWAY_ID,

@@ -34,7 +34,7 @@ variable "tunnel_secret" {
 }
 
 variable "ai_gateway_id" {
-  description = "Cloudflare AI Gateway slug fronting homeranger's outbound LLM calls (M4 Claude extraction; M5 Voyage/Haiku). Set as CF_AI_GATEWAY_ID in the homeranger secret."
+  description = "Cloudflare AI Gateway slug fronting homeranger's Anthropic calls (M4 Claude extraction; M5 Haiku vision + match-scoring). Voyage embeddings bypass it (no CF Voyage provider). Set as CF_AI_GATEWAY_ID in the homeranger secret."
   type        = string
   default     = "homeranger"
 }

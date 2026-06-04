@@ -116,25 +116,28 @@ describe("voyageEmbeddingsEndpoint", () => {
     });
   });
 
-  it("routes through the gateway voyage path when CF_AI_GATEWAY_* is set", () => {
+  it("ALWAYS posts directly to Voyage even when CF_AI_GATEWAY_* is set (the gateway has NO Voyage provider)", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
     vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
+    // Cloudflare AI Gateway rejects a /voyage path with AiGatewayError 2008
+    // "Invalid provider" — Voyage is not a supported provider — so we bypass it.
     expect(voyageEmbeddingsEndpoint()).toEqual({
-      url: "https://gateway.ai.cloudflare.com/v1/acc123/homeranger/voyage/v1/embeddings",
+      url: "https://api.voyageai.com/v1/embeddings",
       headers: {},
     });
   });
 
-  it("adds the cf-aig-authorization header for an authenticated gateway", () => {
+  it("bypasses the gateway even when it carries an auth token (Voyage never rides the gateway)", () => {
     vi.stubEnv("CF_AI_GATEWAY_ACCOUNT_ID", "acc123");
     vi.stubEnv("CF_AI_GATEWAY_ID", "homeranger");
     vi.stubEnv("CF_AI_GATEWAY_TOKEN", "tok_secret");
-    expect(voyageEmbeddingsEndpoint().headers).toEqual({
-      "cf-aig-authorization": "Bearer tok_secret",
+    expect(voyageEmbeddingsEndpoint()).toEqual({
+      url: "https://api.voyageai.com/v1/embeddings",
+      headers: {},
     });
   });
 
-  it("honours a custom direct base URL when the gateway is off", () => {
+  it("honours a custom direct base URL", () => {
     expect(voyageEmbeddingsEndpoint("https://proxy.test/v9").url).toBe(
       "https://proxy.test/v9/embeddings",
     );
