@@ -114,7 +114,13 @@ export interface LiveSmokePlan {
 
 const DEFAULT_OUTCODE = "SMOKE1";
 const DEFAULT_SEARCH_NAME = "Live email smoke test";
-const DEFAULT_SEARCH_LOCATION = "Bath";
+// EMPTY on purpose. Firecrawl agent discovery is LIVE in prod, so a real place
+// name here makes the search's Launch scrape real estate agents in that town and
+// stamp them into the SMOKE1 patch (a hazard: re-Launch + approve-all would cold
+// email real agents). Empty → the draft subject reads "A private buyer looking in
+// your area" (clean) and Launch's outcode-fallback query matches no real town.
+// To send with ZERO Firecrawl, skip Launch entirely and use `pnpm smoke:send`.
+const DEFAULT_SEARCH_LOCATION = "";
 // Woven into the first email as prose by draftSearchEmail; kept human and
 // em-dash-free per the operator outreach-style preference (em dashes read as an
 // AI tell to estate agents and hurt deliverability).

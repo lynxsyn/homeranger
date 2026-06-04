@@ -131,7 +131,8 @@ describe("buildLiveSmokePlan", () => {
   it("defaults a human, em-dash-free search brief and lets env override it", () => {
     const def = buildLiveSmokePlan(SIX_DISTINCT);
     expect(def.search.name.length).toBeGreaterThan(0);
-    expect(def.search.location.length).toBeGreaterThan(0);
+    // Empty by default so Launch's discovery matches no real town (Firecrawl-safe).
+    expect(def.search.location).toBe("");
     expect(def.search.keywords).not.toContain("—");
 
     const custom = buildLiveSmokePlan({
