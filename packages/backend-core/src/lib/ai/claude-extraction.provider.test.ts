@@ -10,6 +10,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DefaultClaudeExtractionProvider,
+  LISTING_EXTRACTION_SCHEMA,
   buildUserContent,
   createAnthropicClient,
   stripCodeFence,
@@ -394,5 +395,24 @@ describe("createAnthropicClient (AI Gateway wiring)", () => {
     expect(client.baseURL).toContain(
       "gateway.ai.cloudflare.com/v1/acc123/homeranger/anthropic",
     );
+  });
+});
+
+describe("LISTING_EXTRACTION_SCHEMA (Anthropic strict-schema compatibility)", () => {
+  // The original schema declared nullable enums as `type:["string","null"]` WITH
+  // an `enum`, which Anthropic's structured-output validator rejects (400 → every
+  // extraction dropped → zero listings). They MUST be anyOf instead.
+  const props = LISTING_EXTRACTION_SCHEMA.properties as Record<
+    string,
+    { anyOf?: unknown; enum?: unknown; type?: unknown }
+  >;
+
+  it("declares every nullable ENUM field as anyOf, never type-array + enum", () => {
+    for (const field of ["tenure", "propertyType", "epcRating", "listingStatus"]) {
+      const prop = props[field];
+      expect(prop.anyOf).toBeDefined();
+      expect(prop.enum).toBeUndefined();
+      expect(Array.isArray(prop.type)).toBe(false);
+    }
   });
 });
