@@ -14,7 +14,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed:live-smoke": "tsx prisma/seed-live-smoke.ts"
   },
   "dependencies": {
     "@homeranger/backend-core": "workspace:*",
