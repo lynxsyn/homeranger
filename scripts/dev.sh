@@ -26,15 +26,22 @@ die()  { printf '\n%s✗ %s%s\n\n' "$r$b" "$1" "$x" >&2; exit 1; }
 
 # ---- environment ------------------------------------------------------------
 step "Environment"
-# The apps read ambient env. direnv normally sources .env; source it ourselves as
-# a fallback so `pnpm dev` works even without direnv.
-if [ -z "${DATABASE_URL:-}" ] && [ -f .env ]; then
-  set -a; . ./.env; set +a
-  ok "sourced .env"
-fi
-[ -n "${DATABASE_URL:-}" ] || die "DATABASE_URL is not set. Run: cp .env.example .env  (then 'direnv allow' if you use direnv)."
+# Load .env so the servers inherit the provider keys (the apps read ambient env;
+# direnv normally sources it on cd — we repeat it so `pnpm dev` also works without
+# direnv, and it is harmless if already loaded).
+if [ -f .env ]; then set -a; . ./.env; set +a; ok ".env loaded"; fi
+
+# The DB + Redis URLs are NOT required in .env — the app defaults DATABASE_URL to
+# the local dev container (:5434) at runtime. prisma migrate's own fallback is a
+# deliberate fail-fast (:5432), so we point MIGRATION_DATABASE_URL at the dev DB
+# (:5434) too; the local `homeranger` superuser owns it and can run the migration
+# DDL. Anything you set in .env / the shell wins.
+export DATABASE_URL="${DATABASE_URL:-postgresql://homeranger:homeranger@localhost:5434/homeranger}"
+export MIGRATION_DATABASE_URL="${MIGRATION_DATABASE_URL:-postgresql://homeranger:homeranger@localhost:5434/homeranger}"
+export REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
+
 command -v docker >/dev/null 2>&1 || die "docker is not on PATH — start Docker Desktop / colima and retry."
-ok "DATABASE_URL set · docker present"
+ok "DB :5434 · redis :6379 · docker present"
 
 # A full local loop runs with NO paid APIs: default the FAKE seams ON (unless you
 # set them) and give the worker the harmless placeholders it wants to boot in
