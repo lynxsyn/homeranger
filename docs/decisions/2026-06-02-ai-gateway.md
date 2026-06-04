@@ -39,8 +39,14 @@ request log **without changing the model, the prompt, or the call sites**.
   `baseURL` (+ optional `cf-aig-authorization` header) from env;
   `createAnthropicClient()` in `claude-extraction.provider.ts` spreads it into the
   Anthropic client. Mirrors the existing `createR2Client(config)` factory shape.
-- **Scope now:** Anthropic only (the sole live caller). M5's Voyage/Haiku calls
-  reuse the same helper (`gatewayBaseUrl(provider, …)`) when they land.
+- **Scope now:** Anthropic-family only — Claude extraction (M4) plus M5 Haiku
+  vision + match-scoring, all of which reuse `anthropicGatewayClientOptions`
+  (`anthropic` is a supported gateway provider). **Voyage embeddings do NOT ride
+  the gateway:** Cloudflare has no Voyage provider, so a `/voyage` path is
+  rejected with AiGatewayError 2008 "Invalid provider" (confirmed 2026-06-04
+  against CF's supported-providers list — analyze:listing was producing zero
+  embeddings in prod). `voyageEmbeddingsEndpoint` posts direct to
+  `api.voyageai.com`; restore a gateway branch only if CF adds a Voyage provider.
 
 ### Why this and nothing else from the CF compute/data stack
 The same review rejected migrating the compute/data core: the current code

@@ -5,13 +5,14 @@
  *
  * Voyage has no first-party Node SDK we depend on, so this is a thin `fetch`
  * client (the `fetch` impl is injectable for unit tests — no network/spend).
- * When `CF_AI_GATEWAY_*` is set the call rides the Cloudflare AI Gateway Voyage
- * path (`voyageEmbeddingsEndpoint`), mirroring how the Claude calls ride the
- * gateway. The response dimension is asserted to be exactly 1024 — a wrong-dim
- * response is a non-retryable error (it would corrupt the pgvector column).
+ * Unlike the Claude/Haiku calls, Voyage does NOT ride the Cloudflare AI Gateway:
+ * it has no Voyage provider, so a `/voyage` path 400s with "Invalid provider".
+ * `voyageEmbeddingsEndpoint` therefore always returns Voyage's direct API URL.
+ * The response dimension is asserted to be exactly 1024 — a wrong-dim response
+ * is a non-retryable error (it would corrupt the pgvector column).
  *
  * Retryable-vs-terminal classification reuses the shared `provider-errors`
- * rules (429/5xx retryable; 4xx incl. 404 terminal) so a misconfigured gateway
+ * rules (429/5xx retryable; 4xx incl. 404 terminal) so a misconfigured call
  * fails fast rather than burning BullMQ attempts.
  */
 import { EMBEDDING_DIMENSIONS } from "../../repositories/listing.repository.js";
