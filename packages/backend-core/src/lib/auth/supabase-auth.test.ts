@@ -195,17 +195,29 @@ describe("readSupabaseAuthConfigFromEnv", () => {
   const saved = {
     url: process.env.SUPABASE_URL,
     aud: process.env.SUPABASE_JWT_AUD,
+    nodeEnv: process.env.NODE_ENV,
   };
   afterEach(() => {
     process.env.SUPABASE_URL = saved.url;
     process.env.SUPABASE_JWT_AUD = saved.aud;
+    process.env.NODE_ENV = saved.nodeEnv;
     if (saved.url === undefined) delete process.env.SUPABASE_URL;
     if (saved.aud === undefined) delete process.env.SUPABASE_JWT_AUD;
+    if (saved.nodeEnv === undefined) delete process.env.NODE_ENV;
   });
 
-  it("returns null (dev bypass) when SUPABASE_URL is unset", () => {
+  it("returns null (dev bypass) when SUPABASE_URL is unset outside production", () => {
+    process.env.NODE_ENV = "test";
     delete process.env.SUPABASE_URL;
     expect(readSupabaseAuthConfigFromEnv()).toBeNull();
+  });
+
+  it("THROWS in production when SUPABASE_URL is unset (fail-closed; refuses the dev bypass)", () => {
+    // A deployed pod that loses SUPABASE_URL must refuse to serve rather than
+    // silently authenticating every caller as the operator (NULL namespace).
+    process.env.NODE_ENV = "production";
+    delete process.env.SUPABASE_URL;
+    expect(() => readSupabaseAuthConfigFromEnv()).toThrow(/SUPABASE_URL/);
   });
 
   it("derives issuer + jwksUri + default audience from SUPABASE_URL", () => {
