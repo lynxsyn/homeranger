@@ -44,6 +44,7 @@ const MESSAGE_SELECT = Prisma.validator<Prisma.OutreachMessageSelect>()({
   toEmail: true,
   subject: true,
   bodyText: true,
+  bodyHtml: true,
   spfVerdict: true,
   dkimVerdict: true,
   parsedListingIds: true,
@@ -72,6 +73,8 @@ export interface CreateOutboundMessageInput {
   toEmail: string;
   subject: string;
   bodyText: string;
+  /** Rendered HTML body, persisted alongside bodyText for draft inspection. */
+  bodyHtml?: string | null;
   sentAt: Date;
 }
 
@@ -273,6 +276,7 @@ export class OutreachRepository {
         toEmail: input.toEmail,
         subject: input.subject,
         bodyText: input.bodyText,
+        bodyHtml: input.bodyHtml ?? null,
         parsedListingIds: [],
         sentAt: input.sentAt,
       },
