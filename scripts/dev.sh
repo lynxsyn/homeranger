@@ -66,6 +66,25 @@ else
   ok "installed"
 fi
 
+# ---- DB target guard --------------------------------------------------------
+# Only the LOCAL dev DB (the :5434 container) gets migrate + seed. If DATABASE_URL
+# points anywhere else (a port-forwarded prod, a remote host) → VIEW mode: skip
+# the destructive migrate + seed and run only api + web, so a remote DB can be
+# browsed without ever being mutated.
+case "${DATABASE_URL:-}" in
+  *@localhost:5434/* | *@127.0.0.1:5434/*)
+    DEV_MODE="full"
+    SERVER_DESC="api :${PORT:-3000} · worker · scheduler · web :5173" ;;
+  *)
+    DEV_MODE="view"
+    SERVER_DESC="api :${PORT:-3000} · web :5173  (view-only, remote DB)" ;;
+esac
+if [ "$DEV_MODE" = "view" ]; then
+  warn "DATABASE_URL is NOT the local dev DB (:5434) → VIEW mode:"
+  warn "  - skipping migrate + seed (target ${DATABASE_URL#*@})"
+  warn "  - api + web only (no worker / scheduler)"
+fi
+
 # ---- infra: postgres + redis (idempotent) -----------------------------------
 step "Postgres + Redis"
 # 'up -d --wait' only starts/recreates what is missing or unhealthy and waits for
@@ -78,17 +97,22 @@ step "Prisma client"
 pnpm --filter @homeranger/api prisma:generate >/dev/null
 ok "generated"
 
-step "Database migrations"
-pnpm --filter @homeranger/api prisma:deploy
-ok "schema up to date (pending migrations applied)"
+if [ "$DEV_MODE" = "full" ]; then
+  step "Database migrations"
+  pnpm --filter @homeranger/api prisma:deploy
+  ok "schema up to date (pending migrations applied)"
 
-# ---- seed (idempotent upsert) -----------------------------------------------
-step "Seed data"
-pnpm --filter @homeranger/api db:seed
-ok "dev fixtures seeded"
+  # ---- seed (idempotent upsert) ---------------------------------------------
+  step "Seed data"
+  pnpm --filter @homeranger/api db:seed
+  ok "dev fixtures seeded"
+else
+  step "Database migrations + seed"
+  ok "skipped (VIEW mode — the remote DB is left untouched)"
+fi
 
 # ---- dev servers ------------------------------------------------------------
-step "Dev servers — api :${PORT:-3000} · worker · scheduler · web :5173"
+step "Dev servers — $SERVER_DESC"
 printf '  %sstreaming below — press Ctrl-C to stop the whole stack%s\n' "$y" "$x"
 
 # Print a READY banner once the api + web actually answer on localhost. Runs in
@@ -110,7 +134,14 @@ trap 'kill "$ready_pid" 2>/dev/null || true' EXIT
 # Run all four dev servers together. No --kill-others: if one crashes (e.g. the
 # worker on a missing optional key) the rest keep serving. Ctrl-C still stops the
 # whole group. tsx/vite watchers reload on change.
-pnpm exec concurrently \
-  --names "api,worker,sched,web" \
-  --prefix-colors "blue,magenta,yellow,green" \
-  "pnpm dev:api" "pnpm dev:worker" "pnpm dev:scheduler" "pnpm dev:web"
+if [ "$DEV_MODE" = "full" ]; then
+  pnpm exec concurrently \
+    --names "api,worker,sched,web" \
+    --prefix-colors "blue,magenta,yellow,green" \
+    "pnpm dev:api" "pnpm dev:worker" "pnpm dev:scheduler" "pnpm dev:web"
+else
+  pnpm exec concurrently \
+    --names "api,web" \
+    --prefix-colors "blue,green" \
+    "pnpm dev:api" "pnpm dev:web"
+fi
