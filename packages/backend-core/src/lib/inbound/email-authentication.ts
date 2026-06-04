@@ -5,9 +5,11 @@
  * signature proves the request came from Resend — it proves NOTHING about
  * whether the message's `From` header is genuine. The original sender's
  * SPF/DKIM verdicts (hydrated from the message Authentication-Results headers)
- * are the only signal for that. A spoofer cannot produce a valid DKIM signature
- * for the impersonated domain, and their sending IP will not align with that
- * domain's SPF, so a spoofed `From` yields neither a DKIM pass nor an SPF pass.
+ * are the only signal for that. Those verdicts are DMARC-ALIGNED upstream: the
+ * inbound hydrator downgrades a `pass` whose signing (`header.d=`) or envelope
+ * (`smtp.mailfrom=`) domain does not align with the `From` domain, so a `pass`
+ * reaching this predicate attests the `From` domain itself — a spoofer who
+ * DKIM-signs as their OWN domain is downgraded to fail before it gets here.
  *
  * We therefore treat a sender as authenticated only on an AFFIRMATIVE pass and
  * refuse to let unauthenticated mail drive agent-keyed side effects (forging a
