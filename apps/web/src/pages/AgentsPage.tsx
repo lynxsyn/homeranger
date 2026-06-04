@@ -24,6 +24,7 @@ import { trpc } from "../lib/trpc";
 import { Icon } from "../components/Icon";
 import { Button } from "../components/ui";
 import { InfoTip } from "../components/InfoTip";
+import { CoverageCell } from "../components/CoverageCell";
 import { relativeTime } from "../lib/format";
 
 type AgentRow = inferRouterOutputs<AppRouter>["agents"]["list"][number];
@@ -298,7 +299,9 @@ export function AgentsPage({ filter, onClearFilter }: AgentsPageProps) {
                     <th scope="col" className="col-cov">
                       Coverage
                     </th>
-                    <th scope="col">Status</th>
+                    <th scope="col" className="col-status">
+                      Status
+                    </th>
                     <th scope="col" className="num col-homes">
                       Homes
                     </th>
@@ -327,15 +330,9 @@ export function AgentsPage({ filter, onClearFilter }: AgentsPageProps) {
                           </div>
                         </td>
                         <td className="col-cov">
-                          <div className="cov-cell">
-                            {a.outcodes.map((oc) => (
-                              <span key={oc} className="sf-oc">
-                                {oc}
-                              </span>
-                            ))}
-                          </div>
+                          <CoverageCell outcodes={a.outcodes} />
                         </td>
-                        <td>
+                        <td className="col-status">
                           <ThreadStatus status={a.status} />
                         </td>
                         <td className="num col-homes">
