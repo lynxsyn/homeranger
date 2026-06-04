@@ -145,14 +145,23 @@ export function ownerKeyFor(
 /**
  * Read the Supabase Auth configuration from the environment.
  *
- * Returns `null` (DEV BYPASS) when `SUPABASE_URL` is unset. When set, returns
- * the full config (issuer + JWKS uri + audience). A trailing slash on
- * SUPABASE_URL is tolerated.
+ * Returns `null` (DEV BYPASS) when `SUPABASE_URL` is unset — local dev +
+ * Playwright E2E only. In production an unset `SUPABASE_URL` instead THROWS:
+ * the dev bypass resolves every request to the operator identity, so a deployed
+ * pod that loses the var must refuse to serve rather than silently authenticate
+ * all callers as the operator. Mirrors the RESEND_WEBHOOK_SECRET /
+ * UNSUBSCRIBE_TOKEN_SECRET production fail-closed guards. When set, returns the
+ * full config (issuer + JWKS uri + audience); a trailing slash is tolerated.
  */
 export function readSupabaseAuthConfigFromEnv(): SupabaseAuthConfig | null {
   const rawUrl = process.env.SUPABASE_URL;
   if (!rawUrl) {
-    return null; // DEV BYPASS
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "SUPABASE_URL is required in production: refusing to start with the auth dev-bypass enabled",
+      );
+    }
+    return null; // DEV BYPASS (local dev + Playwright E2E only)
   }
   const base = rawUrl.replace(/\/+$/, "");
   const issuer = `${base}/auth/v1`;
