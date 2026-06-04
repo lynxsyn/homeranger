@@ -44,6 +44,8 @@ type Search = inferRouterOutputs<AppRouter>["searches"]["list"][number];
 
 /** What SearchesPage needs to push the listings view into a search's filter. */
 export interface SearchFilter {
+  /** The search id — threaded to listings.list as the per-search scoring lens. */
+  id: string;
   name: string;
   outcodes: string[];
   status: SearchStatus;
@@ -1348,7 +1350,12 @@ export function SearchesPage({
   );
 
   function viewHomes(search: Search) {
-    onViewHomes({ name: search.name, outcodes: search.outcodes, status: search.status });
+    onViewHomes({
+      id: search.id,
+      name: search.name,
+      outcodes: search.outcodes,
+      status: search.status,
+    });
   }
 
   // Resuming is instant; pausing asks first so there's no doubt about contact.

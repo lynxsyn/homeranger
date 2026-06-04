@@ -60,6 +60,11 @@ export const listListingsInputSchema = z
     filter: listingFilterSchema.optional(),
     sortBy: listingSortFieldSchema.default("combinedScore"),
     sortDir: sortDirectionSchema.default("desc"),
+    // Per-search scoring LENS (not a row filter): when the listings table is
+    // reached via a search's "View homes found" link-through, this is that
+    // search's id, so the Match ring + combinedScore sort reflect THAT search's
+    // taste. Absent => MAX(combinedScore) across the operator's searches.
+    searchId: z.uuid().optional(),
   })
   .extend(paginationInputSchema.shape)
   .strict();

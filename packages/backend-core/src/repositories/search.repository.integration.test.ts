@@ -174,3 +174,99 @@ describe("searchRepository CRUD round-trip (real pgvector)", () => {
     expect(stillThere?.status).toBe("active");
   });
 });
+
+describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
+  "searchRepository per-search match-scoring methods",
+  () => {
+    afterEach(async () => {
+      await cleanupSearches();
+    });
+    afterAll(async () => {
+      await disconnectTestPrisma();
+    });
+
+    /** Build an active operator (userId NULL) search with explicit outcodes. */
+    async function makeOperatorSearch(
+      suffix: string,
+      outcodes: string[],
+      status: "active" | "paused" = "active",
+    ): Promise<string> {
+      const s = await db.search.create({
+        data: {
+          name: `${NAME_PREFIX}${suffix}`,
+          outcodes,
+          keywords: `taste ${suffix}`,
+          status,
+        },
+        select: { id: true },
+      });
+      return s.id;
+    }
+
+    it("round-trips a keyword embedding (write → read) and reads NULL when unset", async () => {
+      const id = await makeOperatorSearch("embed", ["LL55"]);
+      expect(await searchRepository.readKeywordsEmbedding(id)).toBeNull();
+
+      const vec = Array.from({ length: 1024 }, (_, i) => ((i % 7) + 1) * 0.001);
+      const updated = await searchRepository.writeKeywordsEmbedding(id, vec);
+      expect(updated).toBe(1);
+
+      const read = await searchRepository.readKeywordsEmbedding(id);
+      expect(read).not.toBeNull();
+      expect(read!).toHaveLength(1024);
+      // pgvector stores float4, so assert closeness, not exact equality.
+      expect(read![0]).toBeCloseTo(vec[0]!, 4);
+      expect(read![6]).toBeCloseTo(vec[6]!, 4);
+    });
+
+    it("rejects a wrong-dimension embedding (write-path guard)", async () => {
+      const id = await makeOperatorSearch("baddim", ["LL55"]);
+      await expect(
+        searchRepository.writeKeywordsEmbedding(id, [0.1, 0.2, 0.3]),
+      ).rejects.toThrow(/1024 dimensions/);
+    });
+
+    it("listActiveByOutcode returns only ACTIVE operator searches covering the outcode", async () => {
+      const activeHere = await makeOperatorSearch("active-here", ["LL55", "LL41"]);
+      await makeOperatorSearch("paused-here", ["LL55"], "paused"); // paused → excluded
+      await makeOperatorSearch("active-elsewhere", ["SW1A"]); // wrong outcode → excluded
+      // A non-operator's search covering LL55 → excluded from the operator query.
+      await db.search.create({
+        data: { name: `${NAME_PREFIX}partner`, outcodes: ["LL55"], status: "active", userId: OWNER_A },
+        select: { id: true },
+      });
+
+      const matched = await searchRepository.listActiveByOutcode("LL55", null);
+      const matchedIds = matched.map((s) => s.id);
+      expect(matchedIds).toContain(activeHere);
+      expect(matchedIds).toHaveLength(1); // ONLY the active operator search here
+    });
+
+    it("listActiveByOutcode respects the limit and does NOT reorder on embedding write", async () => {
+      const older = await makeOperatorSearch("older", ["LL55"]);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      const newer = await makeOperatorSearch("newer", ["LL55"]);
+
+      // updatedAt DESC → newer first.
+      let ordered = (await searchRepository.listActiveByOutcode("LL55", null)).filter((s) =>
+        s.name.startsWith(NAME_PREFIX),
+      );
+      expect(ordered[0]!.id).toBe(newer);
+
+      // Writing the OLDER search's embedding must NOT bump it to the front (the
+      // raw write deliberately omits updatedAt so a recompute can't reorder the list).
+      await searchRepository.writeKeywordsEmbedding(
+        older,
+        Array.from({ length: 1024 }, () => 0.02),
+      );
+      ordered = (await searchRepository.listActiveByOutcode("LL55", null)).filter((s) =>
+        s.name.startsWith(NAME_PREFIX),
+      );
+      expect(ordered[0]!.id).toBe(newer); // still newer first
+
+      // Limit caps the fan-out.
+      const capped = await searchRepository.listActiveByOutcode("LL55", null, 1);
+      expect(capped).toHaveLength(1);
+    });
+  },
+);

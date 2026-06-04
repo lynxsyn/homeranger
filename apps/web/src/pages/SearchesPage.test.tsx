@@ -316,6 +316,7 @@ describe("SearchesPage cards", () => {
     fireEvent.click(within(snowdonia).getByTestId("search-homes-link"));
     expect(onViewHomes).toHaveBeenCalledTimes(1);
     expect(onViewHomes).toHaveBeenCalledWith({
+      id: "search-snowdonia",
       name: "Snowdonia — detached with a view",
       outcodes: ["LL55", "LL48", "LL40"],
       status: "active",

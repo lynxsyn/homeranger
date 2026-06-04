@@ -105,13 +105,15 @@ export interface AnalyzeListingJobPayload {
 }
 
 /**
- * `analyze:recompute` payload — the profile-driven top-K re-rank (AC#3).
- * Enqueued ONCE by the preferences backfill trigger when the SearchProfile
- * changes (not per listing), so the cost is bounded to the top-K re-score.
- * Carries no fields (the single SearchProfile is the implicit subject);
- * `reason` is optional log/trace context.
+ * `analyze:recompute` payload — the search-driven top-K re-rank. The handler
+ * routes on `searchId`:
+ *   - `searchId` set  → re-rank ONLY that search (search create/update/resume).
+ *   - `searchId` absent → re-rank EVERY active operator search (recomputeAll).
+ * Enqueued once per trigger (not per listing), so the cost is bounded to the
+ * top-K re-score per search. `reason` is optional log/trace context.
  */
 export interface AnalyzeRecomputeJobPayload {
+  searchId?: string;
   reason?: string;
 }
 

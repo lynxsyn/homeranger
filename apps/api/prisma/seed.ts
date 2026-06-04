@@ -41,13 +41,42 @@ async function main(): Promise<void> {
     });
   }
 
-  // M5: seed the single SearchProfile so the AI-analysis E2E has preferences to
-  // match against. Empty outcodes → the preference recompute recalls every
-  // embedded (analysed) listing, not just one area. Idempotent (singleton row).
+  // Seed the SearchProfile's buyer identity (signs outreach). Its preference
+  // text is now vestigial for scoring (per-search scoring superseded the global
+  // profile match path) but the row is kept for the Settings identity fields.
   await searchProfileRepository.update({
     freeTextPreferences:
       "A bright, modern flat with good natural light and some outdoor space.",
     outcodes: [],
+  });
+
+  // Per-search match scoring: seed one ACTIVE operator (userId NULL) Search whose
+  // patch covers the AI-analysis E2E's ingest outcode (EC1A) + the demo London
+  // patch, so analyze:listing's match step has a search to score the analysed
+  // listing against and the "View homes found" link-through surfaces that score.
+  // Idempotent via a fixed id (safe under reuseExistingServer). Inserted directly
+  // (NOT via the router) so the seed enqueues no recompute job; scoreListing
+  // lazily embeds the keywords on first analyze.
+  const E2E_SEARCH_ID = "00000000-0000-7000-8000-0000000005ee";
+  const E2E_SEARCH_OUTCODES = ["EC1A", "SE1", "SE16", "N1"];
+  await prisma.search.upsert({
+    where: { id: E2E_SEARCH_ID },
+    create: {
+      id: E2E_SEARCH_ID,
+      name: "Bright modern flats",
+      location: "Central London",
+      outcodes: E2E_SEARCH_OUTCODES,
+      keywords:
+        "A bright, modern flat with good natural light and some outdoor space.",
+      status: "active",
+    },
+    update: {
+      outcodes: E2E_SEARCH_OUTCODES,
+      keywords:
+        "A bright, modern flat with good natural light and some outdoor space.",
+      status: "active",
+    },
+    select: { id: true },
   });
 
   // PR1: seed a small demo agent pool so the /agents screen (+ its E2E) has data
@@ -130,6 +159,7 @@ async function main(): Promise<void> {
 
   console.log(
     `Seeded ${LISTING_FIXTURES.length} listing fixtures + the search profile` +
+      ` + 1 operator search (outcodes ${E2E_SEARCH_OUTCODES.join(", ")})` +
       ` + ${demoAgents.length} demo agents (outcodes ${DEMO_OUTCODES.join(", ")}).`,
   );
 }
