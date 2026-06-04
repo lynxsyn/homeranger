@@ -21,7 +21,8 @@
     "dev:api": "pnpm --filter @homeranger/api dev",
     "dev:worker": "pnpm --filter @homeranger/processor dev",
     "dev:scheduler": "pnpm --filter @homeranger/scheduler dev",
-    "dev:web": "pnpm --filter @homeranger/web dev"
+    "dev:web": "pnpm --filter @homeranger/web dev",
+    "smoke:read": "tsx scripts/email-smoke-read.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -34,13 +35,18 @@
     ]
   },
   "devDependencies": {
+    "@homeranger/backend-core": "workspace:*",
     "@playwright/test": "1.60.0",
+    "@types/mailparser": "^3.4.6",
     "@types/node": "25.6.2",
     "@typescript-eslint/eslint-plugin": "8.60.0",
     "@typescript-eslint/parser": "8.60.0",
     "@vitest/coverage-v8": "4.1.7",
     "eslint": "10.3.0",
+    "imapflow": "^1.3.5",
     "jiti": "2.7.0",
+    "mailparser": "^3.9.9",
+    "tsx": "4.21.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.60.0",
     "vitest": "4.1.7"
