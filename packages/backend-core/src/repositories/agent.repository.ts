@@ -136,6 +136,60 @@ export class AgentRepository {
     return prisma.agent.count({ where });
   }
 
+  /**
+   * The id + coverage of every agent touching at least one of `outcodes`,
+   * OPTED-OUT INCLUDED. Backs the search-removal cascade's agent selection: it
+   * must see the full set covering the patch (opted-out agents still hold PII +
+   * correspondence to erase) and each agent's whole `coveredOutcodes` so the
+   * service can keep agents still covered by ANOTHER remaining search. Unbounded
+   * by design (a tiny projection, NOT the paginated `list`) so it never silently
+   * clamps the cascade set at the page cap. An empty outcode set returns [].
+   */
+  async findIdsByOutcodes(
+    outcodes: string[],
+  ): Promise<Array<{ id: string; coveredOutcodes: string[] }>> {
+    if (outcodes.length === 0) {
+      return [];
+    }
+    return prisma.agent.findMany({
+      where: { coveredOutcodes: { hasSome: outcodes } },
+      select: { id: true, coveredOutcodes: true },
+    });
+  }
+
+  /**
+   * COMPLETELY remove a single agent by id (GDPR erasure). The FK ON DELETE
+   * CASCADE drops every OutreachThread → OutreachMessage, so the agent record AND
+   * all its correspondence are erased ATOMICALLY in one statement. Throws Prisma
+   * P2025 when no row matches (the router remaps it to NOT_FOUND). The listings
+   * the agent sent are NOT touched — they are a global, still-valid catalogue
+   * (kept per the design; only their denormalised agentEmail references the gone
+   * agent).
+   */
+  async deleteById(id: string, tx?: Prisma.TransactionClient): Promise<void> {
+    const db: PrismaLike = tx ?? prisma;
+    await db.agent.delete({ where: { id }, select: { id: true } });
+  }
+
+  /**
+   * COMPLETELY remove many agents by id in one statement (the search-removal
+   * cascade's bulk erasure). Same FK-cascade erasure as `deleteById`, but
+   * tolerant of a missing id (deleteMany never throws P2025). Returns the count
+   * actually deleted. An empty id list is a no-op (returns 0). Accepts a `tx` so
+   * the cascade erases agents, hides homes, and deletes the search atomically.
+   */
+  async deleteManyByIds(
+    ids: string[],
+    tx?: Prisma.TransactionClient,
+  ): Promise<number> {
+    if (ids.length === 0) {
+      return 0;
+    }
+    const db: PrismaLike = tx ?? prisma;
+    const result = await db.agent.deleteMany({ where: { id: { in: ids } } });
+    return result.count;
+  }
+
   async markOptedOut(
     email: string,
     tx?: Prisma.TransactionClient,

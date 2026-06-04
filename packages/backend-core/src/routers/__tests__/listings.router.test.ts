@@ -34,6 +34,10 @@ import {
   SavedListingRepository,
   _setSavedListingRepositoryForTesting,
 } from "../../repositories/saved-listing.repository.js";
+import {
+  DismissedListingRepository,
+  _setDismissedListingRepositoryForTesting,
+} from "../../repositories/dismissed-listing.repository.js";
 
 function makeRow(overrides: Partial<ListingRecord> = {}): ListingRecord {
   const now = new Date("2026-01-01T00:00:00.000Z");
@@ -77,6 +81,7 @@ afterEach(() => {
   _setPhotoAnalysisRepositoryForTesting(null);
   _setListingScoreRepositoryForTesting(null);
   _setSavedListingRepositoryForTesting(null);
+  _setDismissedListingRepositoryForTesting(null);
   vi.restoreAllMocks();
 });
 
@@ -398,6 +403,60 @@ describe("listingsRouter.saved / save / unsave", () => {
   it("rejects an anonymous caller with UNAUTHORIZED", async () => {
     const anon = appRouter.createCaller({ user: null });
     await expect(anon.listings.saved()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+  });
+});
+
+describe("listingsRouter.dismissed / dismiss / restore", () => {
+  function injectDismissedRepo(): DismissedListingRepository {
+    const fake = new DismissedListingRepository();
+    _setDismissedListingRepositoryForTesting(fake);
+    return fake;
+  }
+
+  it("hydrates the user's dismissed listing ids into rows (dismissed order) with scores", async () => {
+    const dismissed = injectDismissedRepo();
+    const a = makeRow({ id: "00000000-0000-7000-8000-00000000e001" });
+    const b = makeRow({ id: "00000000-0000-7000-8000-00000000e002" });
+    // Dismissed newest-first = [b, a]; getByIds returns them in arbitrary order.
+    const idsSpy = vi
+      .spyOn(dismissed, "listDismissedListingIds")
+      .mockResolvedValue([b.id, a.id]);
+    const fakeListings = new ListingRepository();
+    vi.spyOn(fakeListings, "getByIds").mockResolvedValue([a, b]);
+    _setListingRepositoryForTesting(fakeListings);
+    injectScoreRepo(new Map([[b.id, 0.4]]));
+
+    const result = await partnerCaller.listings.dismissed();
+
+    expect(idsSpy).toHaveBeenCalledWith(PARTNER_ID);
+    expect(result.map((r) => r.id)).toEqual([b.id, a.id]); // dismissed order
+    expect(result[0]!.combinedScore).toBe(0.4);
+    expect(result[1]!.combinedScore).toBeNull();
+  });
+
+  it("dismiss/restore forward the listingId + owner key to the repo", async () => {
+    const dismissed = injectDismissedRepo();
+    const dismissSpy = vi.spyOn(dismissed, "dismiss").mockResolvedValue(true);
+    const restoreSpy = vi.spyOn(dismissed, "restore").mockResolvedValue(true);
+    const listingId = "00000000-0000-7000-8000-00000000e010";
+
+    expect(await partnerCaller.listings.dismiss({ listingId })).toEqual({
+      dismissed: true,
+    });
+    expect(await authedCaller.listings.restore({ listingId })).toEqual({
+      dismissed: false,
+    });
+
+    // Non-operator → their id; operator → null namespace.
+    expect(dismissSpy).toHaveBeenCalledWith(PARTNER_ID, listingId);
+    expect(restoreSpy).toHaveBeenCalledWith(null, listingId);
+  });
+
+  it("rejects an anonymous caller with UNAUTHORIZED", async () => {
+    const anon = appRouter.createCaller({ user: null });
+    await expect(anon.listings.dismissed()).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
   });

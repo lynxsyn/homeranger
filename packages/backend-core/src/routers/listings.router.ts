@@ -45,6 +45,7 @@ import {
 import { photoAnalysisRepository } from "../repositories/photo-analysis.repository.js";
 import { listingScoreRepository } from "../repositories/listing-score.repository.js";
 import { savedListingRepository } from "../repositories/saved-listing.repository.js";
+import { dismissedListingRepository } from "../repositories/dismissed-listing.repository.js";
 import type { CursorPage } from "../lib/pagination/cursor.js";
 
 /** A single listing row as `getById` returns it. */
@@ -196,6 +197,53 @@ export const listingsRouter = router({
         input.listingId,
       );
       return { saved: false };
+    }),
+
+  /**
+   * The signed-in user's dismissed ("hidden") listings, most-recently-dismissed
+   * first, hydrated to full `ListingListItem`s — the same shape as `saved`, for
+   * the SPA's "Dismissed" bucket + restore controls. Scoped by
+   * `ownerKeyFor(ctx.user)`: the DismissedListing overlay is per-user, the
+   * Listing catalogue itself is shared. A home is HIDDEN, never deleted —
+   * dismissing tunes the buyer's own feed/scoring and is silent to the agent.
+   */
+  dismissed: protectedProcedure.query(
+    async ({ ctx }): Promise<ListingListItem[]> => {
+      const ownerId = ownerKeyFor(ctx.user);
+      const ids = await dismissedListingRepository.listDismissedListingIds(
+        ownerId,
+      );
+      const rows = await listingRepository.getByIds(ids);
+      // getByIds does not preserve order; re-order to dismissed order (newest
+      // first) and drop ids whose listing was since deleted.
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      const ordered = ids
+        .map((id) => byId.get(id))
+        .filter((row): row is ListingRecord => row !== undefined);
+      return attachScores(ordered);
+    },
+  ),
+
+  /** Dismiss (hide) a listing for the signed-in user. Idempotent + reversible. */
+  dismiss: protectedProcedure
+    .input(listingIdInput)
+    .mutation(async ({ ctx, input }): Promise<{ dismissed: true }> => {
+      await dismissedListingRepository.dismiss(
+        ownerKeyFor(ctx.user),
+        input.listingId,
+      );
+      return { dismissed: true };
+    }),
+
+  /** Restore (un-dismiss) a listing for the signed-in user. Idempotent. */
+  restore: protectedProcedure
+    .input(listingIdInput)
+    .mutation(async ({ ctx, input }): Promise<{ dismissed: false }> => {
+      await dismissedListingRepository.restore(
+        ownerKeyFor(ctx.user),
+        input.listingId,
+      );
+      return { dismissed: false };
     }),
 
   getById: protectedProcedure

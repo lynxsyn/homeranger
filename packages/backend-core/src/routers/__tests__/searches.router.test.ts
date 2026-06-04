@@ -28,6 +28,8 @@ import {
   _setReviewProfileRepositoryForTesting,
   _setDiscoverAgentsEnqueuerForTesting,
   _setSearchOutreachSendEnqueuerForTesting,
+  _setSearchRemovalCascadeForTesting,
+  _setSearchRemovalPreviewerForTesting,
 } from "../searches.router.js";
 import {
   AgentRepository,
@@ -127,6 +129,8 @@ afterEach(() => {
   _setReviewProfileRepositoryForTesting(null);
   _setDiscoverAgentsEnqueuerForTesting(null);
   _setSearchOutreachSendEnqueuerForTesting(null);
+  _setSearchRemovalCascadeForTesting(null);
+  _setSearchRemovalPreviewerForTesting(null);
   vi.restoreAllMocks();
 });
 
@@ -278,27 +282,112 @@ describe("searchesRouter.update", () => {
   });
 });
 
-describe("searchesRouter.delete", () => {
-  it("deletes by id and echoes { id }", async () => {
-    const fake = injectRepo();
-    const id = "00000000-0000-7000-8000-000000000001";
-    const spy = vi.spyOn(fake, "delete").mockResolvedValue({ id });
+describe("searchesRouter.delete (cascade)", () => {
+  const ID = "00000000-0000-7000-8000-000000000001";
 
-    const result = await authedCaller.searches.delete({ id });
-    expect(result).toEqual({ id });
-    expect(spy).toHaveBeenCalledWith(id, null);
+  it("operator: runs the cascade with isOperator=true + the operator NULL owner, echoing its counts", async () => {
+    injectRepo();
+    const cascade = vi.fn().mockResolvedValue({
+      id: ID,
+      dismissedCount: 3,
+      removedAgentCount: 2,
+    });
+    _setSearchRemovalCascadeForTesting(cascade);
+
+    const result = await authedCaller.searches.delete({ id: ID });
+
+    expect(result).toEqual({ id: ID, dismissedCount: 3, removedAgentCount: 2 });
+    expect(cascade).toHaveBeenCalledWith({
+      searchId: ID,
+      ownerId: null,
+      isOperator: true,
+    });
   });
 
-  it("maps Prisma P2025 (already gone) to NOT_FOUND", async () => {
-    const fake = injectRepo();
-    vi.spyOn(fake, "delete").mockRejectedValue(
-      new Prisma.PrismaClientKnownRequestError("Record not found", {
-        code: "P2025",
-        clientVersion: "test",
-      }),
+  it("non-operator: runs the cascade with isOperator=false + their own owner id (never touches the global agent pool)", async () => {
+    injectRepo();
+    const cascade = vi.fn().mockResolvedValue({
+      id: ID,
+      dismissedCount: 1,
+      removedAgentCount: 0,
+    });
+    _setSearchRemovalCascadeForTesting(cascade);
+
+    const result = await partnerCaller.searches.delete({ id: ID });
+
+    expect(result.removedAgentCount).toBe(0);
+    expect(cascade).toHaveBeenCalledWith({
+      searchId: ID,
+      ownerId: PARTNER_ID,
+      isOperator: false,
+    });
+  });
+
+  it("maps Prisma P2025 (missing/foreign) to NOT_FOUND", async () => {
+    injectRepo();
+    _setSearchRemovalCascadeForTesting(
+      vi.fn().mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError("Record not found", {
+          code: "P2025",
+          clientVersion: "test",
+        }),
+      ),
     );
     await expect(
       authedCaller.searches.delete({ id: "00000000-0000-7000-8000-0000000000ff" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("searchesRouter.removalPreview", () => {
+  const ID = "00000000-0000-7000-8000-000000000001";
+
+  it("operator: returns the cascade preview counts for the confirm dialog", async () => {
+    injectRepo();
+    const preview = vi
+      .fn()
+      .mockResolvedValue({ listingsToHide: 5, agentsToRemove: 3 });
+    _setSearchRemovalPreviewerForTesting(preview);
+
+    const result = await authedCaller.searches.removalPreview({ id: ID });
+
+    expect(result).toEqual({ listingsToHide: 5, agentsToRemove: 3 });
+    expect(preview).toHaveBeenCalledWith({
+      searchId: ID,
+      ownerId: null,
+      isOperator: true,
+    });
+  });
+
+  it("non-operator: passes isOperator=false (preview returns 0 agents)", async () => {
+    injectRepo();
+    const preview = vi
+      .fn()
+      .mockResolvedValue({ listingsToHide: 2, agentsToRemove: 0 });
+    _setSearchRemovalPreviewerForTesting(preview);
+
+    await partnerCaller.searches.removalPreview({ id: ID });
+    expect(preview).toHaveBeenCalledWith({
+      searchId: ID,
+      ownerId: PARTNER_ID,
+      isOperator: false,
+    });
+  });
+
+  it("maps Prisma P2025 to NOT_FOUND", async () => {
+    injectRepo();
+    _setSearchRemovalPreviewerForTesting(
+      vi.fn().mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError("Record not found", {
+          code: "P2025",
+          clientVersion: "test",
+        }),
+      ),
+    );
+    await expect(
+      authedCaller.searches.removalPreview({
+        id: "00000000-0000-7000-8000-0000000000ff",
+      }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });

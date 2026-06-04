@@ -483,6 +483,24 @@ export class ListingRepository {
   }
 
   /**
+   * The ids of every listing in the given outcodes — the set the search-removal
+   * cascade hides for the owner (one DismissedListing row per id). Same NULL
+   * semantics as `countByOutcodes` (a NULL-outcode listing is never matched). An
+   * empty outcode set returns [] (no query); a search with no outcodes hides
+   * nothing.
+   */
+  async listIdsByOutcodes(outcodes: string[]): Promise<string[]> {
+    if (outcodes.length === 0) {
+      return [];
+    }
+    const rows = await prisma.listing.findMany({
+      where: { outcode: { in: outcodes } },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
+  /**
    * Count the homes each agent has sent, keyed by `agentEmail`. Backs the Agents
    * screen's "homes" column (PR1 agentsRouter). One `groupBy` (no N+1) over the
    * given emails; only emails that actually have listings appear in the Map, so
