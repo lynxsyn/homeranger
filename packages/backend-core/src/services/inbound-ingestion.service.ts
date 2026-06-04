@@ -26,6 +26,7 @@
 import type { EmailAuthVerdict, ListingSource } from "@prisma/client";
 import { normalisePostcode, normaliseOutcode } from "@homeranger/shared";
 import { runTransaction } from "../lib/prisma.js";
+import { extractReplyText, firstHttpUrl } from "../lib/inbound/reply-text.js";
 import {
   listingRepository,
   type ListingRepository,
@@ -202,13 +203,22 @@ export class DefaultInboundIngestionService implements InboundIngestionService {
       );
     }
 
+    // Strip the quoted original outreach so the extractor sees only what the
+    // agent actually wrote (incl. any listing link) — not the buyer-enquiry
+    // quote. A cold (non-reply) listing email has no quote → unchanged.
+    const replyText = extractReplyText(payload.bodyText);
     const extracted = await this.extractionProvider.extract({
-      bodyText: payload.bodyText,
+      bodyText: replyText,
       bodyHtml: payload.bodyHtml,
       subject: payload.subject,
       fromAddress: payload.senderEmail,
       attachments: payload.attachments,
     });
+
+    // Resolve the clickable source link ONCE — the LLM's listingUrl, else the
+    // first http(s) link in the agent's reply — so the Listing and its
+    // provenance source-record always agree on the URL.
+    const resolvedListingUrl = extracted.listingUrl ?? firstHttpUrl(replyText);
 
     const dedup = await this.dedupService.find({
       addressRaw: extracted.addressRaw,
@@ -245,7 +255,7 @@ export class DefaultInboundIngestionService implements InboundIngestionService {
       // Email-only listings are pre-market by definition (not on a portal).
       listingStatus: "pre_market",
       isPreMarket: true,
-      listingUrl: extracted.listingUrl,
+      listingUrl: resolvedListingUrl,
       primarySource: "agent_email" satisfies ListingSource,
       // Sending-agent capture (Searches PR2): the per-agency follow-up groups by
       // these. The sender email is the keying identity; the display name (when
@@ -282,7 +292,7 @@ export class DefaultInboundIngestionService implements InboundIngestionService {
           listingId: upserted.id,
           sourceType: "agent_email" satisfies ListingSource,
           externalId: payload.messageId,
-          sourceUrl: extracted.listingUrl ?? null,
+          sourceUrl: resolvedListingUrl,
           rawPayload: {
             senderEmail: normaliseEmail(payload.senderEmail),
             subject: payload.subject,
