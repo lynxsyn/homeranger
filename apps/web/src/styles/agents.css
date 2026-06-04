@@ -104,6 +104,31 @@
   gap: 7px;
 }
 
+/* ---- Agents: table geometry ---------------------------------------------
+   Fixed column widths so switching the status filter (All / Replied / Awaiting
+   / Opted out) never reflows the table — every column holds its geometry no
+   matter which rows are shown, so nothing jumps. table-layout:fixed makes the
+   widths content-independent; the Agency column carries no width and absorbs
+   the remaining space. The widths live on the header cells (the first row),
+   which is where fixed layout reads them; the responsive `display:none` rules
+   below cleanly drop a column on narrow screens (no <colgroup> to leave a
+   phantom width behind). */
+.agents-table {
+  table-layout: fixed;
+}
+.agents-table .col-cov {
+  width: 270px;
+}
+.agents-table .col-status {
+  width: 150px;
+}
+.agents-table .col-homes {
+  width: 92px;
+}
+.agents-table .col-seen {
+  width: 132px;
+}
+
 /* ---- Agents: table cells ------------------------------------------------- */
 .cell-agent {
   display: flex;
@@ -146,20 +171,184 @@
   font-size: 13px;
   letter-spacing: 0.01em;
 }
+/* ---- Agents: coverage cell ----------------------------------------------
+   Postcode letters are a sorting code, not a place. A wide patch rolls up to
+   its dominant county/region + a count ("Gwynedd · 5 outcodes") on one fixed-
+   height line, with the town breakdown one click away in a portaled popover; a
+   single-outcode agent reads as its town + the code. Ported from the
+   claude.ai/design handoff (project/app/styles.css). */
 .cov-cell {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
+  gap: 9px;
   min-width: 0;
 }
-.cov-scout {
-  color: var(--ink-3);
-  font-size: var(--fs-caption);
+.cov-cell--roll {
+  position: relative;
+}
+
+/* Single-outcode: town name + the code, no rollup. */
+.cov-static {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.cov-static > svg {
+  color: var(--accent-ink);
+  flex-shrink: 0;
+}
+.cov-static__town {
+  font-family: var(--font-display);
+  font-weight: var(--fw-semibold);
+  color: var(--ink-1);
+  letter-spacing: var(--tracking-tight);
+  font-size: var(--fs-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 20ch;
+}
+
+/* Coverage rollup chip — one fixed-height summary of a wide patch. */
+.cov-roll {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 8px 0 9px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  color: var(--ink-2);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.cov-roll:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.cov-roll.is-open {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.cov-roll:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.cov-roll > svg:first-child {
+  color: var(--accent-ink);
+  flex-shrink: 0;
+}
+.cov-roll > svg:last-child {
+  color: var(--ink-3);
+  flex-shrink: 0;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.cov-roll.is-open > svg:last-child {
+  transform: rotate(180deg);
+}
+.cov-roll__area {
+  font-family: var(--font-display);
+  font-weight: var(--fw-semibold);
+  color: var(--ink-1);
+  letter-spacing: var(--tracking-tight);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.cov-roll__sep {
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+.cov-roll__count {
+  color: var(--ink-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+
+/* Coverage detail popover — portaled to <body>, positioned fixed (the table
+   wrapper clips overflow, so an in-cell popover would be cut off). */
+.cov-pop {
+  position: fixed;
+  z-index: 200;
+  width: max-content;
+  max-width: 300px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cov-pop__head {
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.cov-pop__head b {
+  color: var(--ink-1);
+  font-weight: var(--fw-semibold);
+}
+.cov-pop__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.cov-grp {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-start;
+}
+.cov-grp__area {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: var(--fw-semibold);
+  color: var(--ink-3);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+.cov-grp__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.cov-grp__chips .sf-oc {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cov-grp__chips .sf-oc.is-primary {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: var(--fw-semibold);
+}
+.cov-hq {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  flex-shrink: 0;
+}
+.cov-pop__foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
 }
 .homes-cell {
   display: inline-flex;

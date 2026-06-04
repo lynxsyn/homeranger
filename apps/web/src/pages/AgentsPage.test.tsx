@@ -152,6 +152,30 @@ describe("AgentsPage rows + metrics", () => {
     expect(awaiting).toHaveTextContent("—");
   });
 
+  it("rolls a multi-outcode agent's coverage up to region + count", () => {
+    withAgents([
+      makeAgent({
+        id: "agent-wide",
+        agencyName: "Wide Reach Estates",
+        outcodes: ["SE16", "SE1", "SE15"],
+        status: "replied",
+      }),
+    ]);
+    render(<AgentsPage filter={null} onClearFilter={vi.fn()} />);
+    const roll = screen.getByTestId("agent-coverage-roll");
+    expect(roll).toHaveTextContent("South East London");
+    expect(roll).toHaveTextContent("3 outcodes");
+  });
+
+  it("shows a single-outcode agent's coverage as a town + code, no rollup", () => {
+    withAgents([makeAgent({ id: "agent-one", outcodes: ["SE16"] })]);
+    render(<AgentsPage filter={null} onClearFilter={vi.fn()} />);
+    const cov = screen.getByTestId("agent-coverage");
+    expect(cov).toHaveTextContent("Bermondsey");
+    expect(cov).toHaveTextContent("SE16");
+    expect(screen.queryByTestId("agent-coverage-roll")).not.toBeInTheDocument();
+  });
+
   it("renders the four metric tiles from the stats query", () => {
     render(<AgentsPage filter={null} onClearFilter={vi.fn()} />);
     expect(screen.getByTestId("agents-metric-contacted")).toHaveTextContent("4");
