@@ -29,6 +29,7 @@ import { operatorProcedure, router } from "../trpc.js";
 import { agentRepository, type AgentRecord } from "../repositories/agent.repository.js";
 import { outreachRepository } from "../repositories/outreach.repository.js";
 import { listingRepository } from "../repositories/listing.repository.js";
+import { summariseCoverage, type CoverageSummary } from "../lib/geo/coverage.js";
 
 /** The design's relationship status for an agent row. */
 export type AgentThreadStatus = "replied" | "awaiting" | "queued" | "opted_out";
@@ -40,6 +41,12 @@ export interface AgentRow {
   email: string;
   /** = `Agent.coveredOutcodes`. */
   outcodes: string[];
+  /**
+   * `outcodes` rolled up to a place-led summary (dominant principal area + a
+   * count, town groups for the popover, HQ = first outcode) via the bundled UK
+   * outcode index. Computed server-side so the index never ships to the client.
+   */
+  coverage: CoverageSummary;
   status: AgentThreadStatus;
   /** Listings whose `agentEmail` === this agent's email. */
   homesCount: number;
@@ -132,6 +139,7 @@ async function buildAgentRows(outcodes?: string[]): Promise<AgentRow[]> {
     agencyName: agent.agencyName,
     email: agent.email,
     outcodes: agent.coveredOutcodes,
+    coverage: summariseCoverage(agent.coveredOutcodes),
     status: deriveAgentStatus(agent.optedOut, statusByAgentId.get(agent.id)),
     homesCount: homesByEmail.get(agent.email) ?? 0,
     lastContactedAt: agent.lastContactedAt,

@@ -181,6 +181,15 @@ function keyFor(label: string, kind: LocationMatchKind): string {
   ALL_OUTCODES.sort();
 })();
 
+/**
+ * The bundled admin record for a single outcode (case-insensitive), or null if
+ * the index doesn't know it. Lets callers resolve an outcode to its town /
+ * district / county / country without re-parsing the 874KB index.
+ */
+export function outcodeRecord(outcode: string): UkOutcodeRecord | null {
+  return BY_OUTCODE.get(outcode.trim().toUpperCase()) ?? null;
+}
+
 /** The single highest-priority NamedArea for a normalised key (no cross-union). */
 function bestArea(key: string): NamedArea | undefined {
   const list = NAMED_AREAS.get(key);
