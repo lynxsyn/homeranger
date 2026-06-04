@@ -189,11 +189,35 @@ describe("isUnsubscribeIntent", () => {
     expect(isUnsubscribeIntent("I want to opt out")).toBe(true);
     expect(isUnsubscribeIntent("opt-out please")).toBe(true);
     expect(isUnsubscribeIntent("remove me from your list")).toBe(true);
+    expect(isUnsubscribeIntent("please stop emailing me")).toBe(true);
+    expect(isUnsubscribeIntent("stop sending these emails")).toBe(true);
+    expect(isUnsubscribeIntent("could you stop contacting us")).toBe(true);
+    expect(isUnsubscribeIntent("no more emails please")).toBe(true);
+    expect(isUnsubscribeIntent("take me off your list")).toBe(true);
   });
 
   it("does NOT match benign text or null", () => {
     expect(isUnsubscribeIntent("Do stop by anytime!")).toBe(false);
+    expect(isUnsubscribeIntent("We run non-stop viewings this week")).toBe(false);
     expect(isUnsubscribeIntent("We have a listing for you")).toBe(false);
     expect(isUnsubscribeIntent(null)).toBe(false);
+  });
+
+  it("ignores the quoted outreach footer (the live-smoke false-positive)", () => {
+    const quotedFooter = [
+      "On Wed, Jun 4, 2026 at 9:25 AM Bryan <bryan@homeranger.app> wrote:",
+      "> Hello, I'm a private buyer searching in your area.",
+      "> To stop receiving these emails, unsubscribe here: https://x/u?t=1",
+    ].join("\n");
+    // A normal reply that QUOTES the footer must NOT opt out.
+    expect(
+      isUnsubscribeIntent(`hi nothing now thank you\n\n${quotedFooter}`),
+    ).toBe(false);
+    // A positive listing reply, quoting the same footer, must NOT opt out.
+    expect(
+      isUnsubscribeIntent(`Yes! 12 Gay Street, Bath, £625k\n\n${quotedFooter}`),
+    ).toBe(false);
+    // A genuine STOP the agent typed ABOVE the quote is still honoured.
+    expect(isUnsubscribeIntent(`STOP\n\n${quotedFooter}`)).toBe(true);
   });
 });

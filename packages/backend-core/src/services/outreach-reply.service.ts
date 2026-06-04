@@ -22,6 +22,7 @@ import {
   type SuppressionEntryRepository,
 } from "../repositories/suppression-entry.repository.js";
 import { isAuthenticatedSender } from "../lib/inbound/email-authentication.js";
+import { extractReplyText } from "../lib/inbound/reply-text.js";
 import type {
   InboundEmailPayload,
   IngestInboundEmailResult,
@@ -31,20 +32,29 @@ import type {
  * Conservative inbound opt-out detector (M6 AC#5 backup to the one-click link).
  * Matches a clear unsubscribe intent — a bare "stop", or "unsubscribe" /
  * "opt out" / "remove me" anywhere — while avoiding false positives like
- * "stop by anytime".
+ * "stop by anytime". Scans ONLY the agent's own reply text (extractReplyText
+ * strips the quoted original, whose "...unsubscribe here..." footer would
+ * otherwise opt out every agent who replies).
  */
 export function isUnsubscribeIntent(bodyText: string | null): boolean {
-  if (!bodyText) {
+  const text = extractReplyText(bodyText).toLowerCase();
+  if (!text) {
     return false;
   }
-  const text = bodyText.trim().toLowerCase();
   if (text === "stop") {
     return true;
   }
   return (
     /\bunsubscribe\b/.test(text) ||
     /\bopt[- ]?out\b/.test(text) ||
-    /\bremove me\b/.test(text)
+    /\bremove me\b/.test(text) ||
+    /\btake me off\b/.test(text) ||
+    // Multi-word "stop" intents, gated on an explicit comms object so benign
+    // phrases ("stop by anytime", "non-stop viewings") never match.
+    /\bstop\s+(sending|e-?mailing|emailing|messaging|texting|contacting|the\s+emails?|these\s+emails?|all\s+emails?)\b/.test(
+      text,
+    ) ||
+    /\bno\s+more\s+(emails?|messages?|contact)\b/.test(text)
   );
 }
 
