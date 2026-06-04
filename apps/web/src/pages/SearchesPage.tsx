@@ -400,7 +400,6 @@ function ChipSelect({ label, options, selected, onToggle, hint }: ChipSelectProp
               aria-pressed={on}
               onClick={() => onToggle(opt)}
             >
-              {on && <Icon name="check" size={14} />}
               {opt}
             </button>
           );

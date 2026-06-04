@@ -438,6 +438,20 @@ describe("SearchesPage editor", () => {
     expect(farmhouse).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("a selected chip renders NO icon — width stays stable so the row never jumps", () => {
+    // The design deliberately dropped the check icon (and the font-weight bump)
+    // on selected chips: an icon appearing only when on changes the chip's width
+    // and shoves its neighbours. A selected chip must contain only its label.
+    withSearches();
+    renderPage({ pendingNew: true });
+    const editor = screen.getByTestId("search-editor");
+    const farmhouse = within(editor).getByRole("button", { name: /farmhouse/i });
+    fireEvent.click(farmhouse);
+    expect(farmhouse).toHaveAttribute("aria-pressed", "true");
+    expect(farmhouse.querySelector("svg")).toBeNull();
+    expect(farmhouse).toHaveTextContent(/^Farmhouse$/);
+  });
+
   it("interpolates the live email preview from the form", () => {
     withSearches();
     renderPage({ pendingNew: true });
