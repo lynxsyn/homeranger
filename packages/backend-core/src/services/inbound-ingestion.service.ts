@@ -28,6 +28,11 @@ import { normalisePostcode, normaliseOutcode } from "@homeranger/shared";
 import { runTransaction } from "../lib/prisma.js";
 import { extractReplyText, firstHttpUrl } from "../lib/inbound/reply-text.js";
 import {
+  consumeToken as defaultConsumeToken,
+  type ConsumeTokenInput,
+  type ConsumeTokenResult,
+} from "../lib/rate-limit/redis-token-bucket.js";
+import {
   listingRepository,
   type ListingRepository,
   type UpsertListingByAddressInput,
@@ -151,6 +156,17 @@ interface InboundIngestionServiceDependencies {
   analyzeListingEnqueuer?: AnalyzeListingEnqueuer;
   listingRepository?: ListingRepository;
   listingSourceRecordRepository?: ListingSourceRecordRepository;
+  /** Budget guardrails — default to the real Redis token bucket + env config. */
+  consumeToken?: (input: ConsumeTokenInput) => Promise<ConsumeTokenResult>;
+  maxInputChars?: number;
+  dailyExtractionCap?: number;
+  now?: () => Date;
+}
+
+/** Positive integer env var with a fallback (mirrors compliance-guard's intEnv). */
+function intEnv(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 /** A typed, transport-free error. `retryable` drives the worker's retry call. */
@@ -173,6 +189,12 @@ export class DefaultInboundIngestionService implements InboundIngestionService {
   private readonly analyzeListingEnqueuer: AnalyzeListingEnqueuer | null;
   private readonly listingRepository: ListingRepository;
   private readonly listingSourceRecordRepository: ListingSourceRecordRepository;
+  private readonly consumeToken: (
+    input: ConsumeTokenInput,
+  ) => Promise<ConsumeTokenResult>;
+  private readonly maxInputChars: number;
+  private readonly dailyExtractionCap: number;
+  private readonly now: () => Date;
 
   constructor(deps: InboundIngestionServiceDependencies = {}) {
     // extractionProvider + analyzeListingEnqueuer have NO universal default
@@ -185,6 +207,20 @@ export class DefaultInboundIngestionService implements InboundIngestionService {
     this.listingRepository = deps.listingRepository ?? listingRepository;
     this.listingSourceRecordRepository =
       deps.listingSourceRecordRepository ?? listingSourceRecordRepository;
+    this.consumeToken = deps.consumeToken ?? defaultConsumeToken;
+    this.maxInputChars =
+      deps.maxInputChars ?? intEnv("EXTRACTION_MAX_INPUT_CHARS", 20_000);
+    this.dailyExtractionCap =
+      deps.dailyExtractionCap ?? intEnv("EXTRACTION_DAILY_CAP", 1_000);
+    this.now = deps.now ?? (() => new Date());
+  }
+
+  /** UTC date (YYYY-MM-DD) — the daily extraction-budget bucket key. */
+  private windowKey(): string {
+    const d = this.now();
+    const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
+    return `${d.getUTCFullYear()}-${month}-${day}`;
   }
 
   async ingestInboundEmail(
@@ -205,8 +241,46 @@ export class DefaultInboundIngestionService implements InboundIngestionService {
 
     // Strip the quoted original outreach so the extractor sees only what the
     // agent actually wrote (incl. any listing link) — not the buyer-enquiry
-    // quote. A cold (non-reply) listing email has no quote → unchanged.
-    const replyText = extractReplyText(payload.bodyText);
+    // quote. A cold (non-reply) listing email has no quote → unchanged. Capped
+    // to bound a single runaway email's INPUT tokens (max_output is already set).
+    const replyText = extractReplyText(payload.bodyText).slice(
+      0,
+      this.maxInputChars,
+    );
+
+    // Budget guardrail: a fixed-window DAILY cap on paid extraction calls so a
+    // flood of inbound email can never blow the Anthropic budget. Fail-closed: a
+    // genuine cap hit DROPS (non-retryable — the cap will not clear on a same-day
+    // retry); a bucket OUTAGE retries (the paid call never happened).
+    //
+    // DELIBERATE TRADEOFF — do NOT "fix" without reading this: the token is
+    // consumed BEFORE the extract call and is NOT keyed per messageId, so a
+    // transient Claude 5xx that retries (BullMQ attempts:3) re-consumes, up to
+    // 3 tokens for one email. Worst case 3×N vs the 1000/day default — fine for
+    // a single-tenant tool. The sharp edge: an email hitting a transient error
+    // exactly as the cap fills can be dropped (listing lost) despite never
+    // extracting. We accept that over a per-message idempotency key (extra Redis
+    // round-trip + key sprawl) because the cap is generous and the drop is
+    // logged (inbound.dropped.non_retryable) for operator visibility.
+    const budget = await this.consumeToken({
+      key: `extraction:daily:${this.windowKey()}`,
+      cap: this.dailyExtractionCap,
+      windowSeconds: 86_400,
+      reserve: true,
+    });
+    if (!budget.available) {
+      throw new InboundIngestionError(
+        "extraction budget bucket unavailable",
+        true,
+      );
+    }
+    if (!budget.allowed) {
+      throw new InboundIngestionError(
+        "extraction daily cap exceeded — dropping to protect the API budget",
+        false,
+      );
+    }
+
     const extracted = await this.extractionProvider.extract({
       bodyText: replyText,
       bodyHtml: payload.bodyHtml,

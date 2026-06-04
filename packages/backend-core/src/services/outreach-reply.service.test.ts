@@ -87,6 +87,36 @@ describe("OutreachReplyService.linkReply", () => {
     );
   });
 
+  it("records the reply with NO listing linked when extraction was skipped (null result)", async () => {
+    // The budget guardrail skips the paid extraction for opt-out / empty / kill-
+    // switch replies, then calls linkReply with a null result. The reply is still
+    // recorded + the thread advanced; only parsedListingIds is empty.
+    const h = makeHarness(true);
+    await h.service.linkReply(PAYLOAD, null);
+    expect(h.createInboundMessageOrIgnore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: "thread-1",
+        providerMessageId: "resend-inbound-1",
+        parsedListingIds: [],
+      }),
+    );
+    expect(h.applyThreadEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "thread-1", event: "inbound_reply" }),
+    );
+  });
+
+  it("a skipped-extraction (null result) opt-out STILL closes the thread", async () => {
+    const h = makeHarness(true);
+    await h.service.linkReply(
+      { ...PAYLOAD, bodyText: "Please unsubscribe me, thanks" },
+      null,
+    );
+    expect(h.closeThreadsByAgent).toHaveBeenCalledWith("agent-1");
+    expect(h.createInboundMessageOrIgnore).toHaveBeenCalledWith(
+      expect.objectContaining({ parsedListingIds: [] }),
+    );
+  });
+
   it("is a no-op when the sender is not a tracked agent", async () => {
     const h = makeHarness(false);
     await h.service.linkReply(PAYLOAD, RESULT);

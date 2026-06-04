@@ -67,10 +67,14 @@ export interface OutreachReplyService {
    * (no thread/agent dependency), so a transient failure retries cleanly.
    */
   handleOptOut(payload: InboundEmailPayload): Promise<void>;
-  /** Best-effort thread linking (persist inbound message + advance status). */
+  /**
+   * Best-effort thread linking (persist inbound message + advance status).
+   * `result` is null when the paid extraction was skipped (opt-out / empty
+   * reply / kill-switch) — the reply is still recorded, with no listing linked.
+   */
   linkReply(
     payload: InboundEmailPayload,
-    result: IngestInboundEmailResult,
+    result: IngestInboundEmailResult | null,
   ): Promise<void>;
 }
 
@@ -127,7 +131,7 @@ export class DefaultOutreachReplyService implements OutreachReplyService {
 
   async linkReply(
     payload: InboundEmailPayload,
-    result: IngestInboundEmailResult,
+    result: IngestInboundEmailResult | null,
   ): Promise<void> {
     const agent = await this.agentRepository.findByEmail(payload.senderEmail);
     if (!agent) {
@@ -164,7 +168,7 @@ export class DefaultOutreachReplyService implements OutreachReplyService {
       bodyText: payload.bodyText,
       spfVerdict: payload.spfVerdict,
       dkimVerdict: payload.dkimVerdict,
-      parsedListingIds: [result.listingId],
+      parsedListingIds: result ? [result.listingId] : [],
       receivedAt: payload.receivedAt,
     });
     await this.outreachRepository.applyThreadEvent({
