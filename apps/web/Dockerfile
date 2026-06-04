@@ -33,8 +33,13 @@ RUN cd packages/backend-core && pnpm build
 # as env so Vite reads them as import.meta.env.VITE_* during the build.
 ARG VITE_SUPABASE_URL=""
 ARG VITE_SUPABASE_ANON_KEY=""
+# MapTiler basemap key — a publishable, domain-restricted client value passed by
+# release.yml from a repo SECRET. When empty the map falls back to the keyless
+# Carto basemap, so the build never fails for want of it.
+ARG VITE_MAPTILER_KEY=""
 ENV VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
 ENV VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+ENV VITE_MAPTILER_KEY=${VITE_MAPTILER_KEY}
 RUN cd apps/web && pnpm build && find dist/assets -type f -name '*.map' -delete
 
 FROM nginx:1.30-alpine AS runner
