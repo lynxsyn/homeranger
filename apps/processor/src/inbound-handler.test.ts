@@ -181,3 +181,129 @@ describe("makeInboundHandler — M6 opt-out + reply linking", () => {
     expect(linkReply).toHaveBeenCalledTimes(1);
   });
 });
+
+function hydratorWith(
+  bodyText: string,
+  attachments: unknown[] = [],
+): ResendHydrator {
+  return {
+    async hydrate() {
+      return {
+        messageId: "email-1",
+        receivedAt: new Date(),
+        recipientEmail: "inbox@homeranger.app",
+        senderEmail: "agent@example.com",
+        senderName: null,
+        subject: null,
+        bodyText,
+        bodyHtml: null,
+        spfVerdict: "pass" as const,
+        dkimVerdict: "pass" as const,
+        attachments,
+      };
+    },
+  } as unknown as ResendHydrator;
+}
+
+function freshReply(): {
+  handleOptOut: ReturnType<typeof vi.fn>;
+  linkReply: ReturnType<typeof vi.fn>;
+} {
+  return {
+    handleOptOut: vi.fn().mockResolvedValue(undefined),
+    linkReply: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+describe("makeInboundHandler — budget guardrail: gate the paid extraction", () => {
+  it("SKIPS extraction for an opt-out reply, but STILL records it (linkReply, null result)", async () => {
+    const ingest = vi.fn();
+    const reply = freshReply();
+    const handler = makeInboundHandler({
+      hydrator: hydratorWith(
+        "Please unsubscribe me\n\nOn Jun 4 Bryan wrote:\n> quoted",
+      ),
+      inboundIngestionService: {
+        ingestInboundEmail: ingest,
+      } as unknown as InboundIngestionService,
+      outreachReplyService: reply as unknown as OutreachReplyService,
+    });
+    await handler(job());
+    expect(ingest).not.toHaveBeenCalled();
+    // The reply is still linked to its thread (so an opt-out closes it + is
+    // recorded) — only the paid extraction was skipped, hence a null result.
+    expect(reply.linkReply).toHaveBeenCalledTimes(1);
+    expect(reply.linkReply.mock.calls[0]![1]).toBeNull();
+  });
+
+  it("SKIPS extraction for an empty reply (all quoted history), but STILL records it", async () => {
+    const ingest = vi.fn();
+    const reply = freshReply();
+    const handler = makeInboundHandler({
+      hydrator: hydratorWith(
+        "On Jun 4 Bryan wrote:\n> only the quote, no new text",
+      ),
+      inboundIngestionService: {
+        ingestInboundEmail: ingest,
+      } as unknown as InboundIngestionService,
+      outreachReplyService: reply as unknown as OutreachReplyService,
+    });
+    await handler(job());
+    expect(ingest).not.toHaveBeenCalled();
+    expect(reply.linkReply).toHaveBeenCalledTimes(1);
+    expect(reply.linkReply.mock.calls[0]![1]).toBeNull();
+  });
+
+  it("still INGESTS an empty reply that carries an attachment (a PDF may hold a listing)", async () => {
+    const ingest = vi.fn().mockResolvedValue(INGEST_RESULT);
+    const reply = freshReply();
+    const handler = makeInboundHandler({
+      hydrator: hydratorWith("On Jun 4 Bryan wrote:\n> quote", [{ kind: "pdf" }]),
+      inboundIngestionService: {
+        ingestInboundEmail: ingest,
+      } as unknown as InboundIngestionService,
+      outreachReplyService: reply as unknown as OutreachReplyService,
+    });
+    await handler(job());
+    expect(ingest).toHaveBeenCalledTimes(1);
+    expect(reply.linkReply.mock.calls[0]![1]).toEqual(INGEST_RESULT);
+  });
+
+  it("INGESTS a normal reply with real content", async () => {
+    const ingest = vi.fn().mockResolvedValue(INGEST_RESULT);
+    const reply = freshReply();
+    const handler = makeInboundHandler({
+      hydrator: hydratorWith("Yes, here is one: 12 Gay St, Bath, £625k"),
+      inboundIngestionService: {
+        ingestInboundEmail: ingest,
+      } as unknown as InboundIngestionService,
+      outreachReplyService: reply as unknown as OutreachReplyService,
+    });
+    await handler(job());
+    expect(ingest).toHaveBeenCalledTimes(1);
+    expect(reply.linkReply.mock.calls[0]![1]).toEqual(INGEST_RESULT);
+  });
+
+  it("SKIPS extraction when EXTRACTION_KILL_SWITCH is set (even a real listing), but STILL records the reply", async () => {
+    const prev = process.env.EXTRACTION_KILL_SWITCH;
+    process.env.EXTRACTION_KILL_SWITCH = "1";
+    try {
+      const ingest = vi.fn();
+      const reply = freshReply();
+      const handler = makeInboundHandler({
+        hydrator: hydratorWith("Yes, here is one: 12 Gay St, Bath, £625k"),
+        inboundIngestionService: {
+          ingestInboundEmail: ingest,
+        } as unknown as InboundIngestionService,
+        outreachReplyService: reply as unknown as OutreachReplyService,
+      });
+      await handler(job());
+      expect(ingest).not.toHaveBeenCalled();
+      expect(reply.linkReply).toHaveBeenCalledTimes(1);
+      expect(reply.linkReply.mock.calls[0]![1]).toBeNull();
+    } finally {
+      if (prev === undefined) delete process.env.EXTRACTION_KILL_SWITCH;
+      else process.env.EXTRACTION_KILL_SWITCH = prev;
+    }
+  });
+});

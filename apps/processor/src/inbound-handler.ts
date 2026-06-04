@@ -18,8 +18,15 @@
 import { UnrecoverableError } from "bullmq";
 import { inboundDroppedTotal } from "@homeranger/backend-core/lib/queue/queue-metrics";
 import type { ResendHydrator } from "@homeranger/backend-core/lib/inbound/resend-hydrator";
-import type { InboundIngestionService } from "@homeranger/backend-core/services/inbound-ingestion.service";
-import type { OutreachReplyService } from "@homeranger/backend-core/services/outreach-reply.service";
+import type {
+  InboundIngestionService,
+  IngestInboundEmailResult,
+} from "@homeranger/backend-core/services/inbound-ingestion.service";
+import {
+  isUnsubscribeIntent,
+  type OutreachReplyService,
+} from "@homeranger/backend-core/services/outreach-reply.service";
+import { extractReplyText } from "@homeranger/backend-core/lib/inbound/reply-text";
 import type { InboundEmailJobPayload } from "@homeranger/backend-core/lib/queue/queue-config";
 
 /** Duck-type the `retryable` flag so this works for BOTH InboundIngestionError
@@ -28,6 +35,15 @@ import type { InboundEmailJobPayload } from "@homeranger/backend-core/lib/queue/
 function isRetryable(error: unknown): boolean {
   const flag = (error as { retryable?: unknown } | null)?.retryable;
   return typeof flag === "boolean" ? flag : true;
+}
+
+/** Hard manual off-switch for ALL inbound extraction (EXTRACTION_KILL_SWITCH),
+ *  mirroring the analysis + outreach kill-switches — the operator's brake. */
+function extractionKillSwitchOn(): boolean {
+  return (
+    process.env.EXTRACTION_KILL_SWITCH === "1" ||
+    process.env.EXTRACTION_KILL_SWITCH === "true"
+  );
 }
 
 export interface InboundHandlerDeps {
@@ -51,11 +67,42 @@ export function makeInboundHandler(deps: InboundHandlerDeps) {
       if (deps.outreachReplyService) {
         await deps.outreachReplyService.handleOptOut(hydrated);
       }
-      const result =
-        await deps.inboundIngestionService.ingestInboundEmail(hydrated);
-      // M6 AC#4 — link the reply to its OutreachThread (best-effort: the
-      // listing is already persisted; a link blip must NOT trigger a retry that
-      // re-bills Claude). Skipped when the sender isn't a tracked agent.
+
+      // Budget guardrail: decide whether this inbound warrants the PAID Claude
+      // extraction. We gate ONLY the extraction — the reply is still recorded on
+      // its thread (linkReply, below) in every case. Skip when:
+      //   - the kill-switch is set (operator's hard brake on ALL extraction), or
+      //   - there is nothing to extract — a clear opt-out (STOP/unsubscribe) or
+      //     an empty reply (all quoted history) — UNLESS it carries an attachment
+      //     (a PDF brochure may hold a listing).
+      const hasAttachments = (hydrated.attachments?.length ?? 0) > 0;
+      const nothingToExtract =
+        !hasAttachments &&
+        (isUnsubscribeIntent(hydrated.bodyText) ||
+          extractReplyText(hydrated.bodyText) === "");
+      const killSwitch = extractionKillSwitchOn();
+      const skipExtraction = killSwitch || nothingToExtract;
+
+      let result: IngestInboundEmailResult | null = null;
+      if (skipExtraction) {
+        console.info(
+          JSON.stringify({
+            type: "info",
+            scope: "inbound.extraction_skipped",
+            reason: killSwitch ? "kill_switch" : "nothing_to_extract",
+            emailId: job.data.email_id,
+          }),
+        );
+      } else {
+        result =
+          await deps.inboundIngestionService.ingestInboundEmail(hydrated);
+      }
+
+      // M6 AC#4 — link the reply to its OutreachThread (best-effort: a link blip
+      // must NOT trigger a retry that re-bills Claude). Runs even when extraction
+      // was skipped so an opt-out/empty reply is still recorded + the thread
+      // closed/advanced; a null result means no listing was parsed. Skipped when
+      // the sender isn't a tracked agent.
       if (deps.outreachReplyService) {
         try {
           await deps.outreachReplyService.linkReply(hydrated, result);

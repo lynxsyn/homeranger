@@ -19,6 +19,7 @@ import type {
   ListingRecord,
   ListingRepository,
 } from "../repositories/listing.repository.js";
+import type { ConsumeTokenResult } from "../lib/rate-limit/redis-token-bucket.js";
 
 // runTransaction wraps the body in a Prisma $transaction; for a unit test we run
 // the body directly with a sentinel tx so the service composes update/upsert +
@@ -31,6 +32,14 @@ vi.mock("../lib/prisma.js", () => ({
 
 const PREEXISTING_ID = "00000000-0000-7000-8000-0000000000ff";
 const NEW_CANDIDATE_KEY = "DIFFERENT WORDING SAME PLACE";
+
+// The real consumeToken needs Redis; inject a fake so unit tests never touch it.
+const passingBudget = async (): Promise<ConsumeTokenResult> => ({
+  allowed: true,
+  available: true,
+  remaining: 999,
+  retryAfterSeconds: 0,
+});
 
 function makeListing(overrides: Partial<ListingRecord> = {}): ListingRecord {
   const now = new Date("2026-01-01T00:00:00.000Z");
@@ -130,6 +139,7 @@ describe("DefaultInboundIngestionService — dedup merge", () => {
 
     const service = new DefaultInboundIngestionService({
       extractionProvider: new FixedExtractor(),
+      consumeToken: passingBudget,
       analyzeListingEnqueuer: new NoopEnqueuer(),
       dedupService: fakeDedup({
         listingId: PREEXISTING_ID,
@@ -172,6 +182,7 @@ describe("DefaultInboundIngestionService — dedup merge", () => {
 
     const service = new DefaultInboundIngestionService({
       extractionProvider: new FixedExtractor(),
+      consumeToken: passingBudget,
       analyzeListingEnqueuer: new NoopEnqueuer(),
       dedupService: fakeDedup({
         listingId: PREEXISTING_ID,
@@ -208,6 +219,7 @@ describe("DefaultInboundIngestionService — dedup merge", () => {
 
     const service = new DefaultInboundIngestionService({
       extractionProvider: new FixedExtractor(),
+      consumeToken: passingBudget,
       analyzeListingEnqueuer: new NoopEnqueuer(),
       dedupService: fakeDedup({
         listingId: null,
@@ -232,5 +244,40 @@ describe("DefaultInboundIngestionService — dedup merge", () => {
     );
     expect(result.created).toBe(true);
     expect(result.listingId).toBe("fresh-id");
+  });
+});
+
+describe("DefaultInboundIngestionService — extraction budget guardrails", () => {
+  const budgetService = (consumeToken: () => Promise<ConsumeTokenResult>) =>
+    new DefaultInboundIngestionService({
+      extractionProvider: new FixedExtractor(),
+      analyzeListingEnqueuer: new NoopEnqueuer(),
+      consumeToken,
+    });
+
+  it("DROPS (non-retryable) when the daily extraction cap is exceeded", async () => {
+    const service = budgetService(async () => ({
+      allowed: false,
+      available: true,
+      remaining: 0,
+      retryAfterSeconds: 3600,
+    }));
+    await expect(service.ingestInboundEmail(payload())).rejects.toMatchObject({
+      name: "InboundIngestionError",
+      retryable: false,
+    });
+  });
+
+  it("RETRIES (retryable) when the budget bucket is unavailable (Redis down)", async () => {
+    const service = budgetService(async () => ({
+      allowed: false,
+      available: false,
+      remaining: 0,
+      retryAfterSeconds: 0,
+    }));
+    await expect(service.ingestInboundEmail(payload())).rejects.toMatchObject({
+      name: "InboundIngestionError",
+      retryable: true,
+    });
   });
 });

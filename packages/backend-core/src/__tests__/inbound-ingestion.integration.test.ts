@@ -25,8 +25,19 @@ import type {
   ListingExtractionProvider,
 } from "../services/inbound-ingestion.service.js";
 import type { DedupResult, DedupService } from "../services/dedup.service.js";
+import type { ConsumeTokenResult } from "../lib/rate-limit/redis-token-bucket.js";
 
 const db = getTestPrisma();
+
+// Inject a passing budget so the integration test exercises the real
+// extract → dedup → persist DB path WITHOUT a Redis dependency (this job has
+// no Redis service; the daily-cap token bucket is unit-tested separately).
+const passingBudget = async (): Promise<ConsumeTokenResult> => ({
+  allowed: true,
+  available: true,
+  remaining: 999,
+  retryAfterSeconds: 0,
+});
 const TEST_PREFIX = "m4-inbound";
 const ADDRESS = `test-${TEST_PREFIX}-12 acacia avenue sw1a 1aa`;
 const EMAIL_ID = `test-${TEST_PREFIX}-email-1`;
@@ -83,6 +94,7 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
     const service = new DefaultInboundIngestionService({
       extractionProvider: new FixedExtractor(),
       analyzeListingEnqueuer: enqueuer,
+      consumeToken: passingBudget,
     });
 
     beforeAll(async () => {
@@ -182,6 +194,7 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
         extractionProvider: new FixedExtractor(),
         analyzeListingEnqueuer: new SpyEnqueuer(),
         dedupService: fakeDedup,
+        consumeToken: passingBudget,
       });
 
       const result = await mergeService.ingestInboundEmail({
