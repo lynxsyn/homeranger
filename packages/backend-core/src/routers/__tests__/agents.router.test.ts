@@ -172,7 +172,10 @@ describe("agentsRouter.list homesCount join", () => {
     injectRepos({ agents: [agent] });
 
     const [row] = await operatorCaller.agents.list({});
-    expect(row).toEqual({
+    // Stable fields are matched exactly; `coverage` is data-derived (bundled UK
+    // index) so it is asserted by shape, not pinned to every town string.
+    const { coverage, ...rest } = row!;
+    expect(rest).toEqual({
       id: agent.id,
       agencyName: "Conwy Estates",
       email: "info@conwy.co.uk",
@@ -180,6 +183,14 @@ describe("agentsRouter.list homesCount join", () => {
       status: "queued",
       homesCount: 0,
       lastContactedAt: contactedAt,
+    });
+    // LL30/LL31 both resolve to the Conwy principal area via the bundled index;
+    // HQ = the first outcode.
+    expect(coverage).toMatchObject({
+      count: 2,
+      region: "Conwy",
+      regions: ["Conwy"],
+      primary: "LL30",
     });
   });
 });

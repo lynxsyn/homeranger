@@ -330,7 +330,7 @@ export function AgentsPage({ filter, onClearFilter }: AgentsPageProps) {
                           </div>
                         </td>
                         <td className="col-cov">
-                          <CoverageCell outcodes={a.outcodes} />
+                          <CoverageCell coverage={a.coverage} />
                         </td>
                         <td className="col-status">
                           <ThreadStatus status={a.status} />
