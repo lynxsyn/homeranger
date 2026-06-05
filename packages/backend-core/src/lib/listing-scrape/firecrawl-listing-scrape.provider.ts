@@ -61,13 +61,9 @@ import {
   extractImageUrl,
   extractListingLinks,
   parseAuctionHubListings,
+  parseUklfDetail,
   siteRegionIndexUrls,
 } from "./listing-search.js";
-
-/** A full UK postcode anywhere in the page text. */
-const POSTCODE_RE = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
-/** A £-prefixed price (with optional thousands separators). */
-const PRICE_RE = /£\s*([\d,]+)/;
 
 interface FirecrawlScrapeResult {
   url?: string;
@@ -337,18 +333,13 @@ export class FirecrawlListingScrapeProvider implements ListingScrapeProvider {
     const text = data?.markdown ?? "";
     const sourceUrl = data?.metadata?.sourceURL ?? data?.url ?? url;
 
-    const addressRaw = firstLine(text);
-    // A usable property address is short; a multi-hundred-char first line is page
-    // noise (a banner, an inline asset, an error) — drop it rather than storing
-    // an oversized blob as the address + in rawPayload.
-    if (!addressRaw || addressRaw.length > 300) {
+    // Parse the PROPERTY address + postcode from the page heading / <title> — NOT
+    // the first line (the nav) or the first postcode (the selling agent's office).
+    // See parseUklfDetail for the bug this fixes. Returns null on an unusable page.
+    const parsed = parseUklfDetail(text, data?.metadata?.title);
+    if (!parsed) {
       return null;
     }
-    const postcodeMatch = text.match(POSTCODE_RE);
-    const priceMatch = text.match(PRICE_RE);
-    const pricePence = priceMatch
-      ? Number.parseInt(priceMatch[1]!.replace(/,/g, ""), 10) * 100
-      : undefined;
     // Hotlink the first property image off the detail page (display-only; never
     // downloaded — see the listing-sourcing-basis). Off-allowlist / base64
     // artifacts are rejected by isHotlinkableImageUrl → undefined (placeholder).
@@ -357,11 +348,9 @@ export class FirecrawlListingScrapeProvider implements ListingScrapeProvider {
     return {
       externalId: `${site}-${externalIdOf(sourceUrl)}`,
       sourceUrl,
-      addressRaw,
-      ...(postcodeMatch ? { postcode: postcodeMatch[0] } : {}),
-      ...(pricePence !== undefined && Number.isFinite(pricePence)
-        ? { pricePence }
-        : {}),
+      addressRaw: parsed.addressRaw,
+      ...(parsed.postcode ? { postcode: parsed.postcode } : {}),
+      ...(parsed.pricePence !== undefined ? { pricePence: parsed.pricePence } : {}),
       ...(imageUrl ? { imageUrl } : {}),
     };
   }
@@ -403,17 +392,6 @@ function parseEnabledSites(raw: string | undefined): ReadonlySet<ListingScrapeSi
     }
   }
   return enabled;
-}
-
-/** The first non-empty markdown line, with leading markdown noise stripped. */
-function firstLine(text: string): string | null {
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.replace(/^[#>*\-\s]+/, "").trim();
-    if (line.length > 0) {
-      return line;
-    }
-  }
-  return null;
 }
 
 /** Derive a stable external-id token from a source URL (path + query). */
