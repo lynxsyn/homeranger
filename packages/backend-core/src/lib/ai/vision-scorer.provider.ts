@@ -117,9 +117,11 @@ export const PHOTO_SCORE_SCHEMA = {
   required: ["tasteScore", "features"],
   properties: {
     tasteScore: {
+      // NB: NO minimum/maximum — the Anthropic structured-output API rejects
+      // numeric bounds ("For 'number' type, properties maximum, minimum are not
+      // supported"). The 0–100 range lives in the description (to guide the
+      // model) and parsePhotoScore clamps + rounds to [0,100] in code.
       type: "integer",
-      minimum: 0,
-      maximum: 100,
       description:
         "0–100: how tasteful/desirable this UK home photo looks (light, condition, style). 50 = average.",
     },
