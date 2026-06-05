@@ -89,16 +89,21 @@ a { color: inherit; text-decoration: none; }
 /* ---- Listings table ------------------------------------------------------ */
 .tablewrap { background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
-/* Fixed layout: column geometry is content-INDEPENDENT, so a long address can
- * never widen the table past its container (it truncates instead). Widths below
- * size the fixed columns; the address column (no width) absorbs the remainder. */
-table.listings { width: 100%; border-collapse: collapse; table-layout: fixed; }
-table.listings .col-int { width: 52px; }
-table.listings .col-price { width: 96px; }
-table.listings .col-bedbath { width: 96px; }
-table.listings .col-match { width: 60px; }
-table.listings .col-agent { width: 140px; }
-table.listings .col-seen { width: 84px; }
+table.listings { width: 100%; border-collapse: collapse; }
+/* Fixed layout (LISTINGS table only — NOT the agents/sources tables, which carry
+ * the shared `.listings` class but set their own widths): column geometry is
+ * content-INDEPENDENT, so a long address can never widen the table past its
+ * container (it truncates instead). Widths below size the fixed columns; the
+ * address column (no width) absorbs the remainder. col-int fits the two row
+ * action buttons (.rowacts: 34 + gap + 32 ≈ 68px of content). */
+table.listings-grid { table-layout: fixed; }
+.listings-grid .col-int { width: 76px; }
+.listings-grid .col-price { width: 96px; }
+.listings-grid .col-bedbath { width: 96px; }
+.listings-grid .col-match { width: 60px; }
+.listings-grid .col-agent { width: 140px; }
+.listings-grid .col-seen { width: 84px; }
+.listings-grid .col-src { width: 36px; }
 table.listings thead th {
   text-align: left; font-size: var(--fs-label); letter-spacing: var(--tracking-wide);
   text-transform: uppercase; color: var(--ink-3); font-weight: var(--fw-semibold);
@@ -152,7 +157,7 @@ tr.row.clickable:hover { background: var(--surface-2); }
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
 .src-icon:hover { background: var(--accent-soft); }
 .src-icon--mail { color: var(--premarket); cursor: default; }
-.col-src { width: 36px; text-align: center; }
+.col-src { width: 1%; text-align: center; }
 td.col-src { padding-left: 6px; padding-right: 12px; }
 
 /* Hide lower-priority columns on narrow screens — graceful, calm */

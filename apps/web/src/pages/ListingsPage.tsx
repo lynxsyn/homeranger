@@ -292,7 +292,7 @@ function ListingsTable({
 }: TableProps) {
   return (
     <div className="tablewrap">
-      <table className="listings" data-testid="listings-table">
+      <table className="listings listings-grid" data-testid="listings-table">
         <caption className="sr-only">
           Property listings, sortable by match score, price, bedrooms, address,
           and recency.
