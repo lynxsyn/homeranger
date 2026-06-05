@@ -93,17 +93,26 @@ table.listings { width: 100%; border-collapse: collapse; }
 /* Fixed layout (LISTINGS table only — NOT the agents/sources tables, which carry
  * the shared `.listings` class but set their own widths): column geometry is
  * content-INDEPENDENT, so a long address can never widen the table past its
- * container (it truncates instead). Widths below size the fixed columns; the
- * address column (no width) absorbs the remainder. col-int fits the two row
- * action buttons (.rowacts: 34 + gap + 32 ≈ 68px of content). */
+ * container (it truncates instead). The address column (no width) absorbs the
+ * remainder. Each fixed width MUST hold its column's widest non-truncatable
+ * content AND its header label — otherwise the cell spills and, because
+ * `.tablewrap` clips with overflow:hidden, the spill shows as a clipped right
+ * edge or a header colliding with the next column ("MATCHFROM"). The values
+ * below are sized to content with headroom and are guarded at every viewport by
+ * e2e/listings-visual.spec.ts:
+ *   - col-int   88: the two row-action buttons (.rowacts ≈ 68 + 18 padding ≈ 86)
+ *   - col-price 112: "Price" header + a 7-figure value (£1,250,000)
+ *   - col-match  92: the "MATCH" header (the 36px ring is narrower than its label)
+ *   - col-src    56: the 34px source icon + its 6/12 padding (= 52)
+ * col-bedbath/col-agent/col-seen are header- and truncation-bound. */
 table.listings-grid { table-layout: fixed; }
-.listings-grid .col-int { width: 76px; }
-.listings-grid .col-price { width: 96px; }
-.listings-grid .col-bedbath { width: 96px; }
-.listings-grid .col-match { width: 60px; }
-.listings-grid .col-agent { width: 140px; }
+.listings-grid .col-int { width: 88px; }
+.listings-grid .col-price { width: 112px; }
+.listings-grid .col-bedbath { width: 88px; }
+.listings-grid .col-match { width: 92px; }
+.listings-grid .col-agent { width: 128px; }
 .listings-grid .col-seen { width: 84px; }
-.listings-grid .col-src { width: 36px; }
+.listings-grid .col-src { width: 56px; }
 table.listings thead th {
   text-align: left; font-size: var(--fs-label); letter-spacing: var(--tracking-wide);
   text-transform: uppercase; color: var(--ink-3); font-weight: var(--fw-semibold);
