@@ -145,7 +145,7 @@ export const AGENT_CLASSIFY_SCHEMA = {
     isResidentialSalesAgency: {
       type: "boolean",
       description:
-        "True ONLY for a genuine residential estate/letting/new-homes sales agency a buyer could cold-approach. False for councils, housing associations, property portals/aggregators, and directory/PDF pages.",
+        "True for a genuine residential property agency a buyer could cold-approach — an estate agent, a letting/managing agent (INCLUDING a letting-ONLY firm that does no sales), or a new-homes agency. False ONLY for councils, housing associations, property portals/aggregators, and directory/PDF pages.",
     },
     kind: {
       type: "string",
@@ -190,17 +190,52 @@ const SYSTEM_INSTRUCTION = [
 const AUTO_DELETE_THRESHOLD = 0.85;
 
 /**
- * The auto-delete gate: fires ONLY on a CONFIDENT non-agency verdict. Uncertain
- * (`confidence < threshold`) verdicts are KEPT — never silently delete a real
- * agency on a shaky call. Pure, unit-tested.
+ * Genuine-agency kinds that are NEVER auto-deleted, regardless of the
+ * `isResidentialSalesAgency` boolean. The boolean is misleading for a
+ * letting-ONLY agency: a pure letting agent does no SALES, so the model returns
+ * `isResidentialSalesAgency: false` even though it is a real, cold-approachable
+ * estate-agency business (the aslets.co.uk false positive). The operator asked
+ * to auto-delete NON-agencies — a letting agent IS an agency. New-homes and
+ * commercial agents are agencies too; keeping them is the safe, non-destructive
+ * default (they simply won't match a residential-sales search).
+ */
+const AGENCY_KINDS: ReadonlySet<AgentKind> = new Set<AgentKind>([
+  "estate_agent",
+  "letting_agent",
+  "new_homes",
+  "commercial",
+]);
+
+/**
+ * Whether `kind` names a genuine, cold-approachable agency (estate, letting,
+ * new-homes, commercial) — as opposed to non-agency junk (council, housing
+ * association, portal, directory, or an unclassifiable "other"). Used both by the
+ * auto-delete gate (never delete an agency kind) and by the backfill report (so a
+ * letting-only agency reads as "kept: agency", not a misleading "uncertain").
+ */
+export function isGenuineAgencyKind(kind: AgentKind): boolean {
+  return AGENCY_KINDS.has(kind);
+}
+
+/**
+ * The auto-delete gate: fires ONLY on a CONFIDENT NON-agency verdict, and NEVER
+ * on a genuine agency kind. Three conditions, all required:
+ *   1. the model judged it not a residential SALES agency, AND
+ *   2. it is confident (`confidence >= threshold`) — uncertain verdicts are KEPT,
+ *      never silently delete a real agency on a shaky call, AND
+ *   3. its `kind` is NOT a genuine agency (estate/letting/new-homes/commercial) —
+ *      so a letting-only agency (sales-boolean false but a real agency) is KEPT.
+ * Confident non-agency kinds (council/housing_association/portal/directory and an
+ * unclassifiable "other") still drop. Pure, unit-tested.
  */
 export function shouldAutoDelete(
-  verdict: { isResidentialSalesAgency: boolean; confidence: number },
+  verdict: { isResidentialSalesAgency: boolean; kind: AgentKind; confidence: number },
   threshold = AUTO_DELETE_THRESHOLD,
 ): boolean {
   return (
     verdict.isResidentialSalesAgency === false &&
-    verdict.confidence >= threshold
+    verdict.confidence >= threshold &&
+    !isGenuineAgencyKind(verdict.kind)
   );
 }
 

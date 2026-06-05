@@ -6,6 +6,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import {
   DefaultClaudeAgentClassifier,
+  isGenuineAgencyKind,
   parseAgentClassify,
   shouldAutoDelete,
   type AgentClassifierConfig,
@@ -255,36 +256,101 @@ describe("parseAgentClassify", () => {
 });
 
 describe("shouldAutoDelete", () => {
-  it("fires on a confident non-agency verdict", () => {
+  it("fires on a confident non-agency KIND (council/portal/directory/HA)", () => {
     expect(
-      shouldAutoDelete({ isResidentialSalesAgency: false, confidence: 0.85 }),
+      shouldAutoDelete({
+        isResidentialSalesAgency: false,
+        kind: "portal",
+        confidence: 0.85,
+      }),
     ).toBe(true);
     expect(
-      shouldAutoDelete({ isResidentialSalesAgency: false, confidence: 0.99 }),
+      shouldAutoDelete({
+        isResidentialSalesAgency: false,
+        kind: "council",
+        confidence: 0.99,
+      }),
     ).toBe(true);
+  });
+
+  it("fires on a confident unclassifiable 'other' non-agency (junk still dropped)", () => {
+    expect(
+      shouldAutoDelete({
+        isResidentialSalesAgency: false,
+        kind: "other",
+        confidence: 0.95,
+      }),
+    ).toBe(true);
+  });
+
+  it("does NOT fire on a LETTING-only agency (sales-boolean false, but a real agency)", () => {
+    // The aslets.co.uk fix: a pure letting agent reports
+    // isResidentialSalesAgency=false (no sales) yet must be KEPT — it is an agency.
+    expect(
+      shouldAutoDelete({
+        isResidentialSalesAgency: false,
+        kind: "letting_agent",
+        confidence: 0.99,
+      }),
+    ).toBe(false);
+  });
+
+  it("does NOT fire on estate/new-homes/commercial agency kinds even if sales-boolean is false", () => {
+    for (const kind of ["estate_agent", "new_homes", "commercial"] as const) {
+      expect(
+        shouldAutoDelete({
+          isResidentialSalesAgency: false,
+          kind,
+          confidence: 0.99,
+        }),
+      ).toBe(false);
+    }
   });
 
   it("does NOT fire on an uncertain non-agency verdict", () => {
     expect(
-      shouldAutoDelete({ isResidentialSalesAgency: false, confidence: 0.84 }),
+      shouldAutoDelete({
+        isResidentialSalesAgency: false,
+        kind: "portal",
+        confidence: 0.84,
+      }),
     ).toBe(false);
     expect(
-      shouldAutoDelete({ isResidentialSalesAgency: false, confidence: 0 }),
+      shouldAutoDelete({
+        isResidentialSalesAgency: false,
+        kind: "directory",
+        confidence: 0,
+      }),
     ).toBe(false);
   });
 
   it("does NOT fire on a confident agency verdict", () => {
     expect(
-      shouldAutoDelete({ isResidentialSalesAgency: true, confidence: 1 }),
+      shouldAutoDelete({
+        isResidentialSalesAgency: true,
+        kind: "estate_agent",
+        confidence: 1,
+      }),
     ).toBe(false);
   });
 
   it("honours a custom threshold", () => {
     expect(
       shouldAutoDelete(
-        { isResidentialSalesAgency: false, confidence: 0.7 },
+        { isResidentialSalesAgency: false, kind: "directory", confidence: 0.7 },
         0.6,
       ),
     ).toBe(true);
+  });
+});
+
+describe("isGenuineAgencyKind", () => {
+  it("is true for agency kinds, false for non-agency kinds", () => {
+    for (const k of ["estate_agent", "letting_agent", "new_homes", "commercial"] as const) {
+      expect(isGenuineAgencyKind(k)).toBe(true);
+    }
+    for (const k of ["council", "housing_association", "portal", "directory", "other"] as const) {
+      expect(isGenuineAgencyKind(k)).toBe(false);
+    }
   });
 });
