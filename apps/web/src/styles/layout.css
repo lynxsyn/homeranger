@@ -14,7 +14,9 @@ body {
 a { color: inherit; text-decoration: none; }
 
 /* ---- App shell ----------------------------------------------------------- */
-.app { max-width: 1080px; margin: 0 auto; padding: 0 28px 96px; }
+.app { max-width: 1200px; margin: 0 auto; padding: 0 28px 96px; }
+/* Use the extra room on large / wide monitors instead of a narrow centred strip. */
+@media (min-width: 1700px) { .app { max-width: 1400px; } }
 .topbar {
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; justify-content: space-between;
@@ -87,7 +89,16 @@ a { color: inherit; text-decoration: none; }
 /* ---- Listings table ------------------------------------------------------ */
 .tablewrap { background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
-table.listings { width: 100%; border-collapse: collapse; }
+/* Fixed layout: column geometry is content-INDEPENDENT, so a long address can
+ * never widen the table past its container (it truncates instead). Widths below
+ * size the fixed columns; the address column (no width) absorbs the remainder. */
+table.listings { width: 100%; border-collapse: collapse; table-layout: fixed; }
+table.listings .col-int { width: 52px; }
+table.listings .col-price { width: 96px; }
+table.listings .col-bedbath { width: 96px; }
+table.listings .col-match { width: 60px; }
+table.listings .col-agent { width: 140px; }
+table.listings .col-seen { width: 84px; }
 table.listings thead th {
   text-align: left; font-size: var(--fs-label); letter-spacing: var(--tracking-wide);
   text-transform: uppercase; color: var(--ink-3); font-weight: var(--fw-semibold);
@@ -117,7 +128,8 @@ tr.row.clickable:hover { background: var(--surface-2); }
 .cell-addr b { font-weight: var(--fw-semibold); display: block; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
 .cell-addr small { display: block; color: var(--ink-3); font-size: var(--fs-caption);
-  margin-top: 2px; font-family: var(--font-mono); }
+  margin-top: 2px; font-family: var(--font-mono); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
 .price-cell { font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums;
   font-size: var(--fs-body); }
 .bedbath { display: inline-flex; align-items: center; gap: 12px; color: var(--ink-2);
@@ -125,7 +137,8 @@ tr.row.clickable:hover { background: var(--surface-2); }
 .bedbath span { display: inline-flex; align-items: center; gap: 5px; }
 .bedbath svg { color: var(--ink-3); }
 .bedbath.na { color: var(--ink-3); }
-.agent-cell { color: var(--ink-2); white-space: nowrap; }
+.agent-cell { color: var(--ink-2); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
 .seen-cell { color: var(--ink-3); font-size: var(--fs-caption); white-space: nowrap;
   font-variant-numeric: tabular-nums; }
 .src-link { color: var(--accent); font-weight: var(--fw-semibold); display: inline-flex;
@@ -139,7 +152,7 @@ tr.row.clickable:hover { background: var(--surface-2); }
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
 .src-icon:hover { background: var(--accent-soft); }
 .src-icon--mail { color: var(--premarket); cursor: default; }
-.col-src { width: 1%; text-align: center; }
+.col-src { width: 36px; text-align: center; }
 td.col-src { padding-left: 6px; padding-right: 12px; }
 
 /* Hide lower-priority columns on narrow screens — graceful, calm */

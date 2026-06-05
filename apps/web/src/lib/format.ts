@@ -37,6 +37,33 @@ export function humanizePropertyType(type: PropertyType | null): string | null {
   return type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, "-");
 }
 
+/**
+ * Re-case an address for display. The stored value is the dedup-normalised
+ * address (`normaliseAddress` upper-cases it; seeds are lower-cased), so it
+ * arrives in a single case and reads as a shouting title. Title-case each word
+ * but keep UK postcode tokens upper (outward `LL30`/`SW1A`/`M3`, inward `2YB`),
+ * and collapse runs of whitespace. The canonical value (sort key, data
+ * attribute, dedup key) is untouched — this is display-only.
+ */
+export function prettyAddress(address: string): string {
+  const isPostcodeToken = (w: string): boolean =>
+    /^[a-z]{1,2}\d[a-z\d]*$/i.test(w) || /^\d[a-z]{2}$/i.test(w);
+  return address
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) =>
+      isPostcodeToken(word)
+        ? word.toUpperCase()
+        : word
+            .toLowerCase()
+            .split("-")
+            .map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : p))
+            .join("-"),
+    )
+    .join(" ");
+}
+
 /** Whole hours since `value` — the numeric sort key behind "Seen". */
 export function ageHoursSince(value: Date | string, now: Date = new Date()): number {
   const then = value instanceof Date ? value : new Date(value);

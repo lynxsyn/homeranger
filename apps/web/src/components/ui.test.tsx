@@ -1,6 +1,44 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
-import { Photo } from "./ui";
+import { Photo, ScoreRing, scoreTone } from "./ui";
+
+describe("scoreTone", () => {
+  it("bands the match score strong / fair / weak (and pending for null)", () => {
+    expect(scoreTone(100)).toBe("strong");
+    expect(scoreTone(70)).toBe("strong");
+    expect(scoreTone(69)).toBe("fair");
+    expect(scoreTone(50)).toBe("fair");
+    expect(scoreTone(49)).toBe("weak");
+    expect(scoreTone(0)).toBe("weak");
+    expect(scoreTone(null)).toBe("pending");
+  });
+});
+
+describe("ScoreRing colour", () => {
+  const fill = (el: Element | null) =>
+    (el as HTMLElement).style.getPropertyValue("--score-fill").trim();
+
+  it("fills green for a strong score, amber for fair, red for weak", () => {
+    const strong = render(<ScoreRing value={82} />);
+    expect(fill(strong.container.querySelector(".hs-score__ring"))).toBe(
+      "var(--success)",
+    );
+    const fair = render(<ScoreRing value={58} />);
+    expect(fill(fair.container.querySelector(".hs-score__ring"))).toBe(
+      "var(--warning)",
+    );
+    const weak = render(<ScoreRing value={31} />);
+    expect(fill(weak.container.querySelector(".hs-score__ring"))).toBe(
+      "var(--danger)",
+    );
+  });
+
+  it("renders a pending dash with no score-fill when value is null", () => {
+    const { container } = render(<ScoreRing value={null} />);
+    expect(container.querySelector(".hs-score__num")).toHaveTextContent("–");
+    expect(fill(container.querySelector(".hs-score__ring"))).toBe("");
+  });
+});
 
 describe("Photo", () => {
   it("renders the placeholder glyph (no img) when src is absent", () => {
