@@ -77,8 +77,15 @@ export const EPC_RATINGS = EpcRatingEnum.options;
 
 // ── Listing source ─────────────────────────────────────────────────────
 // Mirrors Prisma `enum ListingSource` (Listing.primarySource +
-// ListingSourceRecord.sourceType). No compliant-API channel — email/manual.
-export const ListingSourceEnum = z.enum(["agent_email", "manual"]);
+// ListingSourceRecord.sourceType). agent_email = live inbound channel;
+// manual = operator-entered; uklandandfarms/auctionhouse = read-only link-out
+// scraped sources (decision 2026-06-05-listing-site-ingestion).
+export const ListingSourceEnum = z.enum([
+  "agent_email",
+  "manual",
+  "uklandandfarms",
+  "auctionhouse",
+]);
 export type ListingSource = z.infer<typeof ListingSourceEnum>;
 export const LISTING_SOURCES = ListingSourceEnum.options;
 

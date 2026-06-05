@@ -32,6 +32,9 @@ export const QUEUE_NAMES = {
   warmup: "warmup:recalc",
   // M7: discover estate agents in a region (web search/extract → upsert Agents).
   discoverAgents: "discover:agents",
+  // Listing-site ingestion: scrape public listing sites (uklandandfarms /
+  // auctionhouse) → dedup → upsert Listings → enqueue analyze:listing.
+  scrapeListings: "scrape:listings",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -47,6 +50,7 @@ export const JOB_TYPES = [
   QUEUE_NAMES.followupScan,
   QUEUE_NAMES.warmup,
   QUEUE_NAMES.discoverAgents,
+  QUEUE_NAMES.scrapeListings,
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
@@ -168,6 +172,22 @@ export interface DiscoverAgentsJobPayload {
   outcodes?: string[];
 }
 
+/**
+ * `scrape:listings` payload — scrape a public listing site for properties.
+ *
+ * Two modes (the handler branches on `site`):
+ *   - `site` set: scrape THAT site over an EXPLICIT outcode set (manual trigger).
+ *   - fieldless (no `site`): the scheduler-driven scan — the processor resolves
+ *     the target outcodes from active operator searches + loops every ENABLED
+ *     site (the scheduler has no DB, so the fan-out happens here).
+ * `regionLabel` is optional search-query context + a log/fixture label.
+ */
+export interface ScrapeListingsJobPayload {
+  site?: string;
+  outcodes?: string[];
+  regionLabel?: string;
+}
+
 export interface JobPayloadByType {
   "outreach:inbound": InboundEmailJobPayload;
   "resend:event": ResendEventJobPayload;
@@ -178,6 +198,7 @@ export interface JobPayloadByType {
   "outreach:followup-scan": OutreachFollowupScanJobPayload;
   "warmup:recalc": WarmupRecalcJobPayload;
   "discover:agents": DiscoverAgentsJobPayload;
+  "scrape:listings": ScrapeListingsJobPayload;
 }
 
 export interface RetryPolicy {
@@ -238,6 +259,12 @@ export const RETRY_POLICIES: Record<QueueName, RetryPolicy> = {
   // Discovery hits a web search/scrape vendor — transient 429/5xx are common;
   // a few exponential retries cover them.
   [QUEUE_NAMES.discoverAgents]: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 10_000 },
+  },
+  // Listing-site scrape hits a scrape vendor + the live sites — transient
+  // 429/5xx are common; a few exponential retries cover them (mirrors discovery).
+  [QUEUE_NAMES.scrapeListings]: {
     attempts: 3,
     backoff: { type: "exponential", delay: 10_000 },
   },

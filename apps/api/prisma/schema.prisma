@@ -75,10 +75,14 @@ enum ListingStatus {
 }
 
 // Listing.primarySource + ListingSourceRecord.sourceType.
-// No compliant-API channel — agent_email | manual only (no licenceClass).
+// agent_email = the live inbound channel; manual = operator-entered. The two
+// scraped public-site sources (decision 2026-06-05-listing-site-ingestion) are
+// read-only, link-out, personal-use; never an outreach target.
 enum ListingSource {
   agent_email
   manual
+  uklandandfarms
+  auctionhouse
 }
 
 // Email SPF/DKIM verdicts — reuses the Doxus EmailAuthVerdict enum shape.

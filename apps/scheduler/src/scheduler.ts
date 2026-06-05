@@ -38,6 +38,10 @@ const FOLLOWUP_SCAN_SCHEDULER_ID = "outreach:followup-scan:cadence";
 const FOLLOWUP_SCAN_EVERY_MS = Number(
   process.env.FOLLOWUP_SCAN_EVERY_MS ?? 60 * 60 * 1000, // hourly
 );
+const SCRAPE_LISTINGS_SCHEDULER_ID = "scrape:listings:cadence";
+const SCRAPE_LISTINGS_EVERY_MS = Number(
+  process.env.SCRAPE_LISTINGS_EVERY_MS ?? 24 * 60 * 60 * 1000, // daily
+);
 const instanceId = `${os.hostname()}:${process.pid}`;
 
 const healthPort = Number(process.env.METRICS_PORT ?? 9091);
@@ -75,6 +79,15 @@ async function tick(): Promise<void> {
         FOLLOWUP_SCAN_SCHEDULER_ID,
         { every: FOLLOWUP_SCAN_EVERY_MS },
         { reason: "scheduled" },
+      );
+      // Fieldless payload — the processor resolves the target outcodes from
+      // active operator searches + loops every ENABLED site (the scheduler has
+      // NO DB). Dormant until the operator sets LISTING_SCRAPE_SITES + a key.
+      await queueClient.upsertScheduledJob(
+        QUEUE_NAMES.scrapeListings,
+        SCRAPE_LISTINGS_SCHEDULER_ID,
+        { every: SCRAPE_LISTINGS_EVERY_MS },
+        {},
       );
     }
   } catch (error) {

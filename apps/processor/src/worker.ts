@@ -83,6 +83,12 @@ import {
 } from "@homeranger/backend-core/lib/discovery/agent-discovery.provider";
 import { FirecrawlAgentDiscoveryProvider } from "@homeranger/backend-core/lib/discovery/firecrawl-agent-discovery.provider";
 import { getAgentDiscoveryService } from "@homeranger/backend-core/services/agent-discovery.service";
+import {
+  FakeListingScrapeProvider,
+  type ListingScrapeProvider,
+} from "@homeranger/backend-core/lib/listing-scrape/listing-scrape.provider";
+import { FirecrawlListingScrapeProvider } from "@homeranger/backend-core/lib/listing-scrape/firecrawl-listing-scrape.provider";
+import { getListingScrapeService } from "@homeranger/backend-core/services/listing-scrape.service";
 import { RealResendHydrator } from "./resend-hydrator.js";
 import { makeInboundHandler } from "./inbound-handler.js";
 import { makeAnalyzeHandler } from "./analyze-handler.js";
@@ -92,6 +98,7 @@ import { makeOutreachFollowupHandler } from "./outreach-followup-handler.js";
 import { makeFollowupScanHandler } from "./followup-scan-handler.js";
 import { makeWarmupRecalcHandler } from "./warmup-recalc-handler.js";
 import { makeDiscoverAgentsHandler } from "./discover-agents-handler.js";
+import { makeScrapeListingsHandler } from "./scrape-listings-handler.js";
 
 const metricsPort = Number(process.env.METRICS_PORT ?? 9090);
 const metricsHost = process.env.METRICS_HOST ?? "0.0.0.0";
@@ -201,6 +208,26 @@ const agentDiscoveryService = getAgentDiscoveryService({
   provider: agentDiscoveryProvider,
 });
 
+// ── Wire listing-site scrape (real Firecrawl vs LISTING_SCRAPE_FAKE seam) ────
+// LISTING_SCRAPE_FAKE=1 swaps the web-scrape vendor for the deterministic,
+// network-free fake (E2E/CI never scrape or spend). The real provider is dormant
+// without FIRECRAWL_API_KEY + LISTING_SCRAPE_SITES — only constructed when
+// LISTING_SCRAPE_FAKE !== "1". The same analyze enqueuer used by the inbound
+// pipeline hands scraped listings to the M5 analysis path.
+const listingScrapeProvider: ListingScrapeProvider =
+  process.env.LISTING_SCRAPE_FAKE === "1"
+    ? new FakeListingScrapeProvider()
+    : new FirecrawlListingScrapeProvider();
+const listingScrapeService = getListingScrapeService({
+  provider: listingScrapeProvider,
+  enqueueAnalyze: async (listingId: string) => {
+    await enqueueAnalyzeListing({
+      idempotencyKey: `analyze:listing:${listingId}`,
+      payload: { listingId },
+    });
+  },
+});
+
 // ── BullMQ consumer: one processor per queue ────────────────────────────────
 const queueClient = new BullMQQueueClient();
 
@@ -274,6 +301,15 @@ queueClient.registerProcessor(
 queueClient.registerProcessor(
   QUEUE_NAMES.discoverAgents,
   makeDiscoverAgentsHandler({ agentDiscoveryService }),
+  { lockDuration: 180_000 },
+);
+
+// Listing-site scrape: scrape public listing sites → dedup → upsert Listings →
+// enqueue analyze:listing. Multi-page scrape + crawl-delay can far exceed the
+// 30s default lock — extend it.
+queueClient.registerProcessor(
+  QUEUE_NAMES.scrapeListings,
+  makeScrapeListingsHandler({ listingScrapeService }),
   { lockDuration: 180_000 },
 );
 

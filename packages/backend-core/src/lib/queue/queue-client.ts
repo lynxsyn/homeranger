@@ -251,3 +251,9 @@ export async function enqueueDiscoverAgents(
 ): Promise<void> {
   await getQueueClient().enqueue(QUEUE_NAMES.discoverAgents, input);
 }
+
+export async function enqueueScrapeListings(
+  input: EnqueueInput<JobPayloadByType["scrape:listings"]>,
+): Promise<void> {
+  await getQueueClient().enqueue(QUEUE_NAMES.scrapeListings, input);
+}

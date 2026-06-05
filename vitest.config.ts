@@ -116,6 +116,17 @@ export default defineConfig({
         // fake + the classification/upsert service are unit-covered; the real
         // adapter is operator-proven (same rationale as the Resend/r2 adapters).
         "packages/backend-core/src/lib/discovery/firecrawl-agent-discovery.provider.ts",
+        // Listing-site Firecrawl scrape adapter — web-scrape network I/O,
+        // dormant without FIRECRAWL_API_KEY + LISTING_SCRAPE_SITES. The interface
+        // + the deterministic fake + the dedup/upsert service are unit-covered;
+        // the real adapter is operator-proven (same rationale as the discovery
+        // + Resend/r2 adapters above).
+        "packages/backend-core/src/lib/listing-scrape/firecrawl-listing-scrape.provider.ts",
+        // Listing-site scrape processor handler — BullMQ job IO + worker-error
+        // mapping, proven by the live worker consuming a real queue. Same
+        // processor-IO rationale as worker.ts above; the service it delegates to
+        // (listing-scrape.service.ts) carries the unit-covered branching.
+        "apps/processor/src/scrape-listings-handler.ts",
         // M8 search repo — Prisma I/O (CRUD), exercised by the search integration
         // test, not unit. Same rationale as the M2–M7 repository excludes above.
         // Its pure helpers (resolveSearchOutcodes / draftSearchEmail in
