@@ -143,11 +143,15 @@ async function main(): Promise<void> {
   ];
 
   for (const demo of demoAgents) {
+    // The agency website mirrors production discovery: derived from the email
+    // domain so the Agents table has a clickable verify-before-sending link.
+    const website = `https://${demo.email.split("@")[1]}`;
     const agent = await prisma.agent.upsert({
       where: { email: demo.email },
       create: {
         email: demo.email,
         agencyName: demo.agencyName,
+        website,
         mailboxType: "corporate_subscriber",
         coveredOutcodes: DEMO_OUTCODES,
         lastContactedAt: demo.lastContactedAt,
@@ -155,6 +159,7 @@ async function main(): Promise<void> {
       },
       update: {
         agencyName: demo.agencyName,
+        website,
         mailboxType: "corporate_subscriber",
         coveredOutcodes: DEMO_OUTCODES,
         lastContactedAt: demo.lastContactedAt,

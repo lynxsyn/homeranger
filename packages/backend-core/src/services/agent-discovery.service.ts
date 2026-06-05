@@ -4,8 +4,12 @@
  * upserts them as Agents ready for the existing ComplianceGuard-gated outreach.
  *
  * Discovery only SOURCES; it never sends. Classification sets mailboxType so the
- * guard's PECR gate (corporate_subscriber only) decides who is cold-emailable —
- * a discovered personal mailbox is stored (individual) but never sent to.
+ * guard's PECR gate (corporate_subscriber only) decides who is cold-emailable.
+ * A free-mail / personal mailbox (gmail/outlook/etc.) is DROPPED at discovery:
+ * it is not a corporate subscriber, so it could never be cold-emailed anyway and
+ * would only sit in the table as unsendable dead weight. Only corporate agents
+ * are persisted, each with a website (scraped, else derived from the domain) so
+ * the operator can verify the agency before outreach.
  *
  * Variant-B lazy singleton (the provider is a required injected network client).
  */
@@ -79,6 +83,25 @@ export function classifyMailboxType(email: string): MailboxType {
   return FREE_MAIL_DOMAINS.has(domain) ? "individual" : "corporate_subscriber";
 }
 
+/**
+ * The agency website to store for a discovered agent: the provider's scraped
+ * `websiteUrl` when it gave one, otherwise `https://<email-domain>` so the
+ * operator always has a link to click through and verify the agency before
+ * outreach. Returns null only for a malformed address (no real domain) — which
+ * never reaches the upsert path (corporate agents always have a domain). Pure.
+ */
+export function agentWebsite(email: string, websiteUrl?: string): string | null {
+  const scraped = websiteUrl?.trim();
+  if (scraped) {
+    // A scraped URL may arrive without a protocol ("agency.co.uk"); prepend
+    // https:// so it renders as an absolute external link, not a path relative
+    // to the SPA origin. An explicit http(s):// prefix is kept verbatim.
+    return /^https?:\/\//i.test(scraped) ? scraped : `https://${scraped}`;
+  }
+  const domain = emailDomain(email);
+  return domain ? `https://${domain}` : null;
+}
+
 /** Generic agency inboxes, best-first — preferred over a named person's mailbox. */
 const GENERIC_LOCALPARTS = [
   "info",
@@ -129,9 +152,9 @@ export function pickBestEmail(emails: string[], regionLabel: string): string {
 export interface AgentDiscoveryResult {
   /** Candidates returned by the provider. */
   discovered: number;
-  /** Candidates upserted as Agents (incl. individuals, which the guard blocks). */
+  /** Candidates upserted as Agents (corporate subscribers only). */
   upserted: number;
-  /** Candidates skipped (intra-batch dupe / malformed / already suppressed). */
+  /** Candidates skipped (intra-batch dupe / malformed / free-mail / suppressed). */
   skipped: number;
   /** Extra same-agency mailboxes dropped by per-domain collapse (kept one each). */
   collapsed: number;
@@ -236,16 +259,20 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
     let upserted = 0;
     let skipped = 0;
     let collapsed = 0;
-    // `skipped` folds intra-batch duplicates, malformed (unknown) addresses, and
-    // already-suppressed contacts. `collapsed` counts extra same-agency mailboxes
-    // dropped by per-domain collapse. So discovered === upserted + skipped +
-    // collapsed regardless of whether the provider deduped.
+    // `skipped` folds intra-batch duplicates, malformed (unknown) addresses,
+    // free-mail (individual) addresses, and already-suppressed contacts.
+    // `collapsed` counts extra same-agency mailboxes dropped by per-domain
+    // collapse. So discovered === upserted + skipped + collapsed regardless of
+    // whether the provider deduped.
     const seen = new Set<string>();
     // Corporate candidates are grouped by agency domain and collapsed to ONE best
-    // mailbox each (a 3-inbox agency = one cold contact). Individuals are NOT
-    // grouped — a free-mail domain (gmail.com) is not "one agency" but many
-    // unrelated people — so each is upserted as-is (the guard blocks them anyway).
-    const byDomain = new Map<string, { email: string; agencyName: string | null }[]>();
+    // mailbox each (a 3-inbox agency = one cold contact). Free-mail addresses are
+    // NOT persisted at all — they are dropped here (the PECR gate would block
+    // every send to them, so a stored record is unsendable dead weight).
+    const byDomain = new Map<
+      string,
+      { email: string; agencyName: string | null; websiteUrl?: string }[]
+    >();
     for (const candidate of candidates) {
       const email = candidate.email.trim().toLowerCase();
       if (seen.has(email)) {
@@ -254,8 +281,11 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
       }
       seen.add(email);
       const mailboxType = classifyMailboxType(email);
-      if (mailboxType === "unknown") {
-        skipped += 1; // malformed address — never persisted as an Agent
+      if (mailboxType !== "corporate_subscriber") {
+        // Malformed (unknown) OR free-mail (individual) → never persisted. PECR:
+        // only a corporate subscriber is cold-emailable, so nothing else earns a
+        // row in the agent pool.
+        skipped += 1;
         continue;
       }
       // Never re-source a suppressed/opted-out contact.
@@ -263,20 +293,14 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
         skipped += 1;
         continue;
       }
-      if (mailboxType === "individual") {
-        await this.agentRepository.upsertByEmail({
-          email,
-          agencyName: candidate.agencyName,
-          mailboxType,
-          coveredOutcodes: outcodes,
-        });
-        upserted += 1;
-        continue;
-      }
       // corporate_subscriber — defer to the per-domain collapse below.
       const domain = emailDomain(email)!; // corporate ⇒ a real domain
       const group = byDomain.get(domain) ?? [];
-      group.push({ email, agencyName: candidate.agencyName });
+      group.push({
+        email,
+        agencyName: candidate.agencyName,
+        ...(candidate.websiteUrl ? { websiteUrl: candidate.websiteUrl } : {}),
+      });
       byDomain.set(domain, group);
     }
 
@@ -290,6 +314,7 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
       await this.agentRepository.upsertByEmail({
         email: chosen.email,
         agencyName: chosen.agencyName,
+        website: agentWebsite(chosen.email, chosen.websiteUrl),
         mailboxType: "corporate_subscriber",
         coveredOutcodes: outcodes,
       });

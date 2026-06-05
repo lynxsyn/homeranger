@@ -97,12 +97,14 @@ async function seedRemovableAgent(): Promise<void> {
   await withClient(async (client) => {
     await client.query(
       `INSERT INTO "Agent"
-         (id, email, "agencyName", "mailboxType", "optedOut", "coveredOutcodes",
-          "lastContactedAt", "updatedAt")
-       VALUES (gen_random_uuid(), $1, $2, 'corporate_subscriber'::"MailboxType",
+         (id, email, "agencyName", website, "mailboxType", "optedOut",
+          "coveredOutcodes", "lastContactedAt", "updatedAt")
+       VALUES (gen_random_uuid(), $1, $2, 'https://agency.test',
+               'corporate_subscriber'::"MailboxType",
                false, ARRAY[$3]::text[], now(), now())
        ON CONFLICT (email) DO UPDATE
          SET "agencyName" = EXCLUDED."agencyName",
+             website = EXCLUDED.website,
              "coveredOutcodes" = EXCLUDED."coveredOutcodes",
              "lastContactedAt" = EXCLUDED."lastContactedAt"`,
       [REMOVE_EMAIL, REMOVE_AGENCY, REMOVE_OUTCODE],
@@ -163,6 +165,13 @@ test("the Agents tab renders the metrics strip and the seeded agent rows", async
 
   // The count line agrees with the rendered rows.
   await expect(page.getByTestId("agents-count")).toContainText(String(total));
+
+  // Each seeded agent surfaces a clickable website link so the operator can
+  // verify the agency before sending fresh outreach (the seed gives each a
+  // website; corporate agents always get one derived from their email domain).
+  const firstSite = page.getByTestId("agent-site-link").first();
+  await expect(firstSite).toBeVisible();
+  await expect(firstSite).toHaveAttribute("href", /^https?:\/\//);
 });
 
 test("a status filter chip narrows the table to a strict subset, and All restores it", async ({

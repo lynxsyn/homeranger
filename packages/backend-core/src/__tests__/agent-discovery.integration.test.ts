@@ -52,21 +52,25 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
       await disconnectTestPrisma();
     });
 
-    it("upserts agents with region outcodes + classified mailbox type, skipping suppressed", async () => {
+    it("upserts corporate agents (with a derived website) + region outcodes, dropping free-mail and skipping suppressed", async () => {
       const result = await service.discoverRegion("Conwy County");
+      // corp upserted; free-mail DROPPED; suppressed skipped.
       expect(result).toEqual({
         discovered: 3,
-        upserted: 2,
-        skipped: 1,
+        upserted: 1,
+        skipped: 2,
         collapsed: 0,
       });
 
       const corp = await db.agent.findUnique({ where: { email: CORP_EMAIL } });
       expect(corp?.mailboxType).toBe("corporate_subscriber");
       expect(corp?.coveredOutcodes).toContain("LL32");
+      // No scraped websiteUrl was supplied → the website is derived from the
+      // email domain so the operator can click through to verify the agency.
+      expect(corp?.website).toBe("https://conwyagents.test");
 
       const free = await db.agent.findUnique({ where: { email: FREE_EMAIL } });
-      expect(free?.mailboxType).toBe("individual");
+      expect(free).toBeNull(); // free-mail dropped — never persisted
 
       const supp = await db.agent.findUnique({
         where: { email: SUPPRESSED_EMAIL },
@@ -78,14 +82,15 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
       const result = await service.discoverRegion("Conwy County");
       expect(result).toEqual({
         discovered: 3,
-        upserted: 2,
-        skipped: 1,
+        upserted: 1,
+        skipped: 2,
         collapsed: 0,
       });
+      // Only the corporate agent persists; the free-mail address never lands.
       const count = await db.agent.count({
         where: { email: { in: [CORP_EMAIL, FREE_EMAIL] } },
       });
-      expect(count).toBe(2);
+      expect(count).toBe(1);
     });
   },
 );

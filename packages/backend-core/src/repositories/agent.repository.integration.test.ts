@@ -61,6 +61,34 @@ describe("agentRepository.list cursor pagination (uuid7 id keyset)", () => {
   });
 });
 
+describe("agentRepository.upsertByEmail website round-trip", () => {
+  it("persists a website on create and updates it on a later upsert, leaving it untouched when omitted", async () => {
+    // Create with a website.
+    const created = await agentRepository.upsertByEmail({
+      email: "test-website@agency.example",
+      agencyName: "Website Agency",
+      website: "https://agency.example",
+    });
+    expect(created.website).toBe("https://agency.example");
+
+    // Re-upsert WITHOUT a website (e.g. a caller that does not touch it) leaves
+    // the stored value intact — `undefined` is not written.
+    const untouched = await agentRepository.upsertByEmail({
+      email: "test-website@agency.example",
+      agencyName: "Website Agency (renamed)",
+    });
+    expect(untouched.website).toBe("https://agency.example");
+
+    // Re-upsert WITH a new website overwrites it.
+    const updated = await agentRepository.upsertByEmail({
+      email: "test-website@agency.example",
+      agencyName: "Website Agency",
+      website: "https://agency.example/contact",
+    });
+    expect(updated.website).toBe("https://agency.example/contact");
+  });
+});
+
 describe("agentRepository.wasDomainContactedSince (per-domain cooldown)", () => {
   it("finds a recently-contacted sibling mailbox, excluding self, stale, and other domains", async () => {
     const now = new Date();

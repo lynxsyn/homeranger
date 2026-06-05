@@ -299,6 +299,9 @@ model Agent {
   email           String      @unique
   agencyName      String?
   contactName     String?
+  // The agency's website (scraped during discovery, else derived from the email
+  // domain) so the operator can click through and verify before any outreach.
+  website         String?
   mailboxType     MailboxType @default(unknown)
   optedOut        Boolean     @default(false)
   coveredOutcodes String[]    @default([])
