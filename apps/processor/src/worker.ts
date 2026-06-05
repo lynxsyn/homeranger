@@ -57,11 +57,14 @@ import { VoyageEmbeddingProvider } from "@homeranger/backend-core/lib/ai/embeddi
 import { FakeEmbeddingProvider } from "@homeranger/backend-core/lib/ai/fake-embedding.provider";
 import { DefaultClaudeMatchScorer } from "@homeranger/backend-core/lib/ai/match-scorer.provider";
 import { FakeMatchScorer } from "@homeranger/backend-core/lib/ai/fake-match-scorer.provider";
+import { DefaultClaudeAgentClassifier } from "@homeranger/backend-core/lib/ai/agent-classifier.provider";
+import { FakeAgentClassifier } from "@homeranger/backend-core/lib/ai/fake-agent-classifier.provider";
 import { R2PhotoSource } from "@homeranger/backend-core/lib/ai/r2-photo-source.provider";
 import { FakePhotoSource } from "@homeranger/backend-core/lib/ai/fake-photo-source.provider";
 import type { VisionScorer } from "@homeranger/backend-core/lib/ai/vision-scorer.provider";
 import type { EmbeddingProvider } from "@homeranger/backend-core/lib/ai/embedding-provider";
 import type { MatchScorer } from "@homeranger/backend-core/lib/ai/match-scorer.provider";
+import type { AgentClassifier } from "@homeranger/backend-core/lib/ai/agent-classifier.provider";
 import type { PhotoSource } from "@homeranger/backend-core/lib/ai/photo-source";
 import { getPreferenceMatchService } from "@homeranger/backend-core/services/preference-match.service";
 import { getListingAnalysisService } from "@homeranger/backend-core/services/listing-analysis.service";
@@ -204,8 +207,17 @@ const agentDiscoveryProvider: AgentDiscoveryProvider =
   process.env.DISCOVERY_FAKE === "1"
     ? new FakeAgentDiscoveryProvider()
     : new FirecrawlAgentDiscoveryProvider();
+// The agent quality classifier (auto-drop confident non-agency junk at
+// discovery). Folded under the ANALYSIS_FAKE umbrella exactly like the match
+// scorer; CLASSIFY_FAKE=1 overrides for a per-provider fake. CI/E2E run
+// ANALYSIS_FAKE=1 → the deterministic fake → no Anthropic call, no spend.
+const agentClassifier: AgentClassifier =
+  useFakeAnalysis || process.env.CLASSIFY_FAKE === "1"
+    ? new FakeAgentClassifier()
+    : new DefaultClaudeAgentClassifier();
 const agentDiscoveryService = getAgentDiscoveryService({
   provider: agentDiscoveryProvider,
+  classifier: agentClassifier,
 });
 
 // ── Wire listing-site scrape (real Firecrawl vs LISTING_SCRAPE_FAKE seam) ────

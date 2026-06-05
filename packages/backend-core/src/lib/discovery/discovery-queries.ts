@@ -141,6 +141,82 @@ const NON_AGENCY_SOURCE_RE =
   /\[pdf\]|\bcouncil\b|\bborough\b|landlord details|\bhomelessness\b|allocation policy|housing options|social (?:housing|landlord)|registered social landlord|\bmanaging agents\b|housing association/i;
 
 /**
+ * Property PORTALS / aggregators / agent directories — listing sites and lead
+ * marketplaces, NOT a single estate agency we can cold-approach for pre-market
+ * stock. A page on, or an email at, one of these is junk for discovery: it is
+ * either an aggregator we should not contact or a directory whose "agents" are a
+ * stamped list. Bare registrable domains; matched as host===d || host.endsWith.
+ */
+export const PORTAL_DOMAINS: ReadonlySet<string> = new Set([
+  "rightmove.co.uk",
+  "zoopla.co.uk",
+  "onthemarket.com",
+  "primelocation.com",
+  "homemove.com",
+  "boomin.com",
+  "home.co.uk",
+  "propertypal.com",
+  "openrent.co.uk",
+  "spareroom.co.uk",
+  "gumtree.com",
+  "nethouseprices.com",
+  "mouseprice.com",
+  "placebuzz.com",
+  "nestoria.co.uk",
+  "residential-people.com",
+  "propertyheads.com",
+  "houseladder.co.uk",
+  "s1homes.com",
+  "espc.com",
+  "allagents.co.uk",
+]);
+
+/**
+ * TRUE when a hostname is (or is a subdomain of) a known property portal /
+ * aggregator / agent-directory domain. Mirrors the .gov.uk host check style
+ * (exact match OR a dotted suffix). Pure — no env, no network.
+ */
+export function isPortalDomain(host?: string): boolean {
+  if (!host) {
+    return false;
+  }
+  const h = host.toLowerCase();
+  for (const d of PORTAL_DOMAINS) {
+    if (h === d || h.endsWith(`.${d}`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * TRUE when an email's domain is a known property portal / aggregator. Belt-and-
+ * braces alongside isPortalDomain's page-level skip — a `noreply@rightmove.co.uk`
+ * style address is never an agency we can cold-approach. Pure.
+ */
+export function isPortalEmail(email: string): boolean {
+  const at = email.lastIndexOf("@");
+  if (at <= 0) {
+    return false;
+  }
+  return isPortalDomain(email.slice(at + 1).toLowerCase());
+}
+
+/**
+ * TRUE when a STORED/derived agency name carries an unambiguous council /
+ * social-housing / directory token (housing association, social housing,
+ * registered social landlord, council, [PDF], …). Reuses the same
+ * NON_AGENCY_SOURCE_RE the page-title skip uses, applied to the name itself, so a
+ * housing association whose abbreviated/Welsh name still spells the token (e.g. a
+ * stored "… Housing Association") is caught deterministically — independent of
+ * the page URL or the LLM. Pure.
+ */
+export function isNonAgencyName(name?: string): boolean {
+  const trimmed = name?.trim();
+  return trimmed ? NON_AGENCY_SOURCE_RE.test(trimmed) : false;
+}
+
+/**
  * TRUE when a search/scrape result is a council / social-housing / directory page
  * (NOT a single estate agency) — the provider must NOT harvest its emails, or it
  * mints bogus "agents" (council teams + housing associations all stamped with the
@@ -152,10 +228,20 @@ export function isNonAgencyResult(result: {
   title?: string;
   metadata?: { title?: string };
   url?: string;
+  agencyName?: string;
 }): boolean {
   const host = hostnameOf(result.url);
   if (host && (host === "gov.uk" || host.endsWith(".gov.uk"))) {
     return true; // a local-authority site is never an estate agency
+  }
+  if (isPortalDomain(host)) {
+    return true; // a property portal / aggregator / directory is never one agency
+  }
+  // A stored/derived agency name carrying a housing-association / social-housing /
+  // directory token is non-agency even when the URL is clean (the abbreviated/
+  // Welsh-named housing-assoc case the page-title skip alone misses).
+  if (isNonAgencyName(result.agencyName)) {
+    return true;
   }
   const haystack = `${result.title ?? ""} ${result.metadata?.title ?? ""} ${
     result.url ?? ""
@@ -166,8 +252,9 @@ export function isNonAgencyResult(result: {
 /**
  * TRUE when an email plausibly belongs to an estate agency we may cold-email.
  * Rejects local-authority (.gov.uk) addresses — a council housing team is never
- * the right cold-outreach target. Belt-and-braces alongside isNonAgencyResult's
- * page-level skip. Pure.
+ * the right cold-outreach target — and property-portal / aggregator addresses
+ * (rightmove, zoopla, onthemarket, …), which are never one agency to approach.
+ * Belt-and-braces alongside isNonAgencyResult's page-level skip. Pure.
  */
 export function isLikelyAgencyEmail(email: string): boolean {
   const at = email.lastIndexOf("@");
@@ -175,7 +262,10 @@ export function isLikelyAgencyEmail(email: string): boolean {
     return false;
   }
   const domain = email.slice(at + 1).toLowerCase();
-  return !(domain === "gov.uk" || domain.endsWith(".gov.uk"));
+  if (domain === "gov.uk" || domain.endsWith(".gov.uk")) {
+    return false; // a local-authority address is never an estate agency
+  }
+  return !isPortalEmail(email); // a portal / aggregator address is never one agency
 }
 
 /**
@@ -211,12 +301,13 @@ export function agencyNameFrom(result: {
   metadata?: { title?: string };
   url?: string;
 }): string {
-  // A directory/document title (a council PDF, a "managing agents" index) is NOT
-  // one agency's name — using it would stamp the SAME title on every email
-  // harvested from that page. Reject it and fall back to the per-email hostname.
+  // A directory/document title (a council PDF, a "managing agents" index, a
+  // housing-association name) is NOT one agency's name — using it would stamp the
+  // SAME title on every email harvested from that page. Reject it (via the shared
+  // isNonAgencyName token check) and fall back to the per-email hostname.
   const usable = (t?: string): string | undefined => {
     const trimmed = t?.trim();
-    return trimmed && !NON_AGENCY_SOURCE_RE.test(trimmed) ? trimmed : undefined;
+    return trimmed && !isNonAgencyName(trimmed) ? trimmed : undefined;
   };
   return (
     usable(result.title) ||
