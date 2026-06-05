@@ -108,8 +108,8 @@ export function extractEmails(text: string): string[] {
     if (raw.length > MAX_EMAIL_LENGTH) {
       continue; // page noise, not a real address
     }
-    const email = raw.toLowerCase();
-    if (isNoiseEmail(email)) {
+    const email = stripLeadingPhoneDigits(raw.toLowerCase());
+    if (email.startsWith("@") || isNoiseEmail(email)) {
       continue;
     }
     if (!seen.has(email)) {
@@ -118,6 +118,64 @@ export function extractEmails(text: string): string[] {
     }
   }
   return emails;
+}
+
+/**
+ * Strip a phone number fused onto the start of an email's local part — a
+ * collapsed-source-text artifact (a directory PDF rendering "Tel 01492 640415
+ * llanrwst@x" as "01492640415llanrwst@x", or "543111info@x"). Drops a LEADING
+ * run of >=5 digits ONLY when immediately followed by a letter (digits-then-
+ * letters = phone+name collision); a genuinely all-digit local part (rare but
+ * valid) has no following letter and is untouched. Pure.
+ */
+function stripLeadingPhoneDigits(email: string): string {
+  return email.replace(/^\d{5,}(?=[a-z])/, "");
+}
+
+/**
+ * Tokens marking a result as a council / social-housing / DIRECTORY document
+ * rather than a single estate agency — its emails are council teams, housing
+ * associations, or a list of many agencies, NOT one agency to cold-email.
+ */
+const NON_AGENCY_SOURCE_RE =
+  /\[pdf\]|\bcouncil\b|\bborough\b|landlord details|\bhomelessness\b|allocation policy|housing options|social (?:housing|landlord)|registered social landlord|\bmanaging agents\b|housing association/i;
+
+/**
+ * TRUE when a search/scrape result is a council / social-housing / directory page
+ * (NOT a single estate agency) — the provider must NOT harvest its emails, or it
+ * mints bogus "agents" (council teams + housing associations all stamped with the
+ * document's title — the Conwy "Main Housing Landlord Details" PDF bug). High
+ * precision: a .gov.uk host, or the title/url carrying an unambiguous
+ * council/social-housing/directory token. Pure.
+ */
+export function isNonAgencyResult(result: {
+  title?: string;
+  metadata?: { title?: string };
+  url?: string;
+}): boolean {
+  const host = hostnameOf(result.url);
+  if (host && (host === "gov.uk" || host.endsWith(".gov.uk"))) {
+    return true; // a local-authority site is never an estate agency
+  }
+  const haystack = `${result.title ?? ""} ${result.metadata?.title ?? ""} ${
+    result.url ?? ""
+  }`;
+  return NON_AGENCY_SOURCE_RE.test(haystack);
+}
+
+/**
+ * TRUE when an email plausibly belongs to an estate agency we may cold-email.
+ * Rejects local-authority (.gov.uk) addresses — a council housing team is never
+ * the right cold-outreach target. Belt-and-braces alongside isNonAgencyResult's
+ * page-level skip. Pure.
+ */
+export function isLikelyAgencyEmail(email: string): boolean {
+  const at = email.lastIndexOf("@");
+  if (at <= 0) {
+    return false;
+  }
+  const domain = email.slice(at + 1).toLowerCase();
+  return !(domain === "gov.uk" || domain.endsWith(".gov.uk"));
 }
 
 /**
@@ -153,9 +211,16 @@ export function agencyNameFrom(result: {
   metadata?: { title?: string };
   url?: string;
 }): string {
+  // A directory/document title (a council PDF, a "managing agents" index) is NOT
+  // one agency's name — using it would stamp the SAME title on every email
+  // harvested from that page. Reject it and fall back to the per-email hostname.
+  const usable = (t?: string): string | undefined => {
+    const trimmed = t?.trim();
+    return trimmed && !NON_AGENCY_SOURCE_RE.test(trimmed) ? trimmed : undefined;
+  };
   return (
-    result.title?.trim() ||
-    result.metadata?.title?.trim() ||
+    usable(result.title) ||
+    usable(result.metadata?.title) ||
     hostnameOf(result.url) ||
     "Unknown agency"
   );

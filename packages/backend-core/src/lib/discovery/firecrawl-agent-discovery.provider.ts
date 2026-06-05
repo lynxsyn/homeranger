@@ -59,6 +59,8 @@ import {
   dedupeByEmail,
   extractEmails,
   hostnameOf,
+  isLikelyAgencyEmail,
+  isNonAgencyResult,
 } from "./discovery-queries.js";
 
 interface FirecrawlSearchResult {
@@ -185,8 +187,17 @@ export class FirecrawlAgentDiscoveryProvider implements AgentDiscoveryProvider {
     // structured-extract recovery pass (only real URLs; keyed unique by host).
     const extractCandidates = new Map<string, string>(); // host → url
     for (const result of results) {
+      // Skip council / social-housing / directory pages outright — harvesting a
+      // multi-landlord PDF (e.g. a council's "Main Housing Landlord Details")
+      // mints bogus agents: council teams + housing associations all stamped with
+      // the document's title. Such a page is neither harvested nor extract-probed.
+      if (isNonAgencyResult(result)) {
+        continue;
+      }
       const agencyName = agencyNameFrom(result);
-      const emails = extractEmails(result.markdown ?? "");
+      const emails = extractEmails(result.markdown ?? "").filter(
+        isLikelyAgencyEmail,
+      );
       if (emails.length > 0) {
         for (const email of emails) {
           agents.push({
@@ -213,7 +224,11 @@ export class FirecrawlAgentDiscoveryProvider implements AgentDiscoveryProvider {
         // discovery — the search phase already found agents, and contact-extract
         // is pure upside. Swallow per-URL errors (logged) and keep going.
         try {
-          agents.push(...(await this.extractContact(url)));
+          agents.push(
+            ...(await this.extractContact(url)).filter((a) =>
+              isLikelyAgencyEmail(a.email),
+            ),
+          );
         } catch (error) {
           console.warn(
             JSON.stringify({
