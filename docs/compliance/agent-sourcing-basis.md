@@ -59,6 +59,7 @@ guard, suppression, and unsubscribe are the backstops for any misclassification.
 - Dedup on email; store provenance (source URL) for accountability.
 - Retain a suppression as a do-not-contact record even after erasing other data.
 - Discovery is operator-triggered per region (not a continuous crawl).
+- Recall uses a bounded multi-query fan-out (estate/letting/independent + per-outcode) plus best-effort structured extraction of an agency contact page when no email is plaintext in the search result; both stay within the public-business-contact, robots-honouring, operator-triggered basis above (bounded spend, no continuous crawl).
 
 ## Review
 
