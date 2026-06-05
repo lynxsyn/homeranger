@@ -1060,13 +1060,14 @@ export function ListingsPage({
                   {pageRows.length}
                   {hasMore ? "+" : ""}
                 </b>{" "}
-                {pageRows.length === 1 ? "home" : "homes"} from your agents
+                {sourceFilter
+                  ? `${pageRows.length === 1 ? "lot" : "lots"} from ${sourceFilter.name}`
+                  : `${pageRows.length === 1 ? "home" : "homes"} from your agents`}
               </span>
               <InfoTip label="About listings">
-                Homes your agents have sent in, read from their emails and scored
-                against your taste. Click a home to open the agent&rsquo;s page;
-                bookmark the ones you like to draft a follow-up to their agency,
-                or dismiss the ones you don&rsquo;t to tune your scoring.
+                {sourceFilter
+                  ? "Lots crawled from this source on a schedule and scored against your taste. Click a lot to open it on the source site; bookmark the ones you like or dismiss the ones you don't to tune your scoring."
+                  : "Homes your agents have sent in, read from their emails and scored against your taste. Click a home to open the agent's page; bookmark the ones you like to draft a follow-up to their agency, or dismiss the ones you don't to tune your scoring."}
               </InfoTip>
             </span>
             <div className="statusfilter" role="group" aria-label="Filter listings">
@@ -1146,7 +1147,9 @@ export function ListingsPage({
                   ? "No saved homes yet — bookmark ones you like to gather them here."
                   : bucket === "dismissed"
                     ? "Nothing dismissed. Homes you hide land here, and you can restore them any time."
-                    : "No listings yet. Once your agents reply, the homes they send appear here."}
+                    : sourceFilter
+                      ? `No lots from ${sourceFilter.name} yet — it's being crawled on a schedule; lots appear here as they're found.`
+                      : "No listings yet. Once your agents reply, the homes they send appear here."}
               </p>
             </div>
           ) : view === "table" ? (

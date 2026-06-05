@@ -128,17 +128,19 @@ export const LISTING_FIXTURES: ListingFixture[] = [
     externalId: "auctionhouse-lot-351804",
   },
   {
-    // SCRAPED — UK Land & Farms lot (North Wales, LL18 Rhyl). The land source
-    // (green-trees mark); From-column shows "UK Land & Farms".
-    addressNormalized: "ffordd y morfa rhyl ll18",
-    postcode: "LL18 1AB",
-    outcode: "LL18",
+    // SCRAPED — UK Land & Farms lot (North Wales, LL26 Llanrwst, Conwy valley).
+    // The land source (green-trees mark); From-column shows "UK Land & Farms".
+    // Outcode LL26 sits inside the source's declared LL2x/LL3x coverage so the
+    // seeded lot and the Sources coverage chips it advertises stay consistent.
+    addressNormalized: "nant farm llanrwst ll26",
+    postcode: "LL26 0AB",
+    outcode: "LL26",
     pricePence: 275_000_00, // £275,000
     bedrooms: null,
     listingStatus: "live",
     isPreMarket: false,
-    listingUrl: "https://www.uklandandfarms.co.uk/property/ffordd-y-morfa-rhyl",
+    listingUrl: "https://www.uklandandfarms.co.uk/property/nant-farm-llanrwst",
     primarySource: "uklandandfarms",
-    externalId: "uklandandfarms-ffordd-y-morfa-rhyl",
+    externalId: "uklandandfarms-nant-farm-llanrwst",
   },
 ];

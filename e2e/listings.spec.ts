@@ -131,7 +131,7 @@ test("a scraped row shows the SOURCE name in its From cell, not an agency or das
   const auctionFrom = auctionRow.locator(".agent-cell");
   await expect(auctionFrom).toContainText("Auction House");
 
-  const landRow = row(page, "ffordd y morfa rhyl ll18");
+  const landRow = row(page, "nant farm llanrwst ll26");
   await expect(landRow).toHaveCount(1);
   const landFrom = landRow.locator(".agent-cell");
   await expect(landFrom).toContainText("UK Land & Farms");

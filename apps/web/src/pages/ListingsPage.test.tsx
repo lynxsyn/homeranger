@@ -630,4 +630,20 @@ describe("ListingsPage source drill-in banner", () => {
       expect.objectContaining({ filter: { source: "auctionhouse" } }),
     );
   });
+
+  it("reads the count as 'lots from <source>' under a source drill-in (not 'from your agents')", () => {
+    withData();
+    render(<ListingsPage sourceFilter={AUCTION_FILTER} onClearSourceFilter={vi.fn()} />);
+    const count = screen.getByTestId("listings-count");
+    expect(count).toHaveTextContent(/lots from Auction House/i);
+    expect(count).not.toHaveTextContent(/from your agents/i);
+  });
+
+  it("shows a source-specific empty state (not the agent-reply copy) when a source has no lots", () => {
+    withData([]);
+    render(<ListingsPage sourceFilter={AUCTION_FILTER} onClearSourceFilter={vi.fn()} />);
+    const empty = screen.getByTestId("listings-empty");
+    expect(empty).toHaveTextContent(/No lots from Auction House yet/i);
+    expect(empty).not.toHaveTextContent(/Once your agents reply/i);
+  });
 });
