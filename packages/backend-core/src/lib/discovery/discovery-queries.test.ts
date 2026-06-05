@@ -8,7 +8,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MAX_QUERIES,
+  PAGE_TEXT_MAX,
   agencyNameFrom,
+  boundedPageText,
   buildDiscoveryQueries,
   dedupeByEmail,
   extractEmails,
@@ -395,5 +397,45 @@ describe("dedupeByEmail", () => {
 
   it("returns [] for an empty input", () => {
     expect(dedupeByEmail([])).toEqual([]);
+  });
+
+  it("preserves the pageText snippet on the kept record", () => {
+    // pageText is the classifier's load-bearing signal; the dedup must carry it
+    // through (the spread {...agent} does), or the classifier loses page content.
+    const result = dedupeByEmail([
+      {
+        email: "info@aslets.co.uk",
+        agencyName: "Aslets",
+        websiteUrl: "https://aslets.co.uk",
+        pageText: "Aslets The Letting Agents Ltd, a Colwyn Bay letting agency.",
+      },
+    ]);
+    expect(result[0]?.pageText).toBe(
+      "Aslets The Letting Agents Ltd, a Colwyn Bay letting agency.",
+    );
+  });
+});
+
+describe("boundedPageText", () => {
+  it("returns '' for empty/whitespace input (caller omits a no-signal snippet)", () => {
+    expect(boundedPageText("")).toBe("");
+    expect(boundedPageText("   \n\t ")).toBe("");
+  });
+
+  it("trims and returns short text unchanged", () => {
+    expect(boundedPageText("  Aslets, a Colwyn Bay letting agency.  ")).toBe(
+      "Aslets, a Colwyn Bay letting agency.",
+    );
+  });
+
+  it("slices over-long page markdown to PAGE_TEXT_MAX chars (bounds the prompt)", () => {
+    const long = "a".repeat(PAGE_TEXT_MAX + 500);
+    const bounded = boundedPageText(long);
+    expect(bounded).toHaveLength(PAGE_TEXT_MAX);
+    expect(PAGE_TEXT_MAX).toBe(2000);
+  });
+
+  it("honours a custom max", () => {
+    expect(boundedPageText("abcdefghij", 4)).toBe("abcd");
   });
 });
