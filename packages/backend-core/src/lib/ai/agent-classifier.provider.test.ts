@@ -6,6 +6,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import {
   DefaultClaudeAgentClassifier,
+  isGenuineAgencyKind,
   parseAgentClassify,
   shouldAutoDelete,
   type AgentClassifierConfig,
@@ -340,5 +341,16 @@ describe("shouldAutoDelete", () => {
         0.6,
       ),
     ).toBe(true);
+  });
+});
+
+describe("isGenuineAgencyKind", () => {
+  it("is true for agency kinds, false for non-agency kinds", () => {
+    for (const k of ["estate_agent", "letting_agent", "new_homes", "commercial"] as const) {
+      expect(isGenuineAgencyKind(k)).toBe(true);
+    }
+    for (const k of ["council", "housing_association", "portal", "directory", "other"] as const) {
+      expect(isGenuineAgencyKind(k)).toBe(false);
+    }
   });
 });

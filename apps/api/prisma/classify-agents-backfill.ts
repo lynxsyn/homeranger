@@ -38,6 +38,7 @@ import {
 } from "@homeranger/backend-core/lib/discovery/discovery-queries";
 import {
   shouldAutoDelete,
+  isGenuineAgencyKind,
   DefaultClaudeAgentClassifier,
   type AgentClassifier,
 } from "@homeranger/backend-core/lib/ai/agent-classifier.provider";
@@ -207,10 +208,12 @@ async function runBackfill(deps: BackfillDeps): Promise<void> {
           row(agent, "drop:confident-non-agency", verdict.kind, verdict.confidence),
         );
         flag(agent.id);
-      } else if (!verdict.isResidentialSalesAgency) {
-        report.push(row(agent, "keep:uncertain", verdict.kind, verdict.confidence));
-      } else {
+      } else if (verdict.isResidentialSalesAgency || isGenuineAgencyKind(verdict.kind)) {
+        // A genuine agency — incl. a letting-only firm (sales-boolean false but
+        // kind=letting_agent). Report it as a kept agency, not "uncertain".
         report.push(row(agent, "keep:agency", verdict.kind, verdict.confidence));
+      } else {
+        report.push(row(agent, "keep:uncertain", verdict.kind, verdict.confidence));
       }
     }
     if (!page.nextCursor) {
