@@ -305,8 +305,8 @@ describe("AgentsPage remove", () => {
   });
 });
 
-describe("AgentsPage website cell", () => {
-  it("renders an external website link for an agent with a website", () => {
+describe("AgentsPage agency name link", () => {
+  it("makes the agency name a link to the website when one is present", () => {
     withAgents([
       makeAgent({
         id: "agent-with-site",
@@ -317,20 +317,21 @@ describe("AgentsPage website cell", () => {
     render(<AgentsPage filter={null} onClearFilter={vi.fn()} />);
     const row = screen.getByTestId("agent-row");
     const link = within(row).getByTestId("agent-site-link");
+    expect(link).toHaveTextContent("Finch & Co");
     expect(link).toHaveAttribute("href", "https://finch.co.uk");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
-    expect(within(row).queryByTestId("agent-site-none")).not.toBeInTheDocument();
   });
 
-  it("renders a muted placeholder when an agent has no website", () => {
+  it("renders the agency name as plain text (no link) when there is no website", () => {
     withAgents([
       makeAgent({ id: "agent-no-site", agencyName: "No Site Ltd", website: null }),
     ]);
     render(<AgentsPage filter={null} onClearFilter={vi.fn()} />);
     const row = screen.getByTestId("agent-row");
-    expect(within(row).getByTestId("agent-site-none")).toBeInTheDocument();
     expect(within(row).queryByTestId("agent-site-link")).not.toBeInTheDocument();
+    // The name is still shown, just not clickable.
+    expect(row).toHaveTextContent("No Site Ltd");
   });
 });
 

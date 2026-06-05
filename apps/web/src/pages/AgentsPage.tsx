@@ -498,7 +498,6 @@ export function AgentsPage({ filter, onClearFilter }: AgentsPageProps) {
                     <th scope="col" className="num col-seen">
                       Last contact
                     </th>
-                    <th scope="col" className="col-src" aria-label="Website" />
                     <th scope="col" className="col-act" aria-label="Actions" />
                   </tr>
                 </thead>
@@ -516,7 +515,21 @@ export function AgentsPage({ filter, onClearFilter }: AgentsPageProps) {
                           <div className="cell-agent">
                             <AgentMark name={name} />
                             <span className="at">
-                              <b>{name}</b>
+                              {a.website ? (
+                                <a
+                                  className="agent-name-link"
+                                  data-testid="agent-site-link"
+                                  href={a.website}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title="Visit the agency website to verify before sending"
+                                >
+                                  {name}
+                                </a>
+                              ) : (
+                                <b>{name}</b>
+                              )}
                               <small>{a.email}</small>
                             </span>
                           </div>
@@ -543,31 +556,6 @@ export function AgentsPage({ filter, onClearFilter }: AgentsPageProps) {
                               ? relativeTime(a.lastContactedAt)
                               : "—"}
                           </span>
-                        </td>
-                        <td className="col-src">
-                          {a.website ? (
-                            <a
-                              className="src-icon"
-                              data-testid="agent-site-link"
-                              href={a.website}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              title="Visit the agency website to verify before sending"
-                              aria-label={`Visit ${name} website`}
-                            >
-                              <Icon name="external-link" size={16} />
-                            </a>
-                          ) : (
-                            <span
-                              className="na"
-                              data-testid="agent-site-none"
-                              title="No website found for this agency"
-                              aria-label="No website"
-                            >
-                              —
-                            </span>
-                          )}
                         </td>
                         <td className="col-act">
                           <RowActions agent={a} onAskRemove={setRemoving} />
