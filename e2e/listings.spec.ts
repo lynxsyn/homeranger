@@ -84,6 +84,40 @@ test("loads the seeded listings with a per-row score ring and no filters", async
   await expect(page.getByTestId("filter-min-beds")).toHaveCount(0);
 });
 
+test("the listings table fits the viewport with no horizontal overflow (laptops + large monitors)", async ({
+  page,
+}) => {
+  // The bug: a long address expanded the auto-layout table past the viewport,
+  // forcing a horizontal scrollbar / clipped columns. Assert the page never
+  // overflows horizontally across the spread of real laptop + monitor widths.
+  const VIEWPORTS = [
+    { width: 1366, height: 768 }, // common laptop
+    { width: 1440, height: 900 }, // MacBook
+    { width: 1536, height: 864 }, // scaled laptop
+    { width: 1920, height: 1080 }, // desktop monitor
+    { width: 2560, height: 1440 }, // large / QHD monitor
+  ];
+  for (const size of VIEWPORTS) {
+    await page.setViewportSize(size);
+    await expect(page.getByTestId("listings-table")).toBeVisible();
+    // No horizontal scrollbar on the document (allow 1px for sub-pixel rounding).
+    const overflow = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    );
+    expect(
+      overflow,
+      `horizontal overflow ${overflow}px at ${size.width}x${size.height}`,
+    ).toBeLessThanOrEqual(1);
+    // The table itself must not be wider than the viewport either.
+    const tableWidth = await page
+      .getByTestId("listings-table")
+      .evaluate((el) => el.getBoundingClientRect().width);
+    expect(tableWidth).toBeLessThanOrEqual(size.width);
+  }
+});
+
 test("sorts by price (descending) from the dropdown in rendered row order", async ({
   page,
 }) => {
