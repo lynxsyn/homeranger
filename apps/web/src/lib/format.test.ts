@@ -26,6 +26,12 @@ describe("prettyAddress", () => {
     );
   });
 
+  it("preserves an apostrophe in a name", () => {
+    expect(prettyAddress("KING'S ROAD CHELSEA SW3 4LY")).toBe(
+      "King's Road Chelsea SW3 4LY",
+    );
+  });
+
   it("collapses extra whitespace and handles the empty string", () => {
     expect(prettyAddress("  union   street  se1 ")).toBe("Union Street SE1");
     expect(prettyAddress("")).toBe("");
