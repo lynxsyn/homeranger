@@ -41,6 +41,7 @@ import {
   gbp,
   humanizePropertyType,
   penceToPounds,
+  prettyAddress,
   relativeTime,
 } from "../lib/format";
 import { useStored } from "../lib/useStored";
@@ -58,7 +59,10 @@ type ListItem =
 /** The flattened row the table + cards render + sort over. */
 interface ViewRow {
   id: string;
+  /** Canonical (dedup-normalised) address — sort key + `data-address`. */
   address: string;
+  /** Re-cased address for display (title case, postcodes upper). */
+  addressDisplay: string;
   postcode: string | null;
   outcode: string | null;
   price: number | null; // whole pounds
@@ -142,6 +146,7 @@ function toViewRow(item: ListItem, now: Date): ViewRow {
   return {
     id: item.id,
     address: item.addressNormalized,
+    addressDisplay: prettyAddress(item.addressNormalized),
     postcode: item.postcode,
     outcode: item.outcode,
     price: penceToPounds(item.pricePence),
@@ -287,7 +292,7 @@ function ListingsTable({
 }: TableProps) {
   return (
     <div className="tablewrap">
-      <table className="listings" data-testid="listings-table">
+      <table className="listings listings-grid" data-testid="listings-table">
         <caption className="sr-only">
           Property listings, sortable by match score, price, bedrooms, address,
           and recency.
@@ -296,11 +301,25 @@ function ListingsTable({
           <tr>
             <th scope="col" className="col-int" aria-label="Interested" />
             <SortHeader id="address" label="Home" sort={sort} onSort={onSort} />
-            <SortHeader id="price" label="Price" num sort={sort} onSort={onSort} />
+            <SortHeader
+              id="price"
+              label="Price"
+              num
+              extraClass="col-price"
+              sort={sort}
+              onSort={onSort}
+            />
             <th scope="col" className="col-bedbath">
               Beds
             </th>
-            <SortHeader id="score" label="Match" num sort={sort} onSort={onSort} />
+            <SortHeader
+              id="score"
+              label="Match"
+              num
+              extraClass="col-match"
+              sort={sort}
+              onSort={onSort}
+            />
             <th scope="col" className="col-agent">
               From
             </th>
@@ -344,7 +363,7 @@ function ListingsTable({
                   <div className="cell-addr">
                     <Photo src={l.imageUrl} className="thumb" />
                     <span className="at">
-                      <b>{l.address}</b>
+                      <b>{l.addressDisplay}</b>
                       <small>{subline(l)}</small>
                     </span>
                   </div>
@@ -458,7 +477,7 @@ function ListingCard({
         <div className="head">
           <div style={{ minWidth: 0 }}>
             <div className="price">{gbp(l.price)}</div>
-            <div className="addr">{l.address}</div>
+            <div className="addr">{l.addressDisplay}</div>
             <div className="sub">{subline(l)}</div>
           </div>
         </div>
@@ -513,7 +532,7 @@ function joinNames(arr: string[]): string {
 /** One warm, in-voice note covering all of an agency's bookmarked homes. */
 function followUpEmail(rows: ViewRow[], senderName?: string | null): string {
   const single = rows.length === 1;
-  const names = joinNames(rows.map((l) => l.address));
+  const names = joinNames(rows.map((l) => l.addressDisplay));
   return (
     `Hello,\n\n` +
     `Thank you for sending ${single ? "this" : "these"} through. I'm very interested in ` +
@@ -632,7 +651,7 @@ function FollowUpModal({ rows, onClose, onSent }: FollowUpModalProps) {
                 <div className="fg-homes">
                   {g.rows.map((l) => (
                     <span className="fg-home" key={l.id}>
-                      {l.address} · {gbp(l.price)}
+                      {l.addressDisplay} · {gbp(l.price)}
                     </span>
                   ))}
                 </div>
@@ -1203,7 +1222,7 @@ export function ListingsPage({
                 <div className="toast" role="status" data-testid="dismiss-toast">
                   <span className="toast__msg">
                     <Icon name="eye-off" size={15} />
-                    Dismissed{home ? ` ${home.address}` : ""}
+                    Dismissed{home ? ` ${home.addressDisplay}` : ""}
                   </span>
                   <button
                     type="button"

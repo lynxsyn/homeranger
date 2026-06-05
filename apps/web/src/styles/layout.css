@@ -14,7 +14,9 @@ body {
 a { color: inherit; text-decoration: none; }
 
 /* ---- App shell ----------------------------------------------------------- */
-.app { max-width: 1080px; margin: 0 auto; padding: 0 28px 96px; }
+.app { max-width: 1200px; margin: 0 auto; padding: 0 28px 96px; }
+/* Use the extra room on large / wide monitors instead of a narrow centred strip. */
+@media (min-width: 1700px) { .app { max-width: 1400px; } }
 .topbar {
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; justify-content: space-between;
@@ -88,6 +90,20 @@ a { color: inherit; text-decoration: none; }
 .tablewrap { background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
 table.listings { width: 100%; border-collapse: collapse; }
+/* Fixed layout (LISTINGS table only — NOT the agents/sources tables, which carry
+ * the shared `.listings` class but set their own widths): column geometry is
+ * content-INDEPENDENT, so a long address can never widen the table past its
+ * container (it truncates instead). Widths below size the fixed columns; the
+ * address column (no width) absorbs the remainder. col-int fits the two row
+ * action buttons (.rowacts: 34 + gap + 32 ≈ 68px of content). */
+table.listings-grid { table-layout: fixed; }
+.listings-grid .col-int { width: 76px; }
+.listings-grid .col-price { width: 96px; }
+.listings-grid .col-bedbath { width: 96px; }
+.listings-grid .col-match { width: 60px; }
+.listings-grid .col-agent { width: 140px; }
+.listings-grid .col-seen { width: 84px; }
+.listings-grid .col-src { width: 36px; }
 table.listings thead th {
   text-align: left; font-size: var(--fs-label); letter-spacing: var(--tracking-wide);
   text-transform: uppercase; color: var(--ink-3); font-weight: var(--fw-semibold);
@@ -117,7 +133,8 @@ tr.row.clickable:hover { background: var(--surface-2); }
 .cell-addr b { font-weight: var(--fw-semibold); display: block; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
 .cell-addr small { display: block; color: var(--ink-3); font-size: var(--fs-caption);
-  margin-top: 2px; font-family: var(--font-mono); }
+  margin-top: 2px; font-family: var(--font-mono); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
 .price-cell { font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums;
   font-size: var(--fs-body); }
 .bedbath { display: inline-flex; align-items: center; gap: 12px; color: var(--ink-2);
@@ -125,7 +142,8 @@ tr.row.clickable:hover { background: var(--surface-2); }
 .bedbath span { display: inline-flex; align-items: center; gap: 5px; }
 .bedbath svg { color: var(--ink-3); }
 .bedbath.na { color: var(--ink-3); }
-.agent-cell { color: var(--ink-2); white-space: nowrap; }
+.agent-cell { color: var(--ink-2); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
 .seen-cell { color: var(--ink-3); font-size: var(--fs-caption); white-space: nowrap;
   font-variant-numeric: tabular-nums; }
 .src-link { color: var(--accent); font-weight: var(--fw-semibold); display: inline-flex;

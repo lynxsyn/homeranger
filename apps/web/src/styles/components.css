@@ -168,7 +168,7 @@
   width: var(--size); height: var(--size); border-radius: 50%;
   display: grid; place-items: center; position: relative;
   background:
-    conic-gradient(var(--accent) calc(var(--val) * 1%), var(--surface-3) 0);
+    conic-gradient(var(--score-fill, var(--accent)) calc(var(--val) * 1%), var(--surface-3) 0);
 }
 .hs-score__ring::after {
   content: ""; position: absolute; inset: 3.5px; border-radius: 50%;

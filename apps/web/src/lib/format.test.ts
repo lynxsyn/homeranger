@@ -4,8 +4,39 @@ import {
   gbp,
   humanizePropertyType,
   penceToPounds,
+  prettyAddress,
   relativeTime,
 } from "./format";
+
+describe("prettyAddress", () => {
+  it("title-cases an ALL CAPS address but keeps UK postcode tokens uppercase", () => {
+    expect(prettyAddress("RIVINGTON STREET SE1")).toBe("Rivington Street SE1");
+    expect(prettyAddress("23 DEGANWY AVENUE LLANDUDNO LL30 2YB")).toBe(
+      "23 Deganwy Avenue Llandudno LL30 2YB",
+    );
+  });
+
+  it("title-cases an all-lowercase address (the seeded/dedup form)", () => {
+    expect(prettyAddress("pre market flat se1")).toBe("Pre Market Flat SE1");
+  });
+
+  it("keeps hyphenated place names readable", () => {
+    expect(prettyAddress("STOKE-ON-TRENT ST1 1AA")).toBe(
+      "Stoke-On-Trent ST1 1AA",
+    );
+  });
+
+  it("preserves an apostrophe in a name", () => {
+    expect(prettyAddress("KING'S ROAD CHELSEA SW3 4LY")).toBe(
+      "King's Road Chelsea SW3 4LY",
+    );
+  });
+
+  it("collapses extra whitespace and handles the empty string", () => {
+    expect(prettyAddress("  union   street  se1 ")).toBe("Union Street SE1");
+    expect(prettyAddress("")).toBe("");
+  });
+});
 
 describe("gbp", () => {
   it("formats whole pounds as GBP with no decimals", () => {

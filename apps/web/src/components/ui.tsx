@@ -114,12 +114,40 @@ export interface ScoreRingProps {
   size?: number;
 }
 
+/** Match-score band → the ring's fill colour. Strong reads green, a fair match
+ *  amber, a weak/poor match red, so the wheel's colour signals quality at a
+ *  glance (not just its fill fraction). */
+export type ScoreTone = "strong" | "fair" | "weak" | "pending";
+
+export function scoreTone(value: number | null): ScoreTone {
+  if (value == null) {
+    return "pending";
+  }
+  if (value >= 70) {
+    return "strong";
+  }
+  if (value >= 50) {
+    return "fair";
+  }
+  return "weak";
+}
+
+const TONE_FILL: Record<Exclude<ScoreTone, "pending">, string> = {
+  strong: "var(--success)",
+  fair: "var(--warning)",
+  weak: "var(--danger)",
+};
+
 export function ScoreRing({ value, size = 38 }: ScoreRingProps) {
   const pending = value == null;
+  const tone = scoreTone(value);
+  const toneStyle: CSSProperties = pending
+    ? { background: "var(--surface-3)" }
+    : ({ "--score-fill": TONE_FILL[tone as Exclude<ScoreTone, "pending">] } as CSSProperties);
   const ringStyle = {
     "--val": pending ? 0 : value,
     "--size": `${size}px`,
-    ...(pending ? { background: "var(--surface-3)" } : {}),
+    ...toneStyle,
   } as CSSProperties;
   return (
     <div className="hs-score__ring" style={ringStyle}>
