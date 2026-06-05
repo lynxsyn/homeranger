@@ -37,13 +37,22 @@ describe("classifyMailboxType", () => {
 });
 
 describe("agentWebsite", () => {
-  it("prefers the provider's scraped website URL when present", () => {
+  it("prefers the provider's scraped website URL when present (http(s) kept verbatim)", () => {
     expect(
       agentWebsite(
         "info@conwy-estates.co.uk",
         "https://conwy-estates.co.uk/contact",
       ),
     ).toBe("https://conwy-estates.co.uk/contact");
+    expect(agentWebsite("info@a.co.uk", "http://a.co.uk")).toBe(
+      "http://a.co.uk",
+    );
+  });
+
+  it("prepends https:// to a protocol-less scraped URL so it is an absolute link", () => {
+    expect(agentWebsite("info@conwy-estates.co.uk", "conwy-estates.co.uk")).toBe(
+      "https://conwy-estates.co.uk",
+    );
   });
 
   it("derives https://<domain> from the email when no URL is scraped", () => {

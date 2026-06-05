@@ -93,7 +93,10 @@ export function classifyMailboxType(email: string): MailboxType {
 export function agentWebsite(email: string, websiteUrl?: string): string | null {
   const scraped = websiteUrl?.trim();
   if (scraped) {
-    return scraped;
+    // A scraped URL may arrive without a protocol ("agency.co.uk"); prepend
+    // https:// so it renders as an absolute external link, not a path relative
+    // to the SPA origin. An explicit http(s):// prefix is kept verbatim.
+    return /^https?:\/\//i.test(scraped) ? scraped : `https://${scraped}`;
   }
   const domain = emailDomain(email);
   return domain ? `https://${domain}` : null;

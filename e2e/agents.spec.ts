@@ -97,12 +97,14 @@ async function seedRemovableAgent(): Promise<void> {
   await withClient(async (client) => {
     await client.query(
       `INSERT INTO "Agent"
-         (id, email, "agencyName", "mailboxType", "optedOut", "coveredOutcodes",
-          "lastContactedAt", "updatedAt")
-       VALUES (gen_random_uuid(), $1, $2, 'corporate_subscriber'::"MailboxType",
+         (id, email, "agencyName", website, "mailboxType", "optedOut",
+          "coveredOutcodes", "lastContactedAt", "updatedAt")
+       VALUES (gen_random_uuid(), $1, $2, 'https://agency.test',
+               'corporate_subscriber'::"MailboxType",
                false, ARRAY[$3]::text[], now(), now())
        ON CONFLICT (email) DO UPDATE
          SET "agencyName" = EXCLUDED."agencyName",
+             website = EXCLUDED.website,
              "coveredOutcodes" = EXCLUDED."coveredOutcodes",
              "lastContactedAt" = EXCLUDED."lastContactedAt"`,
       [REMOVE_EMAIL, REMOVE_AGENCY, REMOVE_OUTCODE],
