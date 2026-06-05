@@ -5,6 +5,29 @@
  * outcodes and extracts the MINIMAL fields (address + postcode + price +
  * source URL) homeranger needs to dedup + link out.
  *
+ * REGION-TARGETING MODEL (operator-confirmed against the live sites): generic web
+ * search does NOT surface listing detail URLs — it returns each site's region
+ * INDEX / HUB page. So instead of searching, we CONSTRUCT each site's region index
+ * URL DETERMINISTICALLY from a small site-taxonomy map (siteRegionIndexUrls), then
+ * hop to the listings. The two sites diverge:
+ *
+ *   - uklandandfarms: region index = /rural-property-for-sale/<region>/<area>/
+ *     (e.g. North Wales / Conwy / LL2x-LL3x → wales/north-wales). The index lists
+ *     TOWN-level locations but NOT the full postcode, so we scrape the index
+ *     (markdown) → extractListingLinks (harvest detail URLs) → scrape each detail
+ *     page for the full postcode + price → keep only the target outcodes. Detail
+ *     fetches honour the per-REQUEST Crawl-delay + the LISTING_SCRAPE_LIMIT cap.
+ *   - auctionhouse: regional hub = /<room> (e.g. Wales → /wales). The hub lists
+ *     CURRENT lots WITH a full address + postcode AND the lot URL inline, so we
+ *     scrape the hub ONCE and parse ScrapedListings STRAIGHT out of the markdown
+ *     (parseAuctionHubListings) — NO per-lot detail scrape (cheaper, the data is
+ *     right there) — then keep only the target outcodes.
+ *
+ * An unmapped region resolves to [] index URLs → a clean empty scrape (never a
+ * wrong-region scrape). The region-targeting + parsing LOGIC lives in the PURE,
+ * UNIT-TESTED listing-search.ts; this file is the thin network shell around it
+ * (mirrors the agent-discovery adapter + discovery-queries.ts split).
+ *
  * DORMANT by default — two gates must BOTH be set before this provider does any
  * network I/O:
  *   - FIRECRAWL_API_KEY (the vendor key), and
@@ -17,17 +40,14 @@
  *
  * NB: this is integration-/operator-proven (like RealResendHydrator + the
  * Firecrawl agent-discovery adapter), NOT unit-tested — coverage-excluded as
- * network I/O. VERIFY each site's request shape, robots.txt, and Crawl-delay
- * against the LIVE site when first enabling it — the discovery/extraction below
- * is a best-effort scaffold:
- *   - uklandandfarms: robots.txt disallows only /customers/ + /agent/; the
- *     sitemap /propertylink.xml lists /search/detail.aspx?PropertyRef=<id> URLs.
- *     We scrape candidate detail pages (markdown) and extract address/postcode/
- *     price, keeping only those whose derived outcode is in input.outcodes.
- *   - auctionhouse: robots.txt disallows /search-results + /print-lot/ and sets
- *     Crawl-delay: 5 — reach lots via the allowed regional-room pages and follow
- *     to /lot/... pages; SPACE requests ~5s. Extract address/postcode/guide
- *     price + the lot URL.
+ * network I/O. VERIFY each site's taxonomy paths, robots.txt, and Crawl-delay
+ * against the LIVE site BEFORE enabling it. Verified Firecrawl shape (context7,
+ * 2026-06-05), same as the agent-discovery adapter:
+ *   - /v1/scrape → POST {url,formats:["markdown"]} → {data:{markdown,metadata}}.
+ * robots: auctionhouse disallows /search-results + /print-lot/ and sets
+ * Crawl-delay: 5 — we never touch those paths (isListingUrl + the hub-only scrape
+ * enforce it) and SPACE uklandandfarms detail fetches by the per-site delay;
+ * uklandandfarms disallows only /customers/ + /agent/ (isListingUrl enforces it).
  * Minimal extraction ONLY (no images/description/metadata) per
  * docs/compliance/listing-sourcing-basis.md.
  */
@@ -37,6 +57,11 @@ import {
   type ScrapeListingsInput,
   type ScrapedListing,
 } from "./listing-scrape.provider.js";
+import {
+  extractListingLinks,
+  parseAuctionHubListings,
+  siteRegionIndexUrls,
+} from "./listing-search.js";
 
 /** A full UK postcode anywhere in the page text. */
 const POSTCODE_RE = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
@@ -55,10 +80,21 @@ const CRAWL_DELAY_MS: Record<ListingScrapeSite, number> = {
   auctionhouse: 5_000,
 };
 
+/** Default cap on region INDEX pages expanded per scrape (bounds spend). */
+const DEFAULT_MAX_LISTING_INDEX = 2;
+
+/** Parse a positive-int env var with a default + a >0 clamp. */
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export class FirecrawlListingScrapeProvider implements ListingScrapeProvider {
   private readonly apiKey: string | undefined;
   private readonly baseUrl: string;
   private readonly limit: number;
+  /** Max region INDEX pages to expand per scrape (uklandandfarms; bounds spend). */
+  private readonly maxIndex: number;
   private readonly enabledSites: ReadonlySet<ListingScrapeSite>;
 
   // Construction-safe: does NOT throw when FIRECRAWL_API_KEY / LISTING_SCRAPE_SITES
@@ -71,11 +107,11 @@ export class FirecrawlListingScrapeProvider implements ListingScrapeProvider {
   ) {
     this.apiKey = apiKey?.trim() || undefined;
     this.baseUrl = baseUrl.replace(/\/+$/, "");
-    const parsedLimit = Number.parseInt(
-      process.env.LISTING_SCRAPE_LIMIT ?? "25",
-      10,
+    this.limit = parsePositiveInt(process.env.LISTING_SCRAPE_LIMIT, 25);
+    this.maxIndex = parsePositiveInt(
+      process.env.LISTING_SCRAPE_MAX_INDEX,
+      DEFAULT_MAX_LISTING_INDEX,
     );
-    this.limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 25;
     this.enabledSites = parseEnabledSites(process.env.LISTING_SCRAPE_SITES);
   }
 
@@ -104,24 +140,144 @@ export class FirecrawlListingScrapeProvider implements ListingScrapeProvider {
       return [];
     }
 
-    const candidateUrls = await this.discoverCandidateUrls(input);
-    const results: ScrapedListing[] = [];
-    const delayMs = CRAWL_DELAY_MS[input.site];
-    let requestsMade = 0;
+    // Construct the region index/hub URLs deterministically; an unmapped region
+    // yields [] → a clean empty scrape (no wrong-region work).
+    const indexUrls = siteRegionIndexUrls(
+      input.site,
+      input.regionLabel ?? "",
+      input.outcodes,
+    );
+    if (indexUrls.length === 0) {
+      console.warn(
+        JSON.stringify({
+          type: "warn",
+          scope: "listing-scrape.region.unmapped",
+          site: input.site,
+          regionLabel: input.regionLabel ?? "",
+          message: "no region-index URL mapped — add a REGION_TAXONOMY row",
+        }),
+      );
+      return [];
+    }
 
-    for (const url of candidateUrls) {
+    return input.site === "auctionhouse"
+      ? this.scrapeAuctionHub(indexUrls, wanted)
+      : this.scrapeUklfIndexes(indexUrls, wanted);
+  }
+
+  /**
+   * auctionhouse: scrape each regional HUB ONCE and parse lots straight out of the
+   * markdown (full address + postcode + lot URL are inline) — no per-lot detail
+   * scrape. Best-effort per hub (a failed hub scrape logs + yields nothing for
+   * that hub, never aborts). Crawl-delay between hub requests; outcode-filter +
+   * cap at LISTING_SCRAPE_LIMIT.
+   */
+  private async scrapeAuctionHub(
+    hubUrls: string[],
+    wanted: ReadonlySet<string>,
+  ): Promise<ScrapedListing[]> {
+    const results: ScrapedListing[] = [];
+    const seenExternalIds = new Set<string>();
+    const delayMs = CRAWL_DELAY_MS.auctionhouse;
+    let requestsMade = 0;
+    for (const hubUrl of hubUrls) {
       if (results.length >= this.limit) {
         break;
       }
-      // Respect the site's Crawl-delay before EVERY detail-page fetch (the
-      // robots.txt Crawl-delay is per-REQUEST, not per-kept-result): pages the
-      // outcode filter later prunes still count as a request, so key the delay
-      // on requests issued, never on results accepted.
       if (delayMs > 0 && requestsMade > 0) {
         await sleep(delayMs);
       }
       requestsMade += 1;
-      const scraped = await this.scrapeDetail(url, input.site);
+      let markdown: string;
+      try {
+        markdown = await this.scrapePageMarkdown(hubUrl);
+      } catch (error) {
+        warnScrapeFailure("listing-scrape.hub.failed", "auctionhouse", hubUrl, error);
+        continue;
+      }
+      for (const lot of parseAuctionHubListings(markdown)) {
+        if (results.length >= this.limit) {
+          break;
+        }
+        if (seenExternalIds.has(lot.externalId)) {
+          continue;
+        }
+        const outcode = outcodeOf(lot.postcode);
+        if (!outcode || !wanted.has(outcode)) {
+          continue; // outside the target patch
+        }
+        seenExternalIds.add(lot.externalId);
+        results.push({
+          externalId: lot.externalId,
+          sourceUrl: lot.sourceUrl,
+          addressRaw: lot.addressRaw,
+          postcode: lot.postcode,
+        });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * uklandandfarms: scrape up to maxIndex region INDEX pages (markdown), harvest
+   * the detail URLs (extractListingLinks), then scrape each detail page for the
+   * full postcode + price and keep only the target outcodes. Best-effort per index
+   * page (a failed index scrape logs + skips, never aborts). Crawl-delay before
+   * every network REQUEST (index + detail); cap at LISTING_SCRAPE_LIMIT.
+   */
+  private async scrapeUklfIndexes(
+    indexUrls: string[],
+    wanted: ReadonlySet<string>,
+  ): Promise<ScrapedListing[]> {
+    const delayMs = CRAWL_DELAY_MS.uklandandfarms;
+    let requestsMade = 0;
+
+    // 1. Harvest detail URLs from up to maxIndex index pages.
+    const detailUrls = new Set<string>();
+    let indexFetches = 0;
+    for (const indexUrl of indexUrls) {
+      if (detailUrls.size >= this.limit || indexFetches >= this.maxIndex) {
+        break;
+      }
+      if (delayMs > 0 && requestsMade > 0) {
+        await sleep(delayMs);
+      }
+      requestsMade += 1;
+      indexFetches += 1;
+      let markdown: string;
+      try {
+        markdown = await this.scrapePageMarkdown(indexUrl);
+      } catch (error) {
+        warnScrapeFailure(
+          "listing-scrape.index.failed",
+          "uklandandfarms",
+          indexUrl,
+          error,
+        );
+        continue;
+      }
+      for (const detailUrl of extractListingLinks("uklandandfarms", markdown)) {
+        detailUrls.add(detailUrl);
+        if (detailUrls.size >= this.limit) {
+          break;
+        }
+      }
+    }
+
+    // 2. Scrape each detail page; keep only the target outcodes.
+    const results: ScrapedListing[] = [];
+    for (const url of detailUrls) {
+      if (results.length >= this.limit) {
+        break;
+      }
+      // Crawl-delay before EVERY request (the robots Crawl-delay is per-REQUEST,
+      // not per-kept-result): a detail the outcode filter later prunes still
+      // counts as a request.
+      if (delayMs > 0 && requestsMade > 0) {
+        await sleep(delayMs);
+      }
+      requestsMade += 1;
+      const scraped = await this.scrapeDetail(url, "uklandandfarms");
       if (!scraped) {
         continue;
       }
@@ -135,46 +291,24 @@ export class FirecrawlListingScrapeProvider implements ListingScrapeProvider {
   }
 
   /**
-   * Resolve the candidate listing-detail URLs to scrape for a site. Best-effort
-   * — VERIFY the real sitemap/room-page shapes against the live site before
-   * enabling. Returns at most `limit` URLs (the per-detail outcode filter prunes
-   * further).
+   * Firecrawl-scrape ONE page and return its raw markdown so the caller can
+   * harvest detail/lot links or parse hub rows. HTTP errors map to the retryable
+   * flag.
    */
-  private async discoverCandidateUrls(
-    input: ScrapeListingsInput,
-  ): Promise<string[]> {
-    if (input.site === "uklandandfarms") {
-      // The sitemap lists /search/detail.aspx?PropertyRef=<id> detail URLs. The
-      // PropertyRef token is bounded to safe ref chars (no `/`, so a malicious
-      // sitemap can't smuggle a path-traversal ref), and every absolutised URL
-      // is re-validated to the exact site origin before we hand it to Firecrawl.
-      const base = "https://www.uklandandfarms.co.uk";
-      const sitemap = await this.fetchText(`${base}/propertylink.xml`);
-      return boundToOrigins(
-        extractUrls(
-          sitemap,
-          /\/search\/detail\.aspx\?PropertyRef=[\w.%=_-]+/gi,
-        ).map((u) => absolutise(u, base)),
-        [base],
-      ).slice(0, this.limit);
+  private async scrapePageMarkdown(url: string): Promise<string> {
+    const response = await fetch(`${this.baseUrl}/v1/scrape`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({ url, formats: ["markdown"] }),
+    });
+    if (!response.ok) {
+      throwOnHttp(response.status, `Firecrawl scrape failed: ${response.status}`);
     }
-    // auctionhouse: reach lots via the allowed regional-room pages (NEVER
-    // /search-results or /print-lot/, which robots disallows), then follow to
-    // /lot/... pages on the online./wales. subdomains. The regex binds to those
-    // two subdomains + a word-char path only (no query string), so an embedded
-    // open-redirect lot URL (`/lot/redirect/1?next=https://evil`) can't carry an
-    // off-domain target into Firecrawl; boundToOrigins is the belt-and-braces.
-    const room = await this.fetchText("https://www.auctionhouse.co.uk/");
-    return boundToOrigins(
-      extractUrls(
-        room,
-        /https?:\/\/(?:online|wales)\.auctionhouse\.co\.uk\/lot\/[\w/-]+/gi,
-      ),
-      [
-        "https://online.auctionhouse.co.uk",
-        "https://wales.auctionhouse.co.uk",
-      ],
-    ).slice(0, this.limit);
+    const body = (await response.json()) as { data?: FirecrawlScrapeResult };
+    return body.data?.markdown ?? "";
   }
 
   /**
@@ -224,15 +358,24 @@ export class FirecrawlListingScrapeProvider implements ListingScrapeProvider {
         : {}),
     };
   }
+}
 
-  /** Plain GET of a sitemap/room page (NOT through Firecrawl — raw HTML/XML). */
-  private async fetchText(url: string): Promise<string> {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throwOnHttp(response.status, `fetch ${url} failed: ${response.status}`);
-    }
-    return response.text();
-  }
+/** Structured warn-log for a best-effort scrape failure (never throws). */
+function warnScrapeFailure(
+  scope: string,
+  site: ListingScrapeSite,
+  url: string,
+  error: unknown,
+): void {
+  console.warn(
+    JSON.stringify({
+      type: "warn",
+      scope,
+      site,
+      url,
+      message: error instanceof Error ? error.message : String(error),
+    }),
+  );
 }
 
 /** Map an HTTP status to a thrown error with the retryable flag set correctly. */
@@ -253,37 +396,6 @@ function parseEnabledSites(raw: string | undefined): ReadonlySet<ListingScrapeSi
     }
   }
   return enabled;
-}
-
-function extractUrls(text: string, re: RegExp): string[] {
-  const seen = new Set<string>();
-  for (const match of text.matchAll(re)) {
-    seen.add(match[0]);
-  }
-  return [...seen];
-}
-
-/**
- * Keep only URLs whose parsed origin is in `allowed` — the SSRF backstop for the
- * URL sets we extract from remote (untrusted) sitemaps/room pages before handing
- * them to Firecrawl. An unparseable or off-origin URL is dropped.
- */
-function boundToOrigins(urls: string[], allowed: string[]): string[] {
-  const ok = new Set(allowed);
-  return urls.filter((u) => {
-    try {
-      return ok.has(new URL(u).origin);
-    } catch {
-      return false;
-    }
-  });
-}
-
-function absolutise(url: string, base: string): string {
-  if (/^https?:\/\//i.test(url)) {
-    return url;
-  }
-  return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
 /** The first non-empty markdown line, with leading markdown noise stripped. */
