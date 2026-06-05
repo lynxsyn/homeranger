@@ -72,6 +72,7 @@ export interface ListingFilter {
   maxPricePence?: number;
   minBedrooms?: number;
   listingStatus?: ListingStatus;
+  primarySource?: ListingSource[]; // IN-list, multi-capable (wire passes a scalar)
   isPreMarket?: boolean;
 }
 
@@ -151,6 +152,9 @@ function buildWhere(filter?: ListingFilter): Prisma.ListingWhereInput {
   if (filter.listingStatus !== undefined) {
     where.listingStatus = filter.listingStatus;
   }
+  if (filter.primarySource && filter.primarySource.length > 0) {
+    where.primarySource = { in: filter.primarySource };
+  }
   if (filter.isPreMarket !== undefined) {
     where.isPreMarket = filter.isPreMarket;
   }
@@ -185,6 +189,11 @@ function buildRawFilterFragments(filter?: ListingFilter): Prisma.Sql[] {
   if (filter.listingStatus !== undefined) {
     fragments.push(
       Prisma.sql`"listingStatus" = ${filter.listingStatus}::"ListingStatus"`,
+    );
+  }
+  if (filter.primarySource && filter.primarySource.length > 0) {
+    fragments.push(
+      Prisma.sql`"primarySource" = ANY(ARRAY[${Prisma.join(filter.primarySource)}]::"ListingSource"[])`,
     );
   }
   if (filter.isPreMarket !== undefined) {
@@ -267,6 +276,11 @@ function buildScoreFilterFragments(filter?: ListingFilter): Prisma.Sql[] {
   if (filter.listingStatus !== undefined) {
     fragments.push(
       Prisma.sql`l."listingStatus" = ${filter.listingStatus}::"ListingStatus"`,
+    );
+  }
+  if (filter.primarySource && filter.primarySource.length > 0) {
+    fragments.push(
+      Prisma.sql`l."primarySource" = ANY(ARRAY[${Prisma.join(filter.primarySource)}]::"ListingSource"[])`,
     );
   }
   if (filter.isPreMarket !== undefined) {

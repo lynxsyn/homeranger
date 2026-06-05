@@ -40,6 +40,21 @@ describe("listingFilterSchema", () => {
   it("rejects unknown keys (strict)", () => {
     expect(listingFilterSchema.safeParse({ nope: 1 }).success).toBe(false);
   });
+
+  it("accepts a valid scrape source", () => {
+    expect(listingFilterSchema.parse({ source: "auctionhouse" }).source).toBe(
+      "auctionhouse",
+    );
+    expect(listingFilterSchema.parse({ source: "uklandandfarms" }).source).toBe(
+      "uklandandfarms",
+    );
+  });
+
+  it("rejects an unknown source value", () => {
+    expect(listingFilterSchema.safeParse({ source: "nope" }).success).toBe(
+      false,
+    );
+  });
 });
 
 describe("listListingsInputSchema", () => {

@@ -27,9 +27,11 @@ import { ListingsPage } from "./pages/ListingsPage";
 import { SearchesPage } from "./pages/SearchesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AgentsPage } from "./pages/AgentsPage";
+import { SourcesPage } from "./pages/SourcesPage";
 import { SignInPage } from "./pages/SignInPage";
 import type { SearchFilter } from "./pages/SearchesPage";
 import type { AgentFilter } from "./pages/AgentsPage";
+import type { SourceFilter } from "./pages/SourcesPage";
 import { Button, Logo } from "./components/ui";
 import { UserMenu } from "./components/UserMenu";
 import { trpc } from "./lib/trpc";
@@ -60,6 +62,7 @@ const TABS = [
   { label: "Listings", to: "/listings", testid: "nav-listings" },
   { label: "Searches", to: "/searches", testid: "nav-searches" },
   { label: "Agents", to: "/agents", testid: "nav-agents", operator: true },
+  { label: "Sources", to: "/sources", testid: "nav-sources" },
 ] as const;
 
 function AuthedApp() {
@@ -69,6 +72,9 @@ function AuthedApp() {
   // tab navigation (or clicking the logo) clears BOTH.
   const [searchFilter, setSearchFilter] = useState<SearchFilter | null>(null);
   const [agentFilter, setAgentFilter] = useState<AgentFilter | null>(null);
+  // A source's "View N lots" drill-in pushes the source's enum into the Listings
+  // view (scoping Listing.primarySource) + shows a banner; cleared on any tab nav.
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter | null>(null);
   // The "New search" CTA lives in the topbar but the editor lives on the
   // Searches page; this flag carries the intent across the navigation.
   const [pendingNew, setPendingNew] = useState(false);
@@ -95,6 +101,7 @@ function AuthedApp() {
   function goTab(to: string) {
     setSearchFilter(null);
     setAgentFilter(null);
+    setSourceFilter(null);
     navigate(to);
   }
 
@@ -106,6 +113,13 @@ function AuthedApp() {
   function viewAgents(filter: AgentFilter) {
     setAgentFilter(filter);
     navigate("/agents");
+  }
+
+  function viewSourceLots(filter: SourceFilter) {
+    setSearchFilter(null);
+    setAgentFilter(null);
+    setSourceFilter(filter);
+    navigate("/listings");
   }
 
   return (
@@ -167,6 +181,8 @@ function AuthedApp() {
             <ListingsPage
               searchFilter={searchFilter}
               onClearSearchFilter={() => setSearchFilter(null)}
+              sourceFilter={sourceFilter}
+              onClearSourceFilter={() => setSourceFilter(null)}
             />
           }
         />
@@ -189,6 +205,10 @@ function AuthedApp() {
               onClearFilter={() => setAgentFilter(null)}
             />
           }
+        />
+        <Route
+          path="/sources"
+          element={<SourcesPage onViewLots={viewSourceLots} />}
         />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>

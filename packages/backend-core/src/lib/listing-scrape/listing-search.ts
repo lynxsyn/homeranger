@@ -103,6 +103,28 @@ export function siteRegionIndexUrls(
 }
 
 /**
+ * The coverage a site is CONFIGURED to crawl, derived from REGION_TAXONOMY: the
+ * union of outcode prefixes + region labels across every taxonomy row that maps
+ * at least one index/hub URL for this site. Pure + UNIT-tested. Today both sites
+ * cover the single North-Wales row; grows automatically as rows are added.
+ * `outcodes` = the configured PREFIXES ("LL2","LL3"); `regionLabels` = lower-cased aliases.
+ */
+export function siteCoverage(
+  site: ListingScrapeSite,
+): { outcodes: string[]; regionLabels: string[] } {
+  const outcodes = new Set<string>();
+  const labels = new Set<string>();
+  for (const row of REGION_TAXONOMY) {
+    if (row.urls[site].length === 0) {
+      continue; // not configured to crawl this region for this site
+    }
+    for (const p of row.outcodePrefixes) outcodes.add(p);
+    for (const a of row.regionAliases) labels.add(a);
+  }
+  return { outcodes: [...outcodes], regionLabels: [...labels] };
+}
+
+/**
  * TRUE only for a real listing DETAIL URL on the correct host(s), robots-safe.
  * Uses `new URL()` parsing (never a loose regex); an unparseable URL is rejected.
  *

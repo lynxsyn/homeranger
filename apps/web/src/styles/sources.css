@@ -1,0 +1,143 @@
+/* HomeRanger — Sources screen styles. The read-only sibling of agents.css: the
+   metrics strip (.ag-metrics / .ag-metric*), the kind-filter chips (.statusfilter
+   / .sf-chip), the coverage cell (.cov-cell / .cov-static / .cov-static__town),
+   the outcode chips (.sf-outcodes / .sf-oc), the empty/foot-note/tablewrap layout,
+   and the source drill-in banner (.search-filter / .sf-eyebrow / .sf-name) are all
+   reused from agents.css / searches.css / components.css. Only the Sources-specific
+   classes live here (source mark, source cell, lots-link, table geometry, .sf-visit).
+
+   Loaded after agents.css via an @import in src/index.css. */
+
+/* ---- Sources: table geometry --------------------------------------------
+   Fixed column widths so switching the kind filter (All / Auction houses /
+   Land & farm) never reflows the table. The Source column carries no width and
+   absorbs the remaining space; the responsive rule drops Coverage on narrow
+   screens (mirrors agents). */
+.sources-table {
+  table-layout: fixed;
+}
+.sources-table .col-cov {
+  width: 270px;
+}
+.sources-table .col-lots {
+  width: 132px;
+}
+.sources-table .col-seen {
+  width: 132px;
+}
+@media (max-width: 760px) {
+  .sources-table .col-cov {
+    display: none;
+  }
+}
+
+/* ---- Sources: the source cell (mark + name + site link) ------------------ */
+.cell-source {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.cell-source .at {
+  min-width: 0;
+}
+.cell-source b {
+  font-weight: var(--fw-semibold);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.src-site {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: var(--fs-caption);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 30ch;
+  transition: color var(--dur-fast) var(--ease);
+}
+.src-site:hover {
+  color: var(--accent);
+}
+.src-site svg {
+  flex-shrink: 0;
+}
+
+/* ---- Sources: the source mark (gold gavel / green trees) -----------------
+   Mirrors the 38×38 .agent-mark monogram grid, swapping the initials for a
+   kind glyph and the accent fill for the auction (gold) / land (green) tint. */
+.src-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: var(--r-md);
+}
+.src-mark--auction {
+  background: var(--premarket-soft);
+  color: var(--premarket);
+}
+.src-mark--land {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+/* ---- Sources: the "View N lots" drill-out link --------------------------
+   An interactive variant of agents' .homes-cell: a borderless button that reads
+   like a link, right-aligned in the numeric column. */
+.lots-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease);
+}
+.lots-link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+.lots-link svg {
+  flex-shrink: 0;
+  color: var(--ink-3);
+}
+.lots-link:hover svg {
+  color: var(--accent);
+}
+
+/* ---- Sources: the Listings drill-in banner link-out ---------------------
+   The source banner reuses .search-filter / .sf-eyebrow / .sf-name; this is the
+   one new piece — the domain link-out beside the source name. */
+.sf-visit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--accent-ink);
+  transition: color var(--dur-fast) var(--ease);
+}
+.sf-visit:hover {
+  color: var(--accent);
+}
+.sf-visit svg {
+  flex-shrink: 0;
+}

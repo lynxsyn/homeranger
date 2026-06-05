@@ -33,3 +33,7 @@ export * from "./outreach.js";
 
 // Agents list/stats input contracts (drives agentsRouter list + stats).
 export * from "./agents.js";
+
+// Source catalogue (SOURCE_CATALOGUE + SOURCE_NAMES) shared by the Sources
+// table (BE router) and the Listings From-column (FE).
+export * from "./sources.js";

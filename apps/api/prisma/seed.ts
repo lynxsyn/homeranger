@@ -12,6 +12,7 @@
  */
 import {
   listingRepository,
+  listingSourceRecordRepository,
   searchProfileRepository,
 } from "@homeranger/backend-core";
 import { prisma } from "@homeranger/backend-core/lib/prisma";
@@ -25,7 +26,7 @@ async function main(): Promise<void> {
   await prisma.savedListing.deleteMany({ where: { userId: null } });
 
   for (const fixture of LISTING_FIXTURES) {
-    await listingRepository.upsertByAddress({
+    const listing = await listingRepository.upsertByAddress({
       addressNormalized: fixture.addressNormalized,
       postcode: fixture.postcode,
       outcode: fixture.outcode,
@@ -39,6 +40,25 @@ async function main(): Promise<void> {
       listingUrl: fixture.listingUrl,
       primarySource: fixture.primarySource,
     });
+
+    // Scraped fixtures (auctionhouse / uklandandfarms) also carry a
+    // ListingSourceRecord — the provenance row the Sources tab derives its
+    // per-source telemetry from (lotsFound = COUNT, latest lot = MAX(observedAt)).
+    // Idempotent on the composite-unique (sourceType, externalId); re-running the
+    // seed refreshes `observedAt` rather than duplicating. agent_email / manual
+    // fixtures have no externalId → no source record.
+    if (
+      fixture.externalId &&
+      (fixture.primarySource === "auctionhouse" ||
+        fixture.primarySource === "uklandandfarms")
+    ) {
+      await listingSourceRecordRepository.upsert({
+        listingId: listing.id,
+        sourceType: fixture.primarySource,
+        externalId: fixture.externalId,
+        sourceUrl: fixture.listingUrl,
+      });
+    }
   }
 
   // Seed the SearchProfile's buyer identity (signs outreach). Its preference
@@ -157,8 +177,15 @@ async function main(): Promise<void> {
     }
   }
 
+  const scrapedLots = LISTING_FIXTURES.filter(
+    (f) =>
+      f.primarySource === "auctionhouse" ||
+      f.primarySource === "uklandandfarms",
+  ).length;
   console.log(
-    `Seeded ${LISTING_FIXTURES.length} listing fixtures + the search profile` +
+    `Seeded ${LISTING_FIXTURES.length} listing fixtures` +
+      ` (incl. ${scrapedLots} scraped lots w/ ListingSourceRecord)` +
+      ` + the search profile` +
       ` + 1 operator search (outcodes ${E2E_SEARCH_OUTCODES.join(", ")})` +
       ` + ${demoAgents.length} demo agents (outcodes ${DEMO_OUTCODES.join(", ")}).`,
   );

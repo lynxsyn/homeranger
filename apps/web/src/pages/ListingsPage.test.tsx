@@ -313,12 +313,42 @@ describe("ListingsPage status removal", () => {
 });
 
 describe("ListingsPage agent + beds/baths", () => {
-  it("renders the Agent column with the agency name", () => {
+  it("renders the From column with the agency name", () => {
     withData();
     render(<ListingsPage />);
-    expect(screen.getByRole("columnheader", { name: "Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "From" })).toBeInTheDocument();
     expect(screen.getAllByText("Acme Estates")).toHaveLength(2); // alpha + charlie
     expect(screen.getByText("Bravo Homes")).toBeInTheDocument(); // bravo
+  });
+
+  it("shows the source name in the From cell for a scraped lot", () => {
+    withData([
+      makeItem({
+        addressNormalized: "auction lot",
+        primarySource: "auctionhouse",
+        agency: null,
+        agentEmail: null,
+      }),
+    ]);
+    render(<ListingsPage />);
+    const row = screen.getByTestId("listing-row");
+    // Scraped lots resolve primarySource → SOURCE_NAMES, not the (null) agency.
+    expect(within(row).getByText("Auction House")).toBeInTheDocument();
+    expect(within(row).queryByText("—")).not.toBeInTheDocument();
+  });
+
+  it("shows the agency in the From cell for an agent_email row", () => {
+    withData([
+      makeItem({
+        addressNormalized: "agent home",
+        primarySource: "agent_email",
+        agency: "Foo Estates",
+      }),
+    ]);
+    render(<ListingsPage />);
+    const row = screen.getByTestId("listing-row");
+    // agent_email is not a crawled source → falls through to the agency.
+    expect(within(row).getByText("Foo Estates")).toBeInTheDocument();
   });
 
   it("falls back to an em-dash when an agency is missing", () => {
@@ -560,5 +590,44 @@ describe("ListingsPage dismiss + buckets", () => {
 
     selectBucket("dismissed");
     expect(renderedAddresses()).toEqual(["alpha road"]);
+  });
+});
+
+describe("ListingsPage source drill-in banner", () => {
+  const AUCTION_FILTER = {
+    id: "auctionhouse" as const,
+    name: "Auction House",
+    kind: "auction" as const,
+    domain: "auctionhouse.co.uk",
+  };
+
+  it("hides the source banner with no sourceFilter", () => {
+    withData();
+    render(<ListingsPage />);
+    expect(screen.queryByTestId("source-filter-banner")).not.toBeInTheDocument();
+  });
+
+  it("shows the source banner (name + host) and clears via onClearSourceFilter", () => {
+    const onClearSourceFilter = vi.fn();
+    withData();
+    render(
+      <ListingsPage
+        sourceFilter={AUCTION_FILTER}
+        onClearSourceFilter={onClearSourceFilter}
+      />,
+    );
+    const banner = screen.getByTestId("source-filter-banner");
+    expect(banner).toHaveTextContent("Auction House");
+    expect(banner).toHaveTextContent("auctionhouse.co.uk");
+    fireEvent.click(screen.getByTestId("source-filter-clear"));
+    expect(onClearSourceFilter).toHaveBeenCalledTimes(1);
+  });
+
+  it("scopes the list query to the source enum when a sourceFilter is set", () => {
+    withData();
+    render(<ListingsPage sourceFilter={AUCTION_FILTER} onClearSourceFilter={vi.fn()} />);
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ filter: { source: "auctionhouse" } }),
+    );
   });
 });
