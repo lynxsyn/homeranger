@@ -242,6 +242,16 @@ spec:
             # stays dormant until the operator adds the key, then activates with
             # no redeploy. Search launches query Firecrawl by the search's PLACE
             # NAME (v0.13.0), so real launches now find agents UK-wide.
+            # RECALL tunables (code defaults; set as env literals here to
+            # override — like DISCOVERY_SEARCH_LIMIT they are intentionally not
+            # wired by default). The provider fans out across DISCOVERY_MAX_QUERIES
+            # targeted searches (default 6, each capped at DISCOVERY_SEARCH_LIMIT,
+            # default 20) and recovers non-plaintext emails via structured
+            # contact-page extraction: DISCOVERY_CONTACT_EXTRACT (default on; set
+            # "0" to DISABLE the extra Firecrawl spend) over at most
+            # DISCOVERY_CONTACT_EXTRACT_MAX pages (default 25). Worst-case spend
+            # per discover:agents job = MAX_QUERIES searches + CONTACT_EXTRACT_MAX
+            # scrapes (default 6 + 25 = 31 Firecrawl calls).
             - name: FIRECRAWL_API_KEY
               valueFrom:
                 secretKeyRef:
