@@ -20,6 +20,15 @@ export interface DiscoveredAgent {
   email: string;
   agencyName: string;
   websiteUrl?: string;
+  /**
+   * Optional bounded page text/markdown from the source (the search-result
+   * snippet or the contact page), fed to the quality classifier so it judges on
+   * real page content rather than name+domain alone. Name+domain alone mis-flags
+   * a real agency whose page TITLE reads like a directory (the aslets.co.uk
+   * false positive). Bounded by boundedPageText() at the source; absent on the
+   * Fake and on any agent recovered without page content.
+   */
+  pageText?: string;
 }
 
 export interface AgentDiscoveryProvider {

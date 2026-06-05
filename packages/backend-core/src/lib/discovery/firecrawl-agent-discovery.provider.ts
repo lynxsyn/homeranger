@@ -55,6 +55,7 @@ import type {
 import {
   DEFAULT_MAX_QUERIES,
   agencyNameFrom,
+  boundedPageText,
   buildDiscoveryQueries,
   dedupeByEmail,
   extractEmails,
@@ -195,6 +196,9 @@ export class FirecrawlAgentDiscoveryProvider implements AgentDiscoveryProvider {
         continue;
       }
       const agencyName = agencyNameFrom(result);
+      // Bounded page snippet for the quality classifier (judge on content, not
+      // name+domain alone). Carried on every agent harvested from this page.
+      const pageText = boundedPageText(result.markdown ?? "");
       const emails = extractEmails(result.markdown ?? "").filter(
         isLikelyAgencyEmail,
       );
@@ -204,6 +208,7 @@ export class FirecrawlAgentDiscoveryProvider implements AgentDiscoveryProvider {
             email,
             agencyName,
             ...(result.url ? { websiteUrl: result.url } : {}),
+            ...(pageText ? { pageText } : {}),
           });
         }
       } else if (result.url) {
@@ -286,7 +291,9 @@ export class FirecrawlAgentDiscoveryProvider implements AgentDiscoveryProvider {
       },
       body: JSON.stringify({
         url,
-        formats: ["json"],
+        // "markdown" alongside "json" so the recovered agent carries page content
+        // for the quality classifier (no extra request — same scrape).
+        formats: ["json", "markdown"],
         jsonOptions: {
           prompt:
             "Extract the estate agency's name and its public business contact email address(es) from this page.",
@@ -305,7 +312,11 @@ export class FirecrawlAgentDiscoveryProvider implements AgentDiscoveryProvider {
       throwOnHttp(response.status, `Firecrawl extract failed: ${response.status}`);
     }
     const body = (await response.json()) as {
-      data?: { json?: ContactExtraction; metadata?: { title?: string } };
+      data?: {
+        json?: ContactExtraction;
+        markdown?: string;
+        metadata?: { title?: string };
+      };
     };
     const json = body.data?.json;
     if (!json) {
@@ -325,7 +336,13 @@ export class FirecrawlAgentDiscoveryProvider implements AgentDiscoveryProvider {
     const agencyName =
       json.agencyName?.trim() ||
       agencyNameFrom({ url, metadata: body.data?.metadata });
-    return emails.map((email) => ({ email, agencyName, websiteUrl: url }));
+    const pageText = boundedPageText(body.data?.markdown ?? "");
+    return emails.map((email) => ({
+      email,
+      agencyName,
+      websiteUrl: url,
+      ...(pageText ? { pageText } : {}),
+    }));
   }
 }
 

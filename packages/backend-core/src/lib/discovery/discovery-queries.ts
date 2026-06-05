@@ -29,6 +29,29 @@ const MAX_EMAIL_LENGTH = 254; // RFC 5321 practical address limit
 export const DEFAULT_MAX_QUERIES = 6;
 
 /**
+ * Max page-text length handed to the quality classifier. The first ~2k chars of
+ * a contact/search page (header, nav, "about", "estate agents in X") carry the
+ * classification signal; bounding here stops a 50KB markdown blob from bloating
+ * the classifier prompt (and from being hauled through dedup/the service).
+ */
+export const PAGE_TEXT_MAX = 2000;
+
+/**
+ * Bound a fetched page's markdown to a classifier-sized snippet: trim, then slice
+ * to `max` chars. Returns "" for empty/whitespace input so the caller can OMIT
+ * pageText entirely (an empty snippet adds no signal and just dilutes the prompt).
+ * Pure — the Firecrawl provider (coverage-excluded I/O shell) calls this so the
+ * bounding stays unit-tested here.
+ */
+export function boundedPageText(
+  text: string,
+  max: number = PAGE_TEXT_MAX,
+): string {
+  const trimmed = text.trim();
+  return trimmed.length <= max ? trimmed : trimmed.slice(0, max);
+}
+
+/**
  * Build the multi-query FAN-OUT for a region. The original single generic query
  * ranked toward big aggregators and missed small independents; fanning out across
  * "estate agents" / "letting agents" / "independent estate agents" / per-outcode

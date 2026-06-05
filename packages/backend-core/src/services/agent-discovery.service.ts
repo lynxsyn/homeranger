@@ -362,12 +362,15 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
       //    auto-delete must never fire without an explicitly enabled classifier.
       if (!killSwitchOn && this.classifier !== null) {
         // 3. LLM classify the survivors. Drop only a CONFIDENT non-agency verdict
-        //    (shouldAutoDelete); an uncertain verdict KEEPS the agent. The
-        //    DiscoveredAgent carries no page text, so pageText is omitted here.
+        //    (shouldAutoDelete); an uncertain verdict KEEPS the agent. Thread the
+        //    candidate's bounded pageText through so the classifier judges real
+        //    page content, not name+domain alone (name-only confidently mis-flags
+        //    a real agency whose page TITLE reads like a directory — aslets.co.uk).
         const verdict = await this.classifier.classify({
           agencyName: candidate.agencyName,
           email,
           ...(candidate.websiteUrl ? { websiteUrl: candidate.websiteUrl } : {}),
+          ...(candidate.pageText ? { pageText: candidate.pageText } : {}),
         });
         if (shouldAutoDelete(verdict)) {
           classifiedOut += 1;

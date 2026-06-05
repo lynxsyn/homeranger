@@ -559,6 +559,43 @@ describe("AgentDiscoveryService quality classify gate", () => {
     });
   });
 
+  it("threads the candidate's pageText into classify (judge on content, not name+domain)", async () => {
+    // The aslets.co.uk false-positive: a real letting agent whose page TITLE
+    // ("Letting Agents for Colwyn Bay...") reads like a directory was confidently
+    // mis-flagged when classifying name+domain alone. The page content must reach
+    // the classifier so it judges the real entity.
+    const h = makeHarness({
+      agents: [
+        {
+          email: "info@aslets.co.uk",
+          agencyName: "Aslets",
+          websiteUrl: "https://aslets.co.uk",
+          pageText: "Aslets The Letting Agents Ltd, a friendly Colwyn Bay agency.",
+        },
+      ],
+      classifyBy: () => keepVerdict(),
+    });
+    await h.service.discoverRegion("Conwy County");
+
+    expect(h.classify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "info@aslets.co.uk",
+        pageText: "Aslets The Letting Agents Ltd, a friendly Colwyn Bay agency.",
+      }),
+    );
+  });
+
+  it("omits pageText from classify when the candidate carries none", async () => {
+    const h = makeHarness({
+      agents: [{ email: "info@real-agency.co.uk", agencyName: "Real Agency" }],
+      classifyBy: () => keepVerdict(),
+    });
+    await h.service.discoverRegion("Conwy County");
+
+    const call = h.classify.mock.calls[0]?.[0] as { pageText?: string };
+    expect(call.pageText).toBeUndefined();
+  });
+
   it("drops a property-portal email deterministically WITHOUT calling classify", async () => {
     const h = makeHarness({
       agents: [
