@@ -15,6 +15,10 @@
    screens (mirrors agents). */
 .sources-table {
   table-layout: fixed;
+  /* Scroll floor (mirrors .agents-table): below this the shared .tablewrap
+     scrolls instead of collapsing the Source column. Guarded by
+     pages-visual.spec.ts. */
+  min-width: 640px;
 }
 .sources-table .col-cov {
   width: 270px;

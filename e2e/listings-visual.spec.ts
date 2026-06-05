@@ -1,38 +1,23 @@
 /**
- * Listings VISUAL / LAYOUT E2E — the guard that the prior "table overflow" fix
- * (#88) lacked. That fix asserted only DOCUMENT-level horizontal overflow, which
- * `.tablewrap { overflow: hidden }` makes trivially true: the table can spill its
- * own wrapper (clipped right edge) and collide its headers without ever widening
- * the document. The operator still saw a clipped, "MATCHFROM"-collided table.
+ * Listings VISUAL / LAYOUT E2E — the guard the prior "table overflow" fix (#88)
+ * lacked. That fix asserted only DOCUMENT-level horizontal overflow, which the
+ * `.tablewrap` (overflow:hidden, back then) made trivially true: the table could
+ * spill its own wrapper and collide its headers without widening the page. The
+ * operator still saw a clipped, "MATCHFROM"-collided table.
  *
- * This suite measures the table the way a human sees it, across the real spread
- * of laptop + monitor widths, in BOTH themes and BOTH views, and asserts the
- * intention-aware invariants:
+ * This suite measures the listings table + card view as a human sees them, across
+ * the real spread of phone → QHD widths, in BOTH themes, and asserts the shared
+ * layout invariants (see e2e/helpers/layout.ts): the page never scrolls
+ * horizontally at any width; at desktop widths the table fits its card (measured
+ * on the WRAPPER, the check #88 missed); no header collides; the action/source
+ * cells never clip; rows stay compact; the thumbnail stays a 46px tile. At phone
+ * widths the table may scroll inside its card — but the page never does.
  *
- *   1. the page never scrolls horizontally (document fits the viewport);
- *   2. the table never spills its own wrapper (table.scrollWidth ≤ clientWidth) —
- *      the check #88 missed, since overflow:hidden hides it from the document;
- *   3. no column HEADER overflows its cell (a too-narrow fixed column makes the
- *      uppercase label spill into the next column — the "MATCHFROM" collision);
- *   4. the fixed-control cells (the row-action buttons + the source icon) are
- *      never clipped — these hold fixed-size controls, not truncatable text;
- *   5. rows stay COMPACT (≤ the design's ~73px, never vertically stretched);
- *   6. the address thumbnail is always its 46px tile, never blown up by a real
- *      hotlinked source image (the seed carries real auction/land image URLs).
- *
- * Truncatable text cells (address, agency) are deliberately NOT asserted to fit:
- * ellipsis truncation legitimately leaves scrollWidth > clientWidth WITHIN the
- * cell, and that is clipped by the cell, not spilled past the table — invariant
- * #2 already proves the table as a whole holds.
- *
- * Auth: dev bypass (CF_ACCESS_* unset, VITE_E2E_AUTH_BYPASS=1) — see
- * playwright.config.ts. No login / storageState.
+ * Auth: dev bypass (see playwright.config.ts). No login / storageState.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { freezeAndReady, layoutViolations, useTheme } from "./helpers/layout";
 
-/** The real laptop + monitor widths a UK desktop operator actually uses, plus
- *  the responsive boundaries where columns drop out (≤900 hides From/Seen,
- *  ≤680 hides Beds). Each must render a clean, non-overflowing table. */
 const VIEWPORTS = [
   { w: 2560, h: 1440, label: "QHD monitor" },
   { w: 1920, h: 1080, label: "desktop monitor" },
@@ -42,155 +27,82 @@ const VIEWPORTS = [
   { w: 1280, h: 800, label: "small laptop" },
   { w: 1100, h: 800, label: "split-screen / small laptop" },
   { w: 1024, h: 768, label: "iPad landscape" },
-  { w: 912, h: 1000, label: "all-columns boundary (just above 900)" },
+  { w: 912, h: 1000, label: "all-columns boundary" },
   { w: 768, h: 1024, label: "tablet portrait" },
-  { w: 640, h: 900, label: "narrow / large phone" },
+  { w: 640, h: 900, label: "narrow / large phone landscape" },
 ] as const;
-
-const ROW_MAX_HEIGHT = 84; // design rows are 73px; allow a little cross-platform font slack
-const ROW_MIN_HEIGHT = 50; // a collapsed row would fall below this
-const THUMB_MAX = 48; // the address thumbnail tile is 46px (40px on ≤680)
-
-/** Kill transitions/animations so layout measurement is deterministic. */
-async function freezeMotion(page: Page) {
-  await page.addStyleTag({
-    content:
-      "*,*::before,*::after{transition:none!important;animation:none!important;}",
-  });
-}
-
-async function setTheme(page: Page, theme: "light" | "dark") {
-  await page.evaluate((t) => {
-    localStorage.setItem("hs-theme", t);
-    document.documentElement.setAttribute("data-theme", t);
-  }, theme);
-}
-
-/** Run all table-layout invariants in-page; returns a list of human-readable
- *  violations (empty = clean). Measuring in one evaluate keeps it fast + atomic. */
-async function tableViolations(page: Page): Promise<string[]> {
-  return page.evaluate(
-    ({ ROW_MAX_HEIGHT, ROW_MIN_HEIGHT, THUMB_MAX }) => {
-      const v: string[] = [];
-      const docEl = document.documentElement;
-      const docOver = docEl.scrollWidth - docEl.clientWidth;
-      if (docOver > 1) v.push(`document scrolls horizontally by ${docOver}px`);
-
-      const table = document.querySelector<HTMLElement>(
-        '[data-testid="listings-table"]',
-      );
-      if (!table) {
-        v.push("listings table not found");
-        return v;
-      }
-      const tableOver = table.scrollWidth - table.clientWidth;
-      if (tableOver > 1)
-        v.push(`table content spills its wrapper by ${tableOver}px (clipped right edge)`);
-
-      // No HEADER may overflow its column (headers do not truncate).
-      for (const th of Array.from(table.querySelectorAll<HTMLElement>("thead th"))) {
-        const over = th.scrollWidth - th.clientWidth;
-        if (th.clientWidth > 0 && over > 1) {
-          const label = (th.textContent || th.getAttribute("aria-label") || "?").trim();
-          v.push(`header "${label}" overflows its column by ${over}px (collision)`);
-        }
-      }
-
-      // Fixed-control cells (row actions + source icon) must never clip.
-      for (const sel of ["td.col-int", "td.col-src"]) {
-        for (const td of Array.from(table.querySelectorAll<HTMLElement>(sel))) {
-          const over = td.scrollWidth - td.clientWidth;
-          if (td.clientWidth > 0 && over > 1) {
-            v.push(`${sel} clips its control by ${over}px`);
-            break; // one example per column is enough
-          }
-        }
-      }
-
-      // Rows stay compact (never vertically stretched), thumbs stay tiles.
-      const rows = Array.from(
-        document.querySelectorAll<HTMLElement>('[data-testid="listing-row"]'),
-      );
-      for (const r of rows) {
-        const hgt = Math.round(r.getBoundingClientRect().height);
-        if (hgt > ROW_MAX_HEIGHT)
-          v.push(`row "${r.getAttribute("data-address")}" is ${hgt}px tall (> ${ROW_MAX_HEIGHT}px — stretched)`);
-        if (hgt < ROW_MIN_HEIGHT)
-          v.push(`row "${r.getAttribute("data-address")}" is only ${hgt}px tall (collapsed)`);
-      }
-      for (const thumb of Array.from(
-        document.querySelectorAll<HTMLElement>(".cell-addr .thumb"),
-      )) {
-        const rect = thumb.getBoundingClientRect();
-        if (rect.width > THUMB_MAX || rect.height > THUMB_MAX)
-          v.push(`thumbnail is ${Math.round(rect.width)}x${Math.round(rect.height)}px (> ${THUMB_MAX}px — blown up by a real image)`);
-      }
-      return v;
-    },
-    { ROW_MAX_HEIGHT, ROW_MIN_HEIGHT, THUMB_MAX },
-  );
-}
-
-/** In CARD view, no card may push the page wide or spill its column. */
-async function cardViolations(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const v: string[] = [];
-    const docEl = document.documentElement;
-    const docOver = docEl.scrollWidth - docEl.clientWidth;
-    if (docOver > 1) v.push(`document scrolls horizontally by ${docOver}px (cards)`);
-    const grid = document.querySelector<HTMLElement>(".grid-cards");
-    if (!grid) {
-      v.push("card grid not found");
-      return v;
-    }
-    const gridRight = grid.getBoundingClientRect().right;
-    for (const card of Array.from(
-      document.querySelectorAll<HTMLElement>(".grid-cards .pcard"),
-    )) {
-      const r = card.getBoundingClientRect();
-      if (r.right - gridRight > 1)
-        v.push(`a card spills the grid by ${Math.round(r.right - gridRight)}px`);
-      if (card.scrollWidth - card.clientWidth > 1)
-        v.push(`a card's content spills horizontally by ${card.scrollWidth - card.clientWidth}px`);
-    }
-    return v;
-  });
-}
-
-test.beforeEach(async ({ page }) => {
-  await page.goto("/listings");
-  await expect(page.getByTestId("listings-table")).toBeVisible();
-  await freezeMotion(page);
-});
+// Below ~640px is below this single-tenant desktop-operator tool's target range
+// (a mobile app is a documented non-goal). The app chrome (topbar nav) is not
+// phone-responsive, so the generic sweep stops at 640; the table's graceful
+// degradation at true phone widths is guarded by the dedicated test at the end.
 
 for (const vp of VIEWPORTS) {
   for (const theme of ["light", "dark"] as const) {
-    test(`table fits cleanly at ${vp.w}x${vp.h} (${vp.label}) — ${theme}`, async ({
+    test(`listings table fits cleanly at ${vp.w}x${vp.h} (${vp.label}) — ${theme}`, async ({
       page,
     }) => {
+      await useTheme(page, theme);
       await page.setViewportSize({ width: vp.w, height: vp.h });
-      await setTheme(page, theme);
-      await page.getByTestId("view-table").click();
+      await page.goto("/listings");
       await expect(page.getByTestId("listings-table")).toBeVisible();
-      const violations = await tableViolations(page);
+      await page.getByTestId("view-table").click();
+      await freezeAndReady(page);
+      const violations = await layoutViolations(page, vp.w);
       expect(violations, `Layout violations at ${vp.w}x${vp.h} (${theme}):\n  - ${violations.join("\n  - ")}`).toEqual([]);
     });
   }
 }
 
-// Cards are tall-by-design (4:3 photos); assert they never overflow horizontally
-// across the spread, in both themes.
-for (const vp of [VIEWPORTS[1], VIEWPORTS[3], VIEWPORTS[6], VIEWPORTS[9]]) {
+// The card grid (tall-by-design 4:3 photos) must never push the page wide either.
+for (const vp of [VIEWPORTS[1], VIEWPORTS[3], VIEWPORTS[6], VIEWPORTS[9], VIEWPORTS[10]]) {
   for (const theme of ["light", "dark"] as const) {
-    test(`cards fit cleanly at ${vp.w}x${vp.h} (${vp.label}) — ${theme}`, async ({
+    test(`listings cards fit cleanly at ${vp.w}x${vp.h} (${vp.label}) — ${theme}`, async ({
       page,
     }) => {
+      await useTheme(page, theme);
       await page.setViewportSize({ width: vp.w, height: vp.h });
-      await setTheme(page, theme);
+      await page.goto("/listings");
+      await expect(page.getByTestId("listings-table")).toBeVisible();
       await page.getByTestId("view-cards").click();
       await expect(page.locator(".grid-cards")).toBeVisible();
-      const violations = await cardViolations(page);
+      await freezeAndReady(page);
+      const violations = await layoutViolations(page, vp.w);
       expect(violations, `Card violations at ${vp.w}x${vp.h} (${theme}):\n  - ${violations.join("\n  - ")}`).toEqual([]);
     });
   }
 }
+
+// Phone widths are below the operator-tool target range, but the table must still
+// DEGRADE GRACEFULLY rather than reintroduce the clipped/collapsed bug: thanks to
+// the table min-width + .tablewrap{overflow-x:auto}, an over-narrow viewport
+// scrolls the table INSIDE its card (the address column keeps a usable width and
+// nothing is clipped), instead of squeezing the address column to 0 and clipping
+// it against the wrapper edge. (Guards the adversarial-review regression finding.)
+test("listings table degrades gracefully on a phone — scrolls in its card, never collapses/clips", async ({
+  page,
+}) => {
+  await useTheme(page, "light");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/listings");
+  await expect(page.getByTestId("listings-table")).toBeVisible();
+  await freezeAndReady(page);
+  const r = await page.evaluate(() => {
+    const table = document.querySelector<HTMLElement>('[data-testid="listings-table"]')!;
+    const wrap = table.closest<HTMLElement>(".tablewrap")!;
+    const addr = document.querySelector<HTMLElement>(".cell-addr b");
+    return {
+      cardScrolls: wrap.scrollWidth - wrap.clientWidth > 0,
+      addrWidth: addr ? Math.round(addr.getBoundingClientRect().width) : 0,
+      headerCollision: Array.from(table.querySelectorAll<HTMLElement>("thead th")).some(
+        (th) => th.clientWidth > 0 && th.scrollWidth - th.clientWidth > 1,
+      ),
+      controlClip: Array.from(
+        table.querySelectorAll<HTMLElement>("td.col-int, td.col-src"),
+      ).some((td) => td.clientWidth > 0 && td.scrollWidth - td.clientWidth > 1),
+    };
+  });
+  expect(r.cardScrolls, "the table card should absorb the overflow by scrolling (not clip the page)").toBe(true);
+  expect(r.addrWidth, "the address column must stay usable, never collapsed").toBeGreaterThan(80);
+  expect(r.headerCollision, "no header collision even when scrolling").toBe(false);
+  expect(r.controlClip, "no action/source control clipped even when scrolling").toBe(false);
+});

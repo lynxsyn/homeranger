@@ -41,12 +41,12 @@ export default defineConfig({
   timeout: 60_000,
   expect: {
     timeout: 10_000,
-    // Visual snapshots (e2e/listings-snapshots.spec.ts): a small tolerance
-    // absorbs cross-machine anti-aliasing; the spec freezes animations + masks
-    // dynamic regions (relative "Seen" times, hotlinked thumbnails). Baselines
-    // are committed for chromium-linux and generated in the pinned Playwright
-    // image (mcr.microsoft.com/playwright:v1.60.0-noble) so they match the
-    // ubuntu-latest CI runner — see the spec header for the regen command.
+    // Visual snapshots (e2e/pages-snapshots.spec.ts): a small tolerance absorbs
+    // cross-machine anti-aliasing; the spec freezes animations + masks dynamic
+    // regions (relative times, thumbnails, score rings). Baselines are committed
+    // for chromium-linux (the ubuntu-latest CI runner, generated in the pinned
+    // mcr.microsoft.com/playwright:v1.60.0-noble image) AND chromium-darwin
+    // (local) — see the spec header for the regen command.
     toHaveScreenshot: {
       maxDiffPixelRatio: 0.02,
       animations: "disabled",
