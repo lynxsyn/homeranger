@@ -1,10 +1,12 @@
 /**
- * ALL-PAGES VISUAL SNAPSHOTS — committed pixel baselines for every authenticated
- * page, the supplement to the deterministic invariants in *-visual.spec.ts. The
+ * VISUAL SNAPSHOTS — committed pixel baselines for the table/list surfaces of
+ * every authenticated page (listings table + cards, agents, sources, searches),
+ * the supplement to the deterministic invariants in *-visual.spec.ts. The
  * invariants prove the layout never overflows/stretches at any width; these prove
  * the pixels themselves don't drift (spacing, colour, alignment) from the
  * approved look — including the surfaces this PR fixed (the listings table and
- * the agents kebab column).
+ * the agents kebab column). (Settings is deterministically covered but not
+ * pixel-snapshotted — see the note by that page below.)
  *
  * Determinism:
  *   - theme is set via the pre-paint script BEFORE load (helpers/useTheme), and
@@ -99,7 +101,10 @@ test("searches — light", async ({ page }) => {
   });
 });
 
-test("settings — light", async ({ page }) => {
-  await open(page, "/settings", "light", '[data-testid="settings-page"]');
-  await expect(page.getByTestId("settings-page")).toHaveScreenshot("settings-light.png");
-});
+// NB: the Settings page is intentionally NOT pixel-snapshotted. Its rendered
+// HEIGHT depends on the operator's SearchProfile (name / phone / signature /
+// urgency line), which a sibling spec (account-menu) legitimately mutates +
+// resets, so a full-page baseline is data-dependent and brittle (the element's
+// size itself shifts, which masking cannot absorb). Settings layout / no-overflow
+// IS guarded — deterministically, across every width × theme — by
+// pages-visual.spec.ts.
