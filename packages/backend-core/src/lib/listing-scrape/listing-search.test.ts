@@ -13,6 +13,7 @@ import {
   isHotlinkableImageUrl,
   isListingUrl,
   parseAuctionHubListings,
+  parseUklfDetail,
   siteCoverage,
   siteRegionIndexUrls,
 } from "./listing-search.js";
@@ -543,5 +544,118 @@ describe("isHotlinkableImageUrl", () => {
         `https://www.uklandandfarms.co.uk/${"a".repeat(600)}.jpg`,
       ),
     ).toBe(false); // > 500 chars
+  });
+});
+
+describe("parseUklfDetail", () => {
+  // A faithful trim of a LIVE uklandandfarms detail page (captured 2026-06-05).
+  // The markdown opens with the site NAV (`[Home](…)`) and a selling-AGENT
+  // contact card carrying the AGENT'S OWN office postcode (SY4 5NQ, Shropshire),
+  // followed by the property's H1 carrying the PROPERTY postcode (CH7 6ES). The
+  // page <title> is `<address>, <postcode> - UKLAF`. This is exactly the shape
+  // that made the old firstLine()/first-postcode extraction capture the nav +
+  // the agent's office, pruning every real North-Wales listing by outcode.
+  const DETAIL_MD = [
+    `- [Home](https://www.uklandandfarms.co.uk/ "")`,
+    `- [Property search](https://www.uklandandfarms.co.uk/search/ "Search")`,
+    ``,
+    `### Mortgage calculator`,
+    ``,
+    `Property value:?`,
+    ``,
+    `[![Atchams](https://www.uklandandfarms.co.uk/media/agents/t_x.png)](https://www.uklandandfarms.co.uk/exit.aspx?url=https://www.atchams.co.uk)`,
+    ``,
+    `**Atchams**`,
+    ``,
+    `Holly Farm`,
+    ``,
+    `Wolverley`,
+    ``,
+    `Shropshire`,
+    ``,
+    `SY4 5NQ`,
+    ``,
+    `**Tel:**`,
+    ``,
+    `« Back`,
+    ``,
+    `# 104.6 acres, Sychdyn, Mold, Flintshire, North Wales, CH7 6ES    For Sale -   Guide Price £1,500,000`,
+    ``,
+    `Farm with house and range of outbuildings.`,
+    ``,
+    `![photo](https://www.uklandandfarms.co.uk/media/properties/thb_x.jpg)`,
+  ].join("\n");
+  const DETAIL_TITLE =
+    "\n\t104.6 acres, Sychdyn, Mold, Flintshire, North Wales, CH7 6ES - UKLAF\n";
+
+  it("extracts the PROPERTY postcode from the title, never the agent's office", () => {
+    const parsed = parseUklfDetail(DETAIL_MD, DETAIL_TITLE);
+    expect(parsed?.postcode).toBe("CH7 6ES"); // the property, NOT SY4 5NQ
+  });
+
+  it("extracts the property address (not the nav `[Home]` link)", () => {
+    const parsed = parseUklfDetail(DETAIL_MD, DETAIL_TITLE);
+    expect(parsed?.addressRaw).toBe(
+      "104.6 acres, Sychdyn, Mold, Flintshire, North Wales, CH7 6ES",
+    );
+    expect(parsed?.addressRaw).not.toContain("Home");
+  });
+
+  it("extracts the guide price as integer pence", () => {
+    expect(parseUklfDetail(DETAIL_MD, DETAIL_TITLE)?.pricePence).toBe(
+      150_000_000,
+    );
+  });
+
+  it("falls back to the postcode-bearing H1 when the title is missing", () => {
+    const parsed = parseUklfDetail(DETAIL_MD, undefined);
+    expect(parsed?.postcode).toBe("CH7 6ES"); // still the property, not SY4
+    expect(parsed?.addressRaw).toBe(
+      "104.6 acres, Sychdyn, Mold, Flintshire, North Wales, CH7 6ES",
+    );
+  });
+
+  it("returns an address without a postcode when none is present", () => {
+    const parsed = parseUklfDetail(
+      "# Land at Cae Glas, Llanrwst, North Wales    For Sale",
+      "Land at Cae Glas, Llanrwst, North Wales - UKLAF",
+    );
+    expect(parsed?.addressRaw).toBe("Land at Cae Glas, Llanrwst, North Wales");
+    expect(parsed?.postcode).toBeUndefined();
+  });
+
+  it("returns null when there is no usable heading", () => {
+    expect(parseUklfDetail("", undefined)).toBeNull();
+    expect(parseUklfDetail("just some body text, no heading", "")).toBeNull();
+  });
+
+  it("takes the price from the H1, not an earlier mortgage-calculator figure", () => {
+    // The mortgage calculator renders a £ value BEFORE the property H1; the old
+    // full-body first-£ fallback would have captured £250,000 instead of the
+    // £1,500,000 guide price.
+    const md = [
+      `### Mortgage calculator`,
+      ``,
+      `Property value: £250,000`,
+      `Monthly repayment from £1,200`,
+      ``,
+      `# 104.6 acres, Sychdyn, Mold, Flintshire, North Wales, CH7 6ES    For Sale -   Guide Price £1,500,000`,
+    ].join("\n");
+    expect(parseUklfDetail(md, DETAIL_TITLE)?.pricePence).toBe(150_000_000);
+  });
+
+  it("rejects a brand-only / generic site title as an address", () => {
+    // A redirect to the index can land a generic <title> on a detail scrape.
+    expect(parseUklfDetail("", "UKLAF")).toBeNull();
+    expect(parseUklfDetail("", " - UKLAF")).toBeNull();
+    expect(
+      parseUklfDetail("", "Rural Property For Sale in Wales | UKLAF"),
+    ).toBeNull();
+    expect(
+      parseUklfDetail(
+        "# Country properties, land & Farms for sale or rent",
+        "Country properties, land & Farms for sale or rent - UKLAF",
+      ),
+    ).toBeNull();
   });
 });

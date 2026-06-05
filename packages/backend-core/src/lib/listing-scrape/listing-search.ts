@@ -31,6 +31,18 @@ import type { ListingScrapeSite } from "./listing-scrape.provider.js";
 
 /** A full UK postcode — capture groups split outcode + incode for normalising. */
 const POSTCODE_RE = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
+/** A £-prefixed price (with optional thousands separators) — group 1 = digits. */
+const PRICE_RE = /£\s*([\d,]+)/;
+/**
+ * A price-LABELLED £ amount (`Guide Price £…`, `Asking £…`, `Offers over £…`,
+ * `Price: £…`) — group 1 = digits. Used as the body fallback so an UNLABELLED
+ * mortgage-calculator value / monthly-repayment figure is never mis-read as the
+ * listing price.
+ */
+const PRICE_LABEL_RE =
+  /(?:guide|asking|offers(?:\s+(?:over|in excess of|around|invited))?|price)\b[^£\n]{0,16}£\s*([\d,]+)/i;
+/** A markdown H1 line (`# …`), global — for the property-heading fallback. */
+const H1_LINE_RE = /^#[^\S\r\n]+(.+)$/gm;
 
 /**
  * One row of a site-taxonomy mapping: a set of region aliases + outcode prefixes
@@ -368,6 +380,147 @@ export function extractImageUrl(markdown: string): string | undefined {
     }
   }
   return undefined;
+}
+
+/** The minimal fields parsed out of a uklandandfarms DETAIL page. */
+export interface ParsedDetailListing {
+  addressRaw: string;
+  postcode?: string;
+  pricePence?: number;
+}
+
+/**
+ * Parse a uklandandfarms DETAIL page's markdown into the minimal listing fields.
+ *
+ * The property's address + postcode are NOT the first text/postcode on the page:
+ * the markdown opens with the site NAV (`[Home](…)`) and then a selling-AGENT
+ * contact card carrying the AGENT's OWN office postcode (e.g. a Shropshire/Chester
+ * branch). Reading the first markdown line + the first postcode therefore captured
+ * the nav link as the address and the AGENT's office as the postcode — so every
+ * real North-Wales listing was pruned by the provider's outcode filter (the
+ * agent's outcode never matches the target patch). That was the 0-listings bug.
+ *
+ * The reliable property anchor is the page <title> (`<address>, <postcode> - UKLAF`),
+ * with the first postcode-bearing H1 (`# <address>, <postcode>  For Sale …`) as the
+ * fallback when the title is missing. Returns null when no usable heading exists.
+ * Pure + UNIT-TESTED (the Firecrawl provider is a thin shell that feeds this the
+ * scraped markdown + metadata title).
+ */
+export function parseUklfDetail(
+  markdown: string,
+  metadataTitle?: string,
+): ParsedDetailListing | null {
+  const heading = uklfPropertyHeading(markdown ?? "", metadataTitle);
+  if (!heading) {
+    return null;
+  }
+  const postcode = firstPostcode(heading);
+  const addressRaw = uklfAddressFromHeading(heading);
+  if (!addressRaw || addressRaw.length > 300) {
+    return null;
+  }
+  // With a postcode the heading is definitely a real listing. Without one (a
+  // postcode-less rural listing OR a generic index/brand <title> that leaked in
+  // on a redirect), reject brand fragments + site-index titles so we never store
+  // "UKLAF" / "Rural Property For Sale in Wales" as an address.
+  if (!postcode && !isPlausibleAddressWithoutPostcode(addressRaw)) {
+    return null;
+  }
+  const pricePence = uklfPrice(markdown ?? "");
+  return {
+    addressRaw,
+    ...(postcode ? { postcode } : {}),
+    ...(pricePence !== undefined ? { pricePence } : {}),
+  };
+}
+
+/**
+ * The property heading for a uklandandfarms detail page: the page <title>
+ * (whitespace-collapsed, preferred when it carries a postcode), else the first
+ * H1 line that carries a postcode, else the bare title (an address without a
+ * postcode), else null.
+ */
+function uklfPropertyHeading(
+  markdown: string,
+  metadataTitle?: string,
+): string | null {
+  const title = (metadataTitle ?? "").replace(/\s+/g, " ").trim();
+  if (title && POSTCODE_RE.test(title)) {
+    return title;
+  }
+  for (const m of markdown.matchAll(H1_LINE_RE)) {
+    const h1 = (m[1] ?? "").replace(/\s+/g, " ").trim();
+    if (POSTCODE_RE.test(h1)) {
+      return h1;
+    }
+  }
+  return title || null;
+}
+
+/**
+ * The clean property address from a heading. When the heading carries a postcode,
+ * the address is everything up to + including it (dropping a trailing
+ * " - UKLAF" site-name suffix or a "  For Sale - Guide Price £…" tail); without a
+ * postcode, the bare heading sans the site-name suffix.
+ */
+function uklfAddressFromHeading(heading: string): string {
+  const m = heading.match(POSTCODE_RE);
+  if (m && m.index !== undefined) {
+    return heading.slice(0, m.index + m[0].length).replace(/\s+/g, " ").trim();
+  }
+  // No postcode to anchor the cut: drop a trailing site-name suffix joined by
+  // any separator (" - UKLAF", " | UKLAF", " - UKLandandFarms…").
+  return heading
+    .replace(/\s*[-|–—]?\s*UK\s?LandandFarms\b.*$/i, "")
+    .replace(/\s*[-|–—]?\s*UK\s?LAF\b.*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * TRUE when a postcode-LESS heading still looks like a real property address
+ * (not a brand fragment or a site-index/category title that can leak in when a
+ * dead detail URL redirects to the hub). Pure heuristic — only consulted when no
+ * postcode anchors the listing.
+ */
+function isPlausibleAddressWithoutPostcode(addr: string): boolean {
+  if (addr.length < 6) {
+    return false; // a brand fragment ("UKLAF"), not an address
+  }
+  if (/\bUK\s?LAF\b|uklandandfarms/i.test(addr)) {
+    return false; // the site brand, not an address
+  }
+  if (/\bfor sale in\b/i.test(addr) || /^(?:country|rural) propert/i.test(addr)) {
+    return false; // a region/category INDEX title, not a single listing
+  }
+  return true;
+}
+
+/**
+ * The guide/asking price (pence) for a uklandandfarms detail page. The property
+ * H1 (`# <address>, <postcode>  For Sale - Guide Price £X`) carries the price, so
+ * any £ in an H1 line is the listing price. We do NOT scan the whole body for the
+ * first £ — a mortgage-calculator value or a monthly-repayment figure appears
+ * before the guide price and would be mis-captured; the body fallback therefore
+ * requires a price LABEL. Returns undefined when no price is found.
+ */
+function uklfPrice(markdown: string): number | undefined {
+  for (const m of markdown.matchAll(H1_LINE_RE)) {
+    const pence = priceToPence((m[1] ?? "").match(PRICE_RE)?.[1]);
+    if (pence !== undefined) {
+      return pence;
+    }
+  }
+  return priceToPence(markdown.match(PRICE_LABEL_RE)?.[1]);
+}
+
+/** Parse a £ digit string ("1,500,000") to integer pence, or undefined. */
+function priceToPence(digits: string | undefined): number | undefined {
+  if (digits === undefined) {
+    return undefined;
+  }
+  const pence = Number.parseInt(digits.replace(/,/g, ""), 10) * 100;
+  return Number.isFinite(pence) && pence > 0 ? pence : undefined;
 }
 
 /**
