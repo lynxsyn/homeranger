@@ -1,7 +1,7 @@
 /* HomeRanger — estate-agent directory, discovery + ComplianceGuard mirror.
 
    Canonical model (ported from backend-core):
-   - Discovery SOURCES candidate agents in a scout's patch (by outcode).
+   - Discovery SOURCES candidate agents in a search's patch (by outcode).
    - ComplianceGuard gates every send, IN ORDER, on the first failure:
        1. PECR  — mailboxType must be corporate_subscriber
        2. opt-out
@@ -97,10 +97,10 @@ const DIRECTORY = {
   ],
 };
 
-/* Derive the scout's target outcodes (saved, else parsed from the location). */
-function scoutOutcodes(scout) {
-  if (scout && scout.outcodes && scout.outcodes.length) return scout.outcodes.map((o) => o.toUpperCase());
-  const parsed = ((scout && scout.location) || "").match(/\b[A-Z]{1,2}\d{1,2}[A-Z]?\b/gi) || [];
+/* Derive the search's target outcodes (saved, else parsed from the location). */
+function searchOutcodes(search) {
+  if (search && search.outcodes && search.outcodes.length) return search.outcodes.map((o) => o.toUpperCase());
+  const parsed = ((search && search.location) || "").match(/\b[A-Z]{1,2}\d{1,2}[A-Z]?\b/gi) || [];
   return parsed.map((o) => o.toUpperCase());
 }
 
@@ -114,10 +114,10 @@ function fakeAgentsFor(region, outcode) {
   ];
 }
 
-/* discoverAgents — the candidate set for a scout's patch. */
-function discoverAgents(scout) {
-  const codes = scoutOutcodes(scout);
-  const region = ((scout.location || scout.name || "this area").split(/[,—–-]/)[0] || "").trim() || "this area";
+/* discoverAgents — the candidate set for a search's patch. */
+function discoverAgents(search) {
+  const codes = searchOutcodes(search);
+  const region = ((search.location || search.name || "this area").split(/[,—–-]/)[0] || "").trim() || "this area";
   const out = [];
   const seen = new Set();
   const buckets = codes.length ? codes : ["AREA"];
@@ -133,7 +133,8 @@ function discoverAgents(scout) {
         agencyName: a.agencyName,
         email: a.email,
         outcode: oc,
-        area: scout.location || region,
+        coverage: coverageFor(a.agencyName, oc),
+        area: search.location || region,
         mailboxType: a.mailboxType || "corporate_subscriber",
         optedOut: !!a.optedOut,
         suppressed: !!a.suppressed,
@@ -161,13 +162,119 @@ function listingsForAgency(name) {
   return window.LISTINGS.filter((l) => l.agency === name).length;
 }
 
-/* ---- Seed: agents already pulled + contacted for the standing scouts ------ */
-function mkAgent(agencyName, email, outcode, scoutId, scoutName, status, last) {
+/* ---- Coverage patches -----------------------------------------------------
+   What each agency actually works, not just its HQ outcode. Real branches
+   cover a spread of neighbouring outcodes; this is the source of the "too many
+   chips" problem the coverage cell solves by rolling up to the postcode area.
+   Keyed by agency name (unique across patches here). The HQ outcode leads. */
+const COVERAGE = {
+  // Snowdonia / Gwynedd — wide rural LL patches
+  "Dafydd Hardy": ["LL55", "LL54", "LL56", "LL57", "LL49", "LL51"],
+  "Iwan M Williams": ["LL55", "LL54", "LL77"],
+  "Tom Parry": ["LL48", "LL49", "LL51", "LL52", "LL47"],
+  "Walter Lloyd Jones": ["LL48", "LL49", "LL47"],
+  "Welsh Country Homes": ["LL40", "LL42", "LL43", "LL44", "LL36"],
+  "Beresford Adams": ["LL40", "LL42", "LL36", "LL35"],
+  // Mid Wales — Powys SY / LD
+  "Morris Marshall & Poole": ["SY18", "SY17", "SY19", "SY16", "SY20"],
+  "Roger Parry & Partners": ["SY18", "SY21", "SY22", "SY16", "SY15"],
+  "Norman Lloyd": ["SY16", "SY17", "SY15", "SY18"],
+  "McCartneys": ["LD1", "LD2", "LD3", "LD6", "SY18"],
+  // Hampstead — NW with a few N / W edges (multi-area)
+  "Goldschmidt & Howland": ["NW3", "NW6", "NW8", "NW1", "NW5"],
+  "Benham & Reeves": ["NW3", "NW6", "NW8"],
+  "Knight Frank": ["NW3", "NW1", "NW8", "NW6", "N6", "W1"],
+  "Foxtons": ["NW3", "NW1", "NW5", "NW6", "N6", "N19"],
+  "Heathgate": ["NW3", "NW11", "N2"],
+  // Bermondsey & SE London
+  "Field & Sons": ["SE16", "SE1", "SE8", "SE15", "SE14"],
+  "Pedder": ["SE1", "SE16", "SE15", "SE22", "SE4"],
+  "Aspire": ["SE15", "SE22", "SE5", "SE4"],
+  "Conran Estates": ["SE8", "SE16", "SE14", "SE10"],
+  "Acorn": ["SE16", "SE1", "SE8", "SE15"],
+  "Daniel Cobb": ["SE1", "SE16", "SE17", "SE11"],
+  "Roy Brooks": ["SE15", "SE22", "SE4", "SE5"],
+};
+
+function coverageFor(agencyName, outcode) {
+  const list = COVERAGE[agencyName] || (outcode ? [outcode] : []);
+  // Dedupe, keep order, ensure the HQ outcode leads if present.
+  const seen = new Set();
+  const out = [];
+  [outcode, ...list].forEach((o) => {
+    const u = (o || "").toUpperCase();
+    if (u && !seen.has(u)) { seen.add(u); out.push(u); }
+  });
+  return out;
+}
+
+/* ---- Outcode → place ------------------------------------------------------
+   Postcode letters don't describe anywhere; a town/county does. This maps each
+   outcode in use to [town, county/region] so the table can say "Gwynedd" or
+   "around Caernarfon" instead of "LL". Extend as new patches are worked. */
+const OUTCODE_PLACE = {
+  // Gwynedd (Snowdonia)
+  LL55: ["Caernarfon", "Gwynedd"], LL54: ["Caernarfon", "Gwynedd"], LL56: ["Y Felinheli", "Gwynedd"],
+  LL57: ["Bangor", "Gwynedd"], LL49: ["Porthmadog", "Gwynedd"], LL51: ["Caernarfon", "Gwynedd"],
+  LL48: ["Penrhyndeudraeth", "Gwynedd"], LL52: ["Criccieth", "Gwynedd"], LL47: ["Harlech", "Gwynedd"],
+  LL40: ["Dolgellau", "Gwynedd"], LL42: ["Barmouth", "Gwynedd"], LL43: ["Talybont", "Gwynedd"],
+  LL44: ["Dyffryn Ardudwy", "Gwynedd"], LL36: ["Tywyn", "Gwynedd"], LL35: ["Aberdyfi", "Gwynedd"],
+  LL77: ["Llangefni", "Anglesey"],
+  // Powys (Mid Wales)
+  SY18: ["Llanidloes", "Powys"], SY17: ["Caersws", "Powys"], SY19: ["Llanbrynmair", "Powys"],
+  SY16: ["Newtown", "Powys"], SY20: ["Machynlleth", "Powys"], SY21: ["Welshpool", "Powys"],
+  SY22: ["Llanfechain", "Powys"], SY15: ["Montgomery", "Powys"],
+  LD1: ["Llandrindod Wells", "Powys"], LD2: ["Builth Wells", "Powys"], LD3: ["Brecon", "Powys"], LD6: ["Knighton", "Powys"],
+  // North London
+  NW3: ["Hampstead", "North London"], NW6: ["West Hampstead", "North London"], NW8: ["St John's Wood", "North London"],
+  NW1: ["Camden", "North London"], NW5: ["Kentish Town", "North London"], NW11: ["Golders Green", "North London"],
+  N6: ["Highgate", "North London"], N2: ["East Finchley", "North London"], N19: ["Archway", "North London"],
+  W1: ["Marylebone", "Central London"],
+  // South East London
+  SE16: ["Bermondsey", "South East London"], SE1: ["Southwark", "South East London"], SE8: ["Deptford", "South East London"],
+  SE15: ["Peckham", "South East London"], SE14: ["New Cross", "South East London"], SE22: ["East Dulwich", "South East London"],
+  SE4: ["Brockley", "South East London"], SE5: ["Camberwell", "South East London"], SE10: ["Greenwich", "South East London"],
+  SE17: ["Walworth", "South East London"], SE11: ["Kennington", "South East London"],
+};
+
+function placeFor(outcode) {
+  const oc = (outcode || "").toUpperCase();
+  return OUTCODE_PLACE[oc] || [oc, (oc.match(/^[A-Z]+/) || [oc])[0]];
+}
+
+/* coverageSummary — rolls a coverage list up to its dominant county/region for
+   the table ("Gwynedd · 5 outcodes"), and groups the outcodes by town for the
+   detail popover — so the cell reads as a place, not a sort code. */
+function coverageSummary(coverage) {
+  const list = (coverage || []).map((o) => o.toUpperCase());
+  const regionCount = {};
+  const regionOrder = [];
+  const groups = {};      // town -> [outcodes]
+  const townOrder = [];
+  const townRegion = {};  // town -> region (for ordering)
+  list.forEach((oc) => {
+    const [town, region] = placeFor(oc);
+    if (regionCount[region] == null) { regionCount[region] = 0; regionOrder.push(region); }
+    regionCount[region] += 1;
+    if (!groups[town]) { groups[town] = []; townOrder.push(town); townRegion[town] = region; }
+    groups[town].push(oc);
+  });
+  // Dominant region = most outcodes (first-seen breaks ties).
+  const regions = [...regionOrder].sort((a, b) => regionCount[b] - regionCount[a]);
+  const region = regions[0] || null;
+  const primary = list[0] || null;
+  const primaryTown = primary ? placeFor(primary)[0] : null;
+  return { count: list.length, region, regions, groups, towns: townOrder, townRegion, primary, primaryTown };
+}
+
+/* ---- Seed: agents already pulled + contacted for the standing searchs ------ */
+function mkAgent(agencyName, email, outcode, searchId, searchName, status, last) {
   return {
     id: agentId(agencyName, outcode),
     agencyName, email, outcode,
-    scoutId, scoutName,
-    area: scoutName,
+    coverage: coverageFor(agencyName, outcode),
+    searchId, searchName,
+    area: searchName,
     mailboxType: "corporate_subscriber",
     optedOut: status === "opted_out",
     status, lastContact: last,
@@ -193,7 +300,7 @@ const SEED_AGENTS = [
   mkAgent("Knight Frank", "hampstead@knightfrank.com", "NW3", "cmp-hampstead", "Hampstead pied-à-terre", "awaiting", "2d ago"),
   mkAgent("Foxtons", "hampstead@foxtons.co.uk", "NW3", "cmp-hampstead", "Hampstead pied-à-terre", "awaiting", "4d ago"),
   mkAgent("Heathgate", "info@heathgate.co.uk", "NW3", "cmp-hampstead", "Hampstead pied-à-terre", "opted_out", "1w ago"),
-  // Bermondsey family home (paused scout — still keeps its contacts)
+  // Bermondsey family home (paused search — still keeps its contacts)
   mkAgent("Field & Sons", "info@fieldandsons.co.uk", "SE16", "cmp-bermondsey", "Bermondsey family home", "replied", "2h ago"),
   mkAgent("Pedder", "bermondsey@pedderproperty.com", "SE1", "cmp-bermondsey", "Bermondsey family home", "replied", "5h ago"),
   mkAgent("Aspire", "peckham@aspire.co.uk", "SE15", "cmp-bermondsey", "Bermondsey family home", "replied", "1d ago"),
@@ -205,5 +312,6 @@ const SEED_AGENTS = [
 
 Object.assign(window, {
   REASON_LABEL, AGENT_STATUS, discoverAgents, complianceCheck,
-  scoutOutcodes, listingsForAgency, SEED_AGENTS, agentId,
+  searchOutcodes, listingsForAgency, SEED_AGENTS, agentId,
+  coverageFor, coverageSummary, placeFor,
 });

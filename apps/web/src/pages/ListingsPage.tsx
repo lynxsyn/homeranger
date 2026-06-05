@@ -22,7 +22,9 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@homeranger/backend-core";
+import { SOURCE_NAMES } from "@homeranger/shared";
 import type { SearchFilter } from "./SearchesPage";
+import type { SourceFilter } from "./SourcesPage";
 import { trpc } from "../lib/trpc";
 import { Icon } from "../components/Icon";
 import { InfoTip } from "../components/InfoTip";
@@ -65,6 +67,7 @@ interface ViewRow {
   propertyType: string | null; // humanised, e.g. "Semi-detached"
   epc: string | null; // EPC band a–g (or null/unknown → no badge)
   agency: string | null; // agency name, falling back to the agent's email
+  sourceName: string | null; // crawled-source display name (scraped lots), else null
   listingUrl: string | null;
   score: number | null; // 0–100 match score
   ageHours: number; // numeric sort key behind "Seen"
@@ -146,6 +149,9 @@ function toViewRow(item: ListItem, now: Date): ViewRow {
     propertyType: humanizePropertyType(item.propertyType),
     epc: item.epcRating,
     agency: item.agency,
+    // Scraped lots (auctionhouse / uklandandfarms) show the source name in the
+    // From column; agent_email / manual fall through to the agency.
+    sourceName: SOURCE_NAMES[item.primarySource] ?? null,
     listingUrl: item.listingUrl,
     // combinedScore is 0..1; clamp the ×100 to a valid 0–100 ring fill in case a
     // bad score ever round-trips out of range.
@@ -294,7 +300,7 @@ function ListingsTable({
             </th>
             <SortHeader id="score" label="Match" num sort={sort} onSort={onSort} />
             <th scope="col" className="col-agent">
-              Agent
+              From
             </th>
             <SortHeader
               id="ageHours"
@@ -367,7 +373,9 @@ function ListingsTable({
                     <ScoreRing value={l.score} size={36} />
                   </div>
                 </td>
-                <td className="agent-cell col-agent">{l.agency ?? "—"}</td>
+                <td className="agent-cell col-agent">
+                  {l.sourceName ?? l.agency ?? "—"}
+                </td>
                 <td className="num col-seen">
                   <span className="seen-cell">{l.lastSeen}</span>
                 </td>
@@ -695,11 +703,17 @@ export interface ListingsPageProps {
   searchFilter?: SearchFilter | null;
   /** Clear the search filter (the banner's "All listings" action). */
   onClearSearchFilter?: () => void;
+  /** When set, the list is scoped to a crawled source + a banner is shown. */
+  sourceFilter?: SourceFilter | null;
+  /** Clear the source filter (the banner's "All listings" action). */
+  onClearSourceFilter?: () => void;
 }
 
 export function ListingsPage({
   searchFilter = null,
   onClearSearchFilter,
+  sourceFilter = null,
+  onClearSourceFilter,
 }: ListingsPageProps = {}) {
   const [view, setView] = useStored<"table" | "cards">("hs-view", "table", [
     "table",
@@ -810,20 +824,43 @@ export function ListingsPage({
 
   // No manual filters: fetch the page ordered by match score (server attaches
   // each row's combinedScore) and re-sort client-side on header/dropdown
-  // change. The one exception is a search filter — when a search's "View homes"
-  // pushed us here, the list is scoped to that search's outcodes.
-  const { data, isLoading, isError, refetch } = trpc.listings.list.useQuery({
-    ...(searchFilter && searchFilter.outcodes.length > 0
-      ? { filter: { outcodes: searchFilter.outcodes } }
-      : {}),
-    // Per-search scoring lens: when a search's "View homes" pushed us here, the
-    // Match ring + score sort reflect THAT search's taste (else the best across
-    // all the operator's searches).
-    ...(searchFilter ? { searchId: searchFilter.id } : {}),
-    sortBy: "combinedScore",
-    sortDir: "desc",
-    limit: 100,
-  });
+  // change. Two mutually-exclusive drill-ins can scope the page: a SEARCH filter
+  // (a search's "View homes" → scoped to its outcodes + a per-search scoring
+  // lens) or a SOURCE filter (a source's "View N lots" → scoped to its
+  // primarySource). App clears the other before navigating, so at most one is
+  // ever set; build ONE filter object via if/else so neither clobbers the
+  // other's `filter` key.
+  const listQueryInput = useMemo(() => {
+    if (sourceFilter) {
+      return {
+        filter: { source: sourceFilter.id },
+        sortBy: "combinedScore" as const,
+        sortDir: "desc" as const,
+        limit: 100,
+      };
+    }
+    if (searchFilter) {
+      return {
+        ...(searchFilter.outcodes.length > 0
+          ? { filter: { outcodes: searchFilter.outcodes } }
+          : {}),
+        // Per-search scoring lens: the Match ring + score sort reflect THAT
+        // search's taste (else the best across all the operator's searches).
+        searchId: searchFilter.id,
+        sortBy: "combinedScore" as const,
+        sortDir: "desc" as const,
+        limit: 100,
+      };
+    }
+    return {
+      sortBy: "combinedScore" as const,
+      sortDir: "desc" as const,
+      limit: 100,
+    };
+  }, [searchFilter, sourceFilter]);
+
+  const { data, isLoading, isError, refetch } =
+    trpc.listings.list.useQuery(listQueryInput);
 
   // Recompute "now" only when the data changes, so relative times + age sort
   // keys are stable across re-sorts within the same fetched page.
@@ -962,6 +999,41 @@ export function ListingsPage({
         </div>
       )}
 
+      {sourceFilter && (
+        <div
+          className="search-filter source-filter"
+          data-testid="source-filter-banner"
+        >
+          <div className="sf-left">
+            <span className="sf-eyebrow">
+              <Icon
+                name={sourceFilter.kind === "auction" ? "gavel" : "trees"}
+                size={13}
+              />{" "}
+              Source
+            </span>
+            <span className="sf-name">{sourceFilter.name}</span>
+            <a
+              className="sf-visit"
+              href={`https://${sourceFilter.domain}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {sourceFilter.domain}
+              <Icon name="external-link" size={13} />
+            </a>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            data-testid="source-filter-clear"
+            onClick={() => onClearSourceFilter?.()}
+          >
+            All listings
+          </Button>
+        </div>
+      )}
+
       {isError ? (
         <div className="empty" role="alert">
           <p>Couldn&rsquo;t load listings.</p>
@@ -988,13 +1060,14 @@ export function ListingsPage({
                   {pageRows.length}
                   {hasMore ? "+" : ""}
                 </b>{" "}
-                {pageRows.length === 1 ? "home" : "homes"} from your agents
+                {sourceFilter
+                  ? `${pageRows.length === 1 ? "lot" : "lots"} from ${sourceFilter.name}`
+                  : `${pageRows.length === 1 ? "home" : "homes"} from your agents`}
               </span>
               <InfoTip label="About listings">
-                Homes your agents have sent in, read from their emails and scored
-                against your taste. Click a home to open the agent&rsquo;s page;
-                bookmark the ones you like to draft a follow-up to their agency,
-                or dismiss the ones you don&rsquo;t to tune your scoring.
+                {sourceFilter
+                  ? "Lots crawled from this source on a schedule and scored against your taste. Click a lot to open it on the source site; bookmark the ones you like or dismiss the ones you don't to tune your scoring."
+                  : "Homes your agents have sent in, read from their emails and scored against your taste. Click a home to open the agent's page; bookmark the ones you like to draft a follow-up to their agency, or dismiss the ones you don't to tune your scoring."}
               </InfoTip>
             </span>
             <div className="statusfilter" role="group" aria-label="Filter listings">
@@ -1074,7 +1147,9 @@ export function ListingsPage({
                   ? "No saved homes yet — bookmark ones you like to gather them here."
                   : bucket === "dismissed"
                     ? "Nothing dismissed. Homes you hide land here, and you can restore them any time."
-                    : "No listings yet. Once your agents reply, the homes they send appear here."}
+                    : sourceFilter
+                      ? `No lots from ${sourceFilter.name} yet — it's being crawled on a schedule; lots appear here as they're found.`
+                      : "No listings yet. Once your agents reply, the homes they send appear here."}
               </p>
             </div>
           ) : view === "table" ? (

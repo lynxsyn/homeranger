@@ -9,7 +9,18 @@
  * statuses so the table's sort can be asserted in rendered order; one row is a
  * pre-market flat with a null `listingUrl` (the email-only "no broken link"
  * case — the table shows an email-only marker, never a dead link).
+ *
+ * The Sources tab (PR #80/#81/#82) crawls listing-scrape sources. The last
+ * three fixtures are SCRAPED lots (auctionhouse / uklandandfarms) seeded with a
+ * `ListingSourceRecord` so the Sources screen has real per-source telemetry
+ * (lotsFound, latest lot) and the Listings From-column shows a SOURCE name
+ * instead of an agency. Their outcodes sit in the LL2x/LL3x North-Wales
+ * taxonomy (REGION_TAXONOMY) so the source coverage derivation matches the
+ * seeded data. `externalId` is the composite-unique key for the source record.
  */
+
+/** The scraped link-out sources (a subset of the ListingSource enum). */
+export type ScrapedSource = "uklandandfarms" | "auctionhouse";
 
 /** A seedable listing fixture (the upsertByAddress input shape). */
 export interface ListingFixture {
@@ -21,7 +32,13 @@ export interface ListingFixture {
   listingStatus: "pre_market" | "live" | "under_offer" | "sold" | "withdrawn";
   isPreMarket: boolean;
   listingUrl: string | null;
-  primarySource: "agent_email" | "manual";
+  primarySource: "agent_email" | "manual" | ScrapedSource;
+  /**
+   * For SCRAPED fixtures only: the composite-unique key for the
+   * ListingSourceRecord upsert (keyed on `(sourceType, externalId)`). Absent on
+   * agent/manual fixtures, which carry no source-record provenance row.
+   */
+  externalId?: string;
 }
 
 export const LISTING_FIXTURES: ListingFixture[] = [
@@ -81,5 +98,49 @@ export const LISTING_FIXTURES: ListingFixture[] = [
     isPreMarket: false,
     listingUrl: "https://listings.example.test/deansgate-m3",
     primarySource: "agent_email",
+  },
+  {
+    // SCRAPED — Auction House lot #1 (North Wales, LL30 Llandudno). The
+    // From-column shows "Auction House"; the source-link points at the lot URL.
+    addressNormalized: "deganwy avenue llandudno ll30",
+    postcode: "LL30 2YB",
+    outcode: "LL30",
+    pricePence: 185_000_00, // £185,000
+    bedrooms: 3,
+    listingStatus: "live",
+    isPreMarket: false,
+    listingUrl: "https://online.auctionhouse.co.uk/lot/redirect/346219",
+    primarySource: "auctionhouse",
+    externalId: "auctionhouse-lot-346219",
+  },
+  {
+    // SCRAPED — Auction House lot #2 (North Wales, LL28 Conwy). A second
+    // auctionhouse lot so the Sources screen asserts a distinct lotsFound (2).
+    addressNormalized: "bryn road conwy ll28",
+    postcode: "LL28 5RD",
+    outcode: "LL28",
+    pricePence: 142_500_00, // £142,500
+    bedrooms: 2,
+    listingStatus: "live",
+    isPreMarket: false,
+    listingUrl: "https://online.auctionhouse.co.uk/lot/redirect/351804",
+    primarySource: "auctionhouse",
+    externalId: "auctionhouse-lot-351804",
+  },
+  {
+    // SCRAPED — UK Land & Farms lot (North Wales, LL26 Llanrwst, Conwy valley).
+    // The land source (green-trees mark); From-column shows "UK Land & Farms".
+    // Outcode LL26 sits inside the source's declared LL2x/LL3x coverage so the
+    // seeded lot and the Sources coverage chips it advertises stay consistent.
+    addressNormalized: "nant farm llanrwst ll26",
+    postcode: "LL26 0AB",
+    outcode: "LL26",
+    pricePence: 275_000_00, // £275,000
+    bedrooms: null,
+    listingStatus: "live",
+    isPreMarket: false,
+    listingUrl: "https://www.uklandandfarms.co.uk/property/nant-farm-llanrwst",
+    primarySource: "uklandandfarms",
+    externalId: "uklandandfarms-nant-farm-llanrwst",
   },
 ];

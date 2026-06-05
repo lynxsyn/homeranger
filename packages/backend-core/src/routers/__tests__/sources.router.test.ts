@@ -1,0 +1,132 @@
+/**
+ * sourcesRouter unit tests. Pure unit: a real `new ListingSourceRecordRepository()`
+ * is injected via `_setListingSourceRecordRepositoryForTesting` (the router reads
+ * the live singleton as an ESM live binding), then spied with `vi.spyOn` on the
+ * two telemetry methods the router calls (`countBySourceType` /
+ * `latestObservedBySourceType`). Procedures run through `appRouter.createCaller`.
+ * No DB.
+ *
+ * Asserts:
+ *   - auth (the INVERSE of agents): anon → UNAUTHORIZED; a NON-operator authed
+ *     caller SUCCEEDS (protectedProcedure admits any authed user, NOT FORBIDDEN).
+ *   - exactly 2 rows in catalogue order ["auctionhouse","uklandandfarms"].
+ *   - lotsFound / latestObservedAt join (present → value; absent → 0 / null).
+ *   - coverage derives from REGION_TAXONOMY (LL2/LL3); no agent_email/manual row.
+ *   - toCoverageLabel: first-alias title-case + empty-alias "" branch.
+ */
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { TRPCError } from "@trpc/server";
+import { appRouter } from "../index.js";
+import { toCoverageLabel } from "../sources.router.js";
+import {
+  ListingSourceRecordRepository,
+  _setListingSourceRecordRepositoryForTesting,
+} from "../../repositories/listing-source-record.repository.js";
+import type { ListingSource } from "@prisma/client";
+
+// A NON-operator signed-in user → protectedProcedure must ADMIT (NOT forbid):
+// sources are a global catalogue, unlike the operator-only agent pool.
+const partnerCaller = appRouter.createCaller({
+  user: {
+    id: "33333333-3333-4333-8333-333333333333",
+    email: "partner@homeranger.test",
+  },
+});
+
+function injectRepo(opts: {
+  counts?: Map<ListingSource, number>;
+  latest?: Map<ListingSource, Date>;
+}) {
+  const repo = new ListingSourceRecordRepository();
+  const countSpy = vi
+    .spyOn(repo, "countBySourceType")
+    .mockResolvedValue(opts.counts ?? new Map());
+  const latestSpy = vi
+    .spyOn(repo, "latestObservedBySourceType")
+    .mockResolvedValue(opts.latest ?? new Map());
+  _setListingSourceRecordRepositoryForTesting(repo);
+  return { countSpy, latestSpy };
+}
+
+afterEach(() => {
+  _setListingSourceRecordRepositoryForTesting(null);
+  vi.restoreAllMocks();
+});
+
+describe("sourcesRouter auth", () => {
+  it("rejects an anonymous caller with UNAUTHORIZED", async () => {
+    injectRepo({});
+    const anon = appRouter.createCaller({ user: null });
+    await expect(anon.sources.list()).rejects.toBeInstanceOf(TRPCError);
+    await expect(anon.sources.list()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+  });
+
+  it("ADMITS a non-operator authed caller (global catalogue, not operator-only)", async () => {
+    injectRepo({});
+    const rows = await partnerCaller.sources.list();
+    expect(Array.isArray(rows)).toBe(true);
+    // The inverse of agents: a non-operator is NOT forbidden here.
+  });
+});
+
+describe("sourcesRouter.list rows", () => {
+  it("returns exactly 2 rows in catalogue order with the telemetry join applied", async () => {
+    const { countSpy, latestSpy } = injectRepo({
+      counts: new Map<ListingSource, number>([["auctionhouse", 5]]),
+      latest: new Map<ListingSource, Date>([
+        ["auctionhouse", new Date("2026-06-01T00:00:00.000Z")],
+      ]),
+    });
+
+    const rows = await partnerCaller.sources.list();
+
+    expect(rows.map((r) => r.id)).toEqual(["auctionhouse", "uklandandfarms"]);
+    expect(countSpy).toHaveBeenCalledTimes(1);
+    expect(latestSpy).toHaveBeenCalledTimes(1);
+
+    // Row 0: present in BOTH Maps → real values.
+    expect(rows[0]).toMatchObject({
+      id: "auctionhouse",
+      name: "Auction House",
+      kind: "auction",
+      domain: "auctionhouse.co.uk",
+      lotsFound: 5,
+      coverageOutcodes: ["LL2", "LL3"],
+      coverageLabel: "North Wales",
+    });
+    expect(rows[0]!.latestObservedAt).toEqual(
+      new Date("2026-06-01T00:00:00.000Z"),
+    );
+
+    // Row 1: ABSENT from both Maps → the `?? 0` / `?? null` defaults.
+    expect(rows[1]).toMatchObject({
+      id: "uklandandfarms",
+      name: "UK Land & Farms",
+      kind: "land",
+      domain: "uklandandfarms.co.uk",
+      lotsFound: 0,
+      coverageOutcodes: ["LL2", "LL3"],
+    });
+    expect(rows[1]!.latestObservedAt).toBeNull();
+  });
+
+  it("never emits a non-crawled source (agent_email / manual)", async () => {
+    injectRepo({});
+    const rows = await partnerCaller.sources.list();
+    const ids = rows.map((r) => r.id);
+    expect(ids).not.toContain("agent_email");
+    expect(ids).not.toContain("manual");
+  });
+});
+
+describe("toCoverageLabel", () => {
+  it("title-cases the first alias", () => {
+    expect(toCoverageLabel(["north wales", "conwy"])).toBe("North Wales");
+  });
+
+  it("returns an empty string for no aliases", () => {
+    expect(toCoverageLabel([])).toBe("");
+  });
+});

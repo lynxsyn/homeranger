@@ -235,6 +235,20 @@ describe("listingsRouter.list", () => {
     expect(filters[3]).toEqual({ listingStatus: "pre_market" });
   });
 
+  it("maps the scalar wire source to a single-element primarySource IN-list (the Sources drill-in)", async () => {
+    const fake = new ListingRepository();
+    const listSpy = vi
+      .spyOn(fake, "list")
+      .mockResolvedValue({ items: [], nextCursor: null });
+    _setListingRepositoryForTesting(fake);
+    injectScoreRepo();
+
+    await authedCaller.listings.list({ filter: { source: "auctionhouse" } });
+
+    const arg = listSpy.mock.calls[0]![0] as ListListingsInput;
+    expect(arg.filter).toEqual({ primarySource: ["auctionhouse"] });
+  });
+
   it("defaults sortBy=combinedScore, sortDir=desc, limit=20 and omits filter when absent", async () => {
     const fake = new ListingRepository();
     const listSpy = vi

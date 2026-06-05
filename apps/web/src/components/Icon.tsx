@@ -46,6 +46,10 @@ import {
   EyeOff,
   RotateCcw,
   MoreHorizontal,
+  Gavel,
+  Trees,
+  Rss,
+  Route,
   type LucideIcon,
 } from "lucide-react";
 
@@ -90,6 +94,10 @@ const ICONS: Record<string, LucideIcon> = {
   "eye-off": EyeOff,
   "rotate-ccw": RotateCcw,
   "more-horizontal": MoreHorizontal,
+  gavel: Gavel,
+  trees: Trees,
+  rss: Rss,
+  route: Route,
 };
 
 export interface IconProps {

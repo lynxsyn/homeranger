@@ -99,6 +99,40 @@ export class ListingSourceRecordRepository {
       select: SOURCE_RECORD_SELECT,
     });
   }
+
+  /**
+   * Count source records per sourceType — the per-source "Lots found" metric.
+   * ONE groupBy (no N+1). Sources with no rows are simply absent; caller defaults to 0.
+   */
+  async countBySourceType(): Promise<Map<ListingSource, number>> {
+    const groups = await prisma.listingSourceRecord.groupBy({
+      by: ["sourceType"],
+      _count: { _all: true },
+    });
+    const counts = new Map<ListingSource, number>();
+    for (const g of groups) {
+      counts.set(g.sourceType, g._count._all);
+    }
+    return counts;
+  }
+
+  /**
+   * Latest observation per sourceType — the per-source "Latest lot" timestamp
+   * (MAX(observedAt)). ONE groupBy. observedAt is NOT NULL; absent sources are not in the Map.
+   */
+  async latestObservedBySourceType(): Promise<Map<ListingSource, Date>> {
+    const groups = await prisma.listingSourceRecord.groupBy({
+      by: ["sourceType"],
+      _max: { observedAt: true },
+    });
+    const latest = new Map<ListingSource, Date>();
+    for (const g of groups) {
+      if (g._max.observedAt !== null) {
+        latest.set(g.sourceType, g._max.observedAt);
+      }
+    }
+    return latest;
+  }
 }
 
 const defaultListingSourceRecordRepository =

@@ -11,6 +11,7 @@ import {
   extractListingLinks,
   isListingUrl,
   parseAuctionHubListings,
+  siteCoverage,
   siteRegionIndexUrls,
 } from "./listing-search.js";
 
@@ -56,6 +57,40 @@ describe("siteRegionIndexUrls", () => {
     ).toEqual([
       "https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/",
     ]);
+  });
+});
+
+describe("siteCoverage", () => {
+  it("derives the configured outcode prefixes + region labels for uklandandfarms", () => {
+    expect(siteCoverage("uklandandfarms")).toEqual({
+      outcodes: ["LL2", "LL3"],
+      regionLabels: [
+        "north wales",
+        "conwy",
+        "gwynedd",
+        "denbighshire",
+        "anglesey",
+      ],
+    });
+  });
+
+  it("derives the same single-row coverage for auctionhouse (both sites map the row today)", () => {
+    expect(siteCoverage("auctionhouse")).toEqual({
+      outcodes: ["LL2", "LL3"],
+      regionLabels: [
+        "north wales",
+        "conwy",
+        "gwynedd",
+        "denbighshire",
+        "anglesey",
+      ],
+    });
+  });
+
+  it("preserves the REGION_TAXONOMY row order for outcodes + labels", () => {
+    const cov = siteCoverage("auctionhouse");
+    expect(cov.outcodes[0]).toBe("LL2");
+    expect(cov.regionLabels[0]).toBe("north wales");
   });
 });
 

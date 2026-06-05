@@ -120,6 +120,27 @@ test("a pre-market row with null listingUrl renders an email-only marker, not a 
   await expect(preMarket.getByTestId("listing-source-none")).toHaveCount(1);
 });
 
+test("a scraped row shows the SOURCE name in its From cell, not an agency or dash", async ({
+  page,
+}) => {
+  // The seed upserts scraped lots (auctionhouse / uklandandfarms) in the shared
+  // LISTING_FIXTURES. Their From cell resolves to the SOURCE name via
+  // SOURCE_NAMES[primarySource] — never the email-agency fallback, never "—".
+  const auctionRow = row(page, "deganwy avenue llandudno ll30");
+  await expect(auctionRow).toHaveCount(1);
+  const auctionFrom = auctionRow.locator(".agent-cell");
+  await expect(auctionFrom).toContainText("Auction House");
+
+  const landRow = row(page, "nant farm llanrwst ll26");
+  await expect(landRow).toHaveCount(1);
+  const landFrom = landRow.locator(".agent-cell");
+  await expect(landFrom).toContainText("UK Land & Farms");
+
+  // The scraped lot has a real lot URL → a source LINK (not the email-only
+  // marker), so the From-column source name and the source-link cell agree.
+  await expect(auctionRow.getByTestId("listing-source-link")).toHaveCount(1);
+});
+
 test("the view toggle switches between table and card views", async ({ page }) => {
   await page.getByTestId("view-cards").click();
   await expect(page.getByTestId("listings-table")).toHaveCount(0);

@@ -1,5 +1,231 @@
-/* global React, Icon, Button, Chip, AGENT_STATUS, listingsForAgency, scoutOutcodes */
-const { useState: useAgState, useMemo: useAgMemo } = React;
+/* global React, Icon, Button, Chip, AGENT_STATUS, listingsForAgency, searchOutcodes, coverageFor, coverageSummary, placeFor */
+const { useState: useAgState, useMemo: useAgMemo, useRef: useAgRef, useEffect: useAgEffect } = React;
+
+/* ---- Coverage cell --------------------------------------------------------
+   Postcode letters don't describe a place — a county does. A wide patch rolls
+   up to its dominant county/region plus a count ("Gwynedd · 5 outcodes"), one
+   fixed-height line. The popover breaks it down by town, HQ marked. A single-
+   outcode agent reads as its town + outcode, no popover. */
+function CoverageCell({ agent }) {
+  const [open, setOpen] = useAgState(false);
+  const [pos, setPos] = useAgState(null);   // fixed-position rect for the portal popover
+  const wrap = useAgRef(null);
+  const popRef = useAgRef(null);
+  const triggerRef = useAgRef(null);
+  const coverage = agent.coverage && agent.coverage.length
+    ? agent.coverage
+    : coverageFor(agent.agencyName, agent.outcode);
+  const s = useAgMemo(() => coverageSummary(coverage), [coverage]);
+
+  function place() {
+    const el = triggerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const margin = 12;
+    const spaceBelow = window.innerHeight - r.bottom - margin;
+    const spaceAbove = r.top - margin;
+    const openUp = spaceBelow < 240 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(160, (openUp ? spaceAbove : spaceBelow));
+    setPos({
+      left: r.left,
+      top: openUp ? null : r.bottom + 6,
+      bottom: openUp ? window.innerHeight - r.top + 6 : null,
+      maxHeight,
+    });
+  }
+
+  useAgEffect(() => {
+    if (!open) return;
+    place();
+    const onDoc = (e) => {
+      if (wrap.current && wrap.current.contains(e.target)) return;
+      if (popRef.current && popRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    const onScroll = () => setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [open]);
+
+  // One outcode — show its town + the code, no rollup needed.
+  if (s.count <= 1) {
+    return (
+      <div className="cov-cell">
+        <span className="cov-static">
+          <Icon name="map-pin" size={13} />
+          <span className="cov-static__town">{s.primaryTown}</span>
+          {s.primary && <span className="sf-oc">{s.primary}</span>}
+        </span>
+        <span className="cov-search">{agent.searchName}</span>
+      </div>
+    );
+  }
+
+  const popover = open && pos ? ReactDOM.createPortal(
+    <div
+      className="cov-pop"
+      role="dialog"
+      aria-label="Coverage detail"
+      ref={popRef}
+      style={{ left: pos.left, top: pos.top ?? "auto", bottom: pos.bottom ?? "auto", maxHeight: pos.maxHeight }}
+    >
+      <div className="cov-pop__head">
+        Covers <b>{s.count} outcodes</b> around {s.regions.join(", ")}
+      </div>
+      <div className="cov-pop__groups">
+        {s.towns.map((town) => (
+          <div className="cov-grp" key={town}>
+            <span className="cov-grp__area">{town}</span>
+            <div className="cov-grp__chips">
+              {s.groups[town].map((oc) => (
+                <span key={oc} className={`sf-oc${oc === s.primary ? " is-primary" : ""}`}>
+                  {oc === s.primary && <i className="cov-hq" aria-hidden="true" />}
+                  {oc}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="cov-pop__foot">
+        <i className="cov-hq" aria-hidden="true" /> Head office · {s.primaryTown} ({s.primary})
+      </div>
+    </div>,
+    document.body,
+  ) : null;
+
+  return (
+    <div className="cov-cell cov-cell--roll" ref={wrap}>
+      <button
+        type="button"
+        ref={triggerRef}
+        className={`cov-roll${open ? " is-open" : ""}`}
+        aria-expanded={open}
+        aria-label={`Coverage: ${s.count} outcodes around ${s.region}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Icon name="map-pin" size={13} />
+        <span className="cov-roll__area">{s.region}</span>
+        <span className="cov-roll__sep" aria-hidden="true">·</span>
+        <span className="cov-roll__count">{s.count} outcodes</span>
+        <Icon name="chevron-down" size={13} />
+      </button>
+      <span className="cov-search">{agent.searchName}</span>
+      {popover}
+    </div>
+  );
+}
+
+/* ---- Row actions menu (portaled so the table's overflow can't clip it) ----
+   One destructive action today (Remove), but built as a menu so it can grow. */
+function RowActions({ agent, onAskRemove }) {
+  const [open, setOpen] = useAgState(false);
+  const [pos, setPos] = useAgState(null);
+  const wrap = useAgRef(null);
+  const popRef = useAgRef(null);
+  const btnRef = useAgRef(null);
+
+  function place() {
+    const el = btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const menuW = 184;
+    const below = window.innerHeight - r.bottom;
+    const openUp = below < 120 && r.top > below;
+    setPos({
+      left: Math.max(12, r.right - menuW),
+      top: openUp ? null : r.bottom + 6,
+      bottom: openUp ? window.innerHeight - r.top + 6 : null,
+    });
+  }
+
+  useAgEffect(() => {
+    if (!open) return;
+    place();
+    const onDoc = (e) => {
+      if (wrap.current && wrap.current.contains(e.target)) return;
+      if (popRef.current && popRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    const onScroll = () => setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [open]);
+
+  const menu = open && pos ? ReactDOM.createPortal(
+    <div className="rowmenu" role="menu" ref={popRef}
+      style={{ left: pos.left, top: pos.top ?? "auto", bottom: pos.bottom ?? "auto" }}>
+      <button type="button" role="menuitem" className="rowmenu__item rowmenu__item--danger"
+        onClick={() => { setOpen(false); onAskRemove(agent); }}>
+        <Icon name="trash-2" size={16} /> Remove from list
+      </button>
+    </div>,
+    document.body,
+  ) : null;
+
+  return (
+    <div className="rowactions" ref={wrap}>
+      <button type="button" ref={btnRef}
+        className={`rowactions__btn${open ? " is-open" : ""}`}
+        aria-label={`Actions for ${agent.agencyName}`} aria-haspopup="menu" aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}>
+        <Icon name="more-horizontal" size={18} />
+      </button>
+      {menu}
+    </div>
+  );
+}
+
+/* ---- Remove confirmation --------------------------------------------------
+   Removing an agent is consequential (it affects outreach + your metrics), so
+   unlike hiding a listing it asks first, in the candid HomeRanger voice. */
+function ConfirmRemove({ agent, homes, onCancel, onConfirm }) {
+  useAgEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onCancel(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  return (
+    <div className="modal-scrim" onMouseDown={onCancel}>
+      <div className="modal modal--confirm" role="dialog" aria-modal="true" aria-label="Remove agent"
+        onMouseDown={(e) => e.stopPropagation()}>
+        <div className="confirm-body">
+          <div className="confirm-mark confirm-mark--danger"><Icon name="trash-2" size={22} /></div>
+          <h2 className="confirm-title">Remove {agent.agencyName}?</h2>
+          <p className="confirm-text">
+            They&rsquo;ll drop off your agents list and out of your metrics, and HomeRanger won&rsquo;t
+            contact them again unless a future search finds them and you approve it.
+            {homes > 0
+              ? ` The ${homes} ${homes === 1 ? "home" : "homes"} they’ve already sent in ${homes === 1 ? "stays" : "stay"} in your listings.`
+              : " Anything they’ve already sent in stays in your listings."}
+          </p>
+        </div>
+        <div className="modal__foot modal__foot--end">
+          <Button variant="secondary" onClick={onCancel}>Keep agent</Button>
+          <Button variant="danger" icon="trash-2" onClick={onConfirm}>Remove</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ---- Outreach sending control (the de-crunched kill-switch) --------------
    The global panic-stop, given room to read. `sending` true = live; toggling
@@ -86,10 +312,11 @@ const AGENT_FILTERS = [
 ];
 
 /* ---- Screen --------------------------------------------------------------- */
-function AgentsScreen({ agents, sending, onToggleSending, filter, onClearFilter, onViewHomes }) {
+function AgentsScreen({ agents, sending, onToggleSending, filter, onClearFilter, onViewHomes, onRemoveAgent }) {
   const [statusFilter, setStatusFilter] = useAgState("all");
+  const [removing, setRemoving] = useAgState(null);
 
-  // Patch filter: agents whose outcode falls in the chosen scout's patch.
+  // Patch filter: agents whose outcode falls in the chosen search's patch.
   const inPatch = useAgMemo(() => {
     if (!filter) return agents;
     const set = (filter.outcodes || []).map((o) => o.toUpperCase());
@@ -118,7 +345,7 @@ function AgentsScreen({ agents, sending, onToggleSending, filter, onClearFilter,
   return (
     <div>
       {filter && (
-        <div className="scout-filter">
+        <div className="search-filter">
           <div className="sf-left">
             <span className="sf-eyebrow"><Icon name="search" size={13} /> Search</span>
             <div className="sf-name">{filter.name}</div>
@@ -175,6 +402,7 @@ function AgentsScreen({ agents, sending, onToggleSending, filter, onClearFilter,
                 <th>Status</th>
                 <th className="num col-homes">Homes</th>
                 <th className="num col-seen">Last contact</th>
+                <th className="col-act" aria-label="Actions"></th>
               </tr>
             </thead>
             <tbody>
@@ -192,10 +420,7 @@ function AgentsScreen({ agents, sending, onToggleSending, filter, onClearFilter,
                       </div>
                     </td>
                     <td className="col-cov">
-                      <div className="cov-cell">
-                        {a.outcode && <span className="sf-oc">{a.outcode}</span>}
-                        <span className="cov-scout">{a.scoutName}</span>
-                      </div>
+                      <CoverageCell agent={a} />
                     </td>
                     <td><ThreadStatus status={a.status} /></td>
                     <td className="num col-homes">
@@ -204,6 +429,9 @@ function AgentsScreen({ agents, sending, onToggleSending, filter, onClearFilter,
                         : <span className="homes-cell na">—</span>}
                     </td>
                     <td className="num col-seen"><span className="seen-cell">{a.lastContact}</span></td>
+                    <td className="col-act">
+                      <RowActions agent={a} onAskRemove={setRemoving} />
+                    </td>
                   </tr>
                 );
               })}
@@ -216,6 +444,15 @@ function AgentsScreen({ agents, sending, onToggleSending, filter, onClearFilter,
         <Icon name="shield-check" size={14} />
         Agents are contacted only after you approve them in a launch — corporate subscribers, never opted-out, within the warm-up cap
       </div>
+
+      {removing && (
+        <ConfirmRemove
+          agent={removing}
+          homes={listingsForAgency(removing.agencyName)}
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => { onRemoveAgent(removing.id); setRemoving(null); }}
+        />
+      )}
     </div>
   );
 }

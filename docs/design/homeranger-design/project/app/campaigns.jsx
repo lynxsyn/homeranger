@@ -54,8 +54,7 @@ function draftEmail(c) {
   const uLine = window.urgencyLine ? window.urgencyLine(profile) : "";
   const signature = window.signatureBlock ? window.signatureBlock(profile) : "Many thanks";
   const closing =
-    "If anything's coming up that fits — including pre-market or off-portal — I'd be glad to hear " +
-    "from you before it reaches the portals." +
+    "If anything coming up fits what I'm after, I'd be glad to hear from you early." +
     (uLine ? ` ${uLine}` : " Happy to move quickly for the right place.");
 
   return (
@@ -85,8 +84,8 @@ function StatusPill({ status, onToggle }) {
 
 /* ---- Campaign card ------------------------------------------------------- */
 function CampaignCard({ c, agents, onOpen, onToggle, onViewHomes, onLaunch, onViewAgents }) {
-  const found = window.matchScout(c);
-  const codes = window.scoutOutcodes(c);
+  const found = window.matchSearch(c);
+  const codes = window.searchOutcodes(c);
   const canLaunch = codes.length > 0;
   const inPatch = canLaunch ? window.discoverAgents(c).length : 0;
   const contacted = agents.filter((a) => codes.includes((a.outcode || "").toUpperCase())).length;
@@ -296,7 +295,7 @@ function CampaignEditor({ initial, isNew, onSave, onDelete, onClose }) {
 
         <div className="modal__foot">
           {!isNew ? (
-            <button className="hs-btn hs-btn--ghost danger-text" onClick={() => onDelete(form.id)}>
+            <button className="hs-btn hs-btn--ghost danger-text" onClick={() => onDelete(form)}>
               <Icon name="trash-2" size={16} /> Delete
             </button>
           ) : <span />}
@@ -340,19 +339,19 @@ function LaunchAgentRow({ agent, checked, onToggle }) {
   );
 }
 
-function LaunchModal({ scout, sending, onClose, onApprove, onViewAgents }) {
+function LaunchModal({ search, sending, onClose, onApprove, onViewAgents }) {
   const [phase, setPhase] = useState("finding"); // finding | review | sent
   const [checked, setChecked] = useState(() => new Set());
   const [sentCount, setSentCount] = useState(0);
   const [showDraft, setShowDraft] = useState(false);
 
   const candidates = useMemo(() =>
-    window.discoverAgents(scout).map((a) => {
+    window.discoverAgents(search).map((a) => {
       const chk = window.complianceCheck(a, { sending });
       return { ...a, eligible: chk.eligible, code: chk.code };
-    }), [scout, sending]);
+    }), [search, sending]);
 
-  const codes = window.scoutOutcodes(scout);
+  const codes = window.searchOutcodes(search);
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -375,7 +374,7 @@ function LaunchModal({ scout, sending, onClose, onApprove, onViewAgents }) {
   function approve() {
     const recs = candidates.filter((a) => checked.has(a.id)).map((a) => ({
       id: a.id, agencyName: a.agencyName, email: a.email, outcode: a.outcode,
-      area: scout.location || scout.name, scoutId: scout.id, scoutName: scout.name,
+      area: search.location || search.name, searchId: search.id, searchName: search.name,
       mailboxType: a.mailboxType, optedOut: a.optedOut,
       status: "queued", lastContact: "just now",
     }));
@@ -386,12 +385,12 @@ function LaunchModal({ scout, sending, onClose, onApprove, onViewAgents }) {
 
   return (
     <div className="modal-scrim" onMouseDown={onClose}>
-      <div className="modal modal--launch" role="dialog" aria-modal="true" aria-label={`Launch ${scout.name}`}
+      <div className="modal modal--launch" role="dialog" aria-modal="true" aria-label={`Launch ${search.name}`}
         onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal__head">
           <div>
             <span className="eyebrow"><Icon name="rocket" size={13} /> Launch search</span>
-            <h2 className="modal__title">{scout.name}</h2>
+            <h2 className="modal__title">{search.name}</h2>
           </div>
           <button className="modal__close" onClick={onClose} aria-label="Close"><Icon name="x" size={18} /></button>
         </div>
@@ -438,7 +437,7 @@ function LaunchModal({ scout, sending, onClose, onApprove, onViewAgents }) {
                     <Icon name={showDraft ? "chevron-down" : "mail"} size={15} />
                     {showDraft ? "Hide the email each agent receives" : "Preview the email each agent receives"}
                   </button>
-                  {showDraft && <pre className="preview__body">{draftEmail(scout)}</pre>}
+                  {showDraft && <pre className="preview__body">{draftEmail(search)}</pre>}
                 </div>
               </>
             )}
@@ -464,14 +463,14 @@ function LaunchModal({ scout, sending, onClose, onApprove, onViewAgents }) {
 }
 
 /* ---- Screen -------------------------------------------------------------- */
-function CampaignsScreen({ agents, sending, onAddAgents, onViewAgents, onViewHomes, pendingNew, onConsumedNew }) {
+function CampaignsScreen({ agents, sending, onAddAgents, onViewAgents, onViewHomes, onRemoveSearch, removedListings, pendingNew, onConsumedNew }) {
   const [campaigns, setCampaigns] = useState(() => {
     let base = CAMPAIGNS;
     try {
       const saved = localStorage.getItem("hs-campaigns");
       if (saved) base = JSON.parse(saved);
     } catch (e) {}
-    // Migrate older saved scouts that predate target outcodes.
+    // Migrate older saved searchs that predate target outcodes.
     return base.map((c) => {
       if (c.outcodes && c.outcodes.length) return c;
       const seed = CAMPAIGNS.find((s) => s.id === c.id);
@@ -482,8 +481,9 @@ function CampaignsScreen({ agents, sending, onAddAgents, onViewAgents, onViewHom
     });
   });
   const [editing, setEditing] = useState(null); // {campaign} | {isNew:true}
-  const [pausing, setPausing] = useState(null);  // scout awaiting pause confirmation
-  const [launching, setLaunching] = useState(null); // scout being launched
+  const [pausing, setPausing] = useState(null);  // search awaiting pause confirmation
+  const [removingSearch, setRemovingSearch] = useState(null); // search awaiting delete confirmation
+  const [launching, setLaunching] = useState(null); // search being launched
 
   useEffect(() => {
     try { localStorage.setItem("hs-campaigns", JSON.stringify(campaigns)); } catch (e) {}
@@ -530,9 +530,18 @@ function CampaignsScreen({ agents, sending, onAddAgents, onViewAgents, onViewHom
     setEditing(null);
   }
 
-  function remove(id) {
-    setCampaigns((cs) => cs.filter((c) => c.id !== id));
+  // Deleting a search is a cascade (its agents + homes go too), so ask first.
+  function askRemove(form) {
+    const c = campaigns.find((x) => x.id === form.id) || form;
     setEditing(null);
+    setRemovingSearch(c);
+  }
+
+  function confirmRemove() {
+    const c = removingSearch;
+    if (onRemoveSearch) onRemoveSearch(c);          // cascade: agents + homes
+    setCampaigns((cs) => cs.filter((x) => x.id !== c.id));
+    setRemovingSearch(null);
   }
 
   return (
@@ -572,22 +581,31 @@ function CampaignsScreen({ agents, sending, onAddAgents, onViewAgents, onViewHom
           initial={editing.campaign || {}}
           isNew={!!editing.isNew}
           onSave={save}
-          onDelete={remove}
+          onDelete={askRemove}
           onClose={() => setEditing(null)}
         />
       )}
 
       {pausing && (
         <ConfirmPause
-          scout={pausing}
+          search={pausing}
           onCancel={() => setPausing(null)}
           onConfirm={() => { toggleStatus(pausing.id); setPausing(null); }}
         />
       )}
 
+      {removingSearch && (
+        <ConfirmRemoveSearch
+          search={removingSearch}
+          agents={agents}
+          onCancel={() => setRemovingSearch(null)}
+          onConfirm={confirmRemove}
+        />
+      )}
+
       {launching && (
         <LaunchModal
-          scout={launching}
+          search={launching}
           sending={sending}
           onApprove={onAddAgents}
           onViewAgents={() => { const s = launching; setLaunching(null); onViewAgents(s); }}
@@ -599,7 +617,7 @@ function CampaignsScreen({ agents, sending, onAddAgents, onViewAgents, onViewHom
 }
 
 /* ---- Pause confirmation -------------------------------------------------- */
-function ConfirmPause({ scout, onCancel, onConfirm }) {
+function ConfirmPause({ search, onCancel, onConfirm }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onCancel(); };
     document.addEventListener("keydown", onKey);
@@ -615,13 +633,61 @@ function ConfirmPause({ scout, onCancel, onConfirm }) {
           <h2 className="confirm-title">Pause this search?</h2>
           <p className="confirm-text">
             HomeRanger will stop reaching out to new agents and stop pulling in new listings for
-            {" "}<b>{scout.name}</b>. No message is sent to anyone — your existing conversations stay
+            {" "}<b>{search.name}</b>. No message is sent to anyone — your existing conversations stay
             open and warm, and you can resume any time.
           </p>
         </div>
         <div className="modal__foot modal__foot--end">
           <Button variant="secondary" onClick={onCancel}>Keep active</Button>
           <Button variant="primary" icon="pause" onClick={onConfirm}>Pause search</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---- Remove-search confirmation (the cascade) -----------------------------
+   Deleting a search removes the search itself, the agents it found, and the
+   homes it brought in. Stated plainly with live counts so there's no surprise. */
+function ConfirmRemoveSearch({ search, agents, onCancel, onConfirm }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onCancel(); };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+  }, []);
+  const codes = window.searchOutcodes(search).map((o) => o.toUpperCase());
+  const agentCount = agents.filter((a) =>
+    a.searchId === search.id || codes.includes((a.outcode || "").toUpperCase())).length;
+  const homeCount = window.matchSearch(search).length;
+  const nothing = !agentCount && !homeCount;
+  return (
+    <div className="modal-scrim" onMouseDown={onCancel}>
+      <div className="modal modal--confirm" role="dialog" aria-modal="true" aria-label="Remove search"
+        onMouseDown={(e) => e.stopPropagation()}>
+        <div className="confirm-body">
+          <div className="confirm-mark confirm-mark--danger"><Icon name="trash-2" size={22} /></div>
+          <h2 className="confirm-title">Remove this search?</h2>
+          <p className="confirm-text">
+            {nothing ? (
+              <>Removing <b>{search.name}</b> deletes this search. It hasn&rsquo;t brought in any
+              agents or homes yet, so nothing else is affected.</>
+            ) : (
+              <>
+                Removing <b>{search.name}</b> also drops the{" "}
+                {agentCount > 0 && <><b>{agentCount} {agentCount === 1 ? "agent" : "agents"}</b> it found</>}
+                {agentCount > 0 && homeCount > 0 && " and hides the "}
+                {agentCount === 0 && homeCount > 0 && "hides the "}
+                {homeCount > 0 && <><b>{homeCount} {homeCount === 1 ? "home" : "homes"}</b> it brought in</>}.{" "}
+                {homeCount > 0 && <>The homes aren&rsquo;t deleted &mdash; you can restore them from <b>Dismissed</b>. </>}
+                {agentCount > 0 && <>The agents won&rsquo;t be contacted again unless another search finds them.</>}
+              </>
+            )}
+          </p>
+        </div>
+        <div className="modal__foot modal__foot--end">
+          <Button variant="secondary" onClick={onCancel}>Keep search</Button>
+          <Button variant="danger" icon="trash-2" onClick={onConfirm}>Remove search</Button>
         </div>
       </div>
     </div>

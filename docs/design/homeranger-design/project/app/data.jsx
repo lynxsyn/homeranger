@@ -3,37 +3,37 @@
    `ageHours` is a numeric sort key behind the human "lastSeen" label. */
 const LISTINGS = [
   {
-    id: "01HZ7A",
+    id: "01HZ7A", lat: 51.4905, lng: -0.0555,
     address: "Reverdy Road, Bermondsey",
     outcode: "SE16", postcode: "SE16 4DG",
     price: 625000, bedrooms: 3, bathrooms: 2,
     propertyType: "Terraced", tenure: "Freehold", epc: "c",
-    status: "pre_market", listingUrl: null, agency: "Field & Sons",
+    status: "live", listingUrl: null, agency: "Field & Sons",
     photoCount: 9, score: 88, lastSeen: "2h ago", ageHours: 2,
     note: "Period terrace with bright, plant-filled rooms and a south-west garden two minutes from Southwark Park.",
   },
   {
-    id: "01HZ7C",
+    id: "01HZ7C", lat: 51.5905, lng: -0.0205,
     address: "Maynard Road, Walthamstow",
     outcode: "E17", postcode: "E17 9JE",
     price: 710000, bedrooms: 4, bathrooms: 2,
     propertyType: "Semi-detached", tenure: "Freehold", epc: "d",
-    status: "pre_market", listingUrl: null, agency: "Stow Brothers",
+    status: "live", listingUrl: null, agency: "Stow Brothers",
     photoCount: 14, score: 81, lastSeen: "3h ago", ageHours: 3,
     note: "Generous family house near Lloyd Park. EPC D means some draughty sash windows to budget for.",
   },
   {
-    id: "01HZ7F",
+    id: "01HZ7F", lat: 51.5665, lng: 0.0015,
     address: "Fillebrook Road, Leytonstone",
     outcode: "E11", postcode: "E11 4AT",
     price: 660000, bedrooms: 3, bathrooms: 1,
     propertyType: "Terraced", tenure: "Freehold", epc: "c",
-    status: "pre_market", listingUrl: null, agency: "Trading Places",
+    status: "live", listingUrl: null, agency: "Trading Places",
     photoCount: 0, score: null, lastSeen: "4h ago", ageHours: 4,
     note: "Arrived as text only — awaiting photos before it can be scored.",
   },
   {
-    id: "01HZ7B",
+    id: "01HZ7B", lat: 51.4928, lng: -0.0793,
     address: "Lynton Road, Bermondsey",
     outcode: "SE1", postcode: "SE1 5LB",
     price: 540000, bedrooms: 2, bathrooms: 1,
@@ -43,7 +43,7 @@ const LISTINGS = [
     note: "Modern conversion with a riverside walk nearby. Smaller than your ideal, no outdoor space beyond a Juliet balcony.",
   },
   {
-    id: "01HZ7K",
+    id: "01HZ7K", lat: 51.4625, lng: -0.0365,
     address: "Tressillian Road, Brockley",
     outcode: "SE4", postcode: "SE4 1XY",
     price: 689000, bedrooms: 3, bathrooms: 2,
@@ -53,7 +53,7 @@ const LISTINGS = [
     note: "Wide Victorian terrace on a leafy street, the loft already converted. Kitchen is dated but sound.",
   },
   {
-    id: "01HZ7D",
+    id: "01HZ7D", lat: 51.4695, lng: -0.0685,
     address: "Choumert Road, Peckham",
     outcode: "SE15", postcode: "SE15 4SE",
     price: 585000, bedrooms: 2, bathrooms: 1,
@@ -63,7 +63,7 @@ const LISTINGS = [
     note: "Split-level maisonette with a roof terrace by Rye Lane. Compact second bedroom and a busy street below.",
   },
   {
-    id: "01HZ7G",
+    id: "01HZ7G", lat: 51.4178, lng: -0.0825,
     address: "Auckland Road, Crystal Palace",
     outcode: "SE19", postcode: "SE19 2RA",
     price: 775000, bedrooms: 4, bathrooms: 2,
@@ -73,7 +73,7 @@ const LISTINGS = [
     note: "Big Victorian semi with park views and a south garden. Top of budget and a longer commute than your usual outcodes.",
   },
   {
-    id: "01HZ7M",
+    id: "01HZ7M", lat: 51.4635, lng: -0.0705,
     address: "Ondine Road, East Dulwich",
     outcode: "SE15", postcode: "SE15 4EB",
     price: 720000, bedrooms: 4, bathrooms: 2,
@@ -83,7 +83,7 @@ const LISTINGS = [
     note: "Handsome bay-fronted terrace near North Cross Road. Already under offer — kept for reference.",
   },
   {
-    id: "01HZ7E",
+    id: "01HZ7E", lat: 51.4785, lng: -0.0265,
     address: "Albyn Road, Deptford",
     outcode: "SE8", postcode: "SE8 4ED",
     price: 499000, bedrooms: 2, bathrooms: 1,
@@ -93,7 +93,7 @@ const LISTINGS = [
     note: "Cottage-style terrace in a conservation area. Under offer already, and the kitchen needs a full refit.",
   },
   {
-    id: "01HZ7H",
+    id: "01HZ7H", lat: 51.5435, lng: -0.0565,
     address: "Wilton Way, Hackney",
     outcode: "E8", postcode: "E8 1BG",
     price: 695000, bedrooms: 3, bathrooms: 2,
@@ -103,19 +103,19 @@ const LISTINGS = [
     note: "Warehouse-style flat on a much-loved street. Withdrawn from market last week.",
   },
 
-  /* --- Snowdonia (matches the Snowdonia scout — LL outcodes) --- */
+  /* --- Snowdonia (matches the Snowdonia search — LL outcodes) --- */
   {
-    id: "01HZ8A",
+    id: "01HZ8A", lat: 53.1185, lng: -4.1265,
     address: "Pen y Bryn, Llanberis",
     outcode: "LL55", postcode: "LL55 4EU",
     price: 465000, bedrooms: 3, bathrooms: 1,
     propertyType: "Detached", tenure: "Freehold", epc: "e",
-    status: "pre_market", listingUrl: null, agency: "Dafydd Hardy",
+    status: "live", listingUrl: null, agency: "Dafydd Hardy",
     photoCount: 11, score: 90, lastSeen: "6h ago", ageHours: 6,
     note: "Stone house looking straight at the Snowdon range, with a wood burner and a small paddock. Single glazing to budget for.",
   },
   {
-    id: "01HZ8B",
+    id: "01HZ8B", lat: 52.9335, lng: -4.0665,
     address: "Hen Efail, Penrhyndeudraeth",
     outcode: "LL48", postcode: "LL48 6LR",
     price: 398000, bedrooms: 3, bathrooms: 2,
@@ -125,7 +125,7 @@ const LISTINGS = [
     note: "Whitewashed cottage with valley views and a wood-panelled snug. Remote, but full of character.",
   },
   {
-    id: "01HZ8C",
+    id: "01HZ8C", lat: 52.7435, lng: -3.8855,
     address: "Tan y Gader, Dolgellau",
     outcode: "LL40", postcode: "LL40 1RA",
     price: 525000, bedrooms: 4, bathrooms: 2,
@@ -135,19 +135,19 @@ const LISTINGS = [
     note: "Substantial house under Cadair Idris with a big garden. Top of budget and a long drive to the nearest station.",
   },
 
-  /* --- Hampstead (matches the Hampstead scout — NW3) --- */
+  /* --- Hampstead (matches the Hampstead search — NW3) --- */
   {
-    id: "01HZ8D",
+    id: "01HZ8D", lat: 51.5565, lng: -0.1755,
     address: "Willoughby Road, Hampstead",
     outcode: "NW3", postcode: "NW3 1RT",
     price: 735000, bedrooms: 1, bathrooms: 1,
     propertyType: "Flat", tenure: "Share of freehold", epc: "c",
-    status: "pre_market", listingUrl: null, agency: "Goldschmidt & Howland",
+    status: "live", listingUrl: null, agency: "Goldschmidt & Howland",
     photoCount: 8, score: 86, lastSeen: "3h ago", ageHours: 3,
     note: "Top-floor period conversion with high ceilings and rooftop light, two minutes from the Heath.",
   },
   {
-    id: "01HZ8E",
+    id: "01HZ8E", lat: 51.5585, lng: -0.1735,
     address: "Christchurch Hill, Hampstead",
     outcode: "NW3", postcode: "NW3 1JH",
     price: 690000, bedrooms: 1, bathrooms: 1,
@@ -157,9 +157,9 @@ const LISTINGS = [
     note: "Bright garden-flat conversion on a quiet hill. Lower ceilings than ideal and a short lease to check.",
   },
 
-  /* --- Rural restoration (matches the Rural restoration scout — Powys) --- */
+  /* --- Rural restoration (matches the Rural restoration search — Powys) --- */
   {
-    id: "01HZ8F",
+    id: "01HZ8F", lat: 52.4505, lng: -3.5405,
     address: "Ty Coch Farmhouse, near Llanidloes",
     outcode: "SY18", postcode: "SY18 6QR",
     price: 285000, bedrooms: 4, bathrooms: 1,
@@ -170,7 +170,7 @@ const LISTINGS = [
     note: "Derelict stone farmhouse with two barns and roughly 4 acres. No services connected — a full restoration, but exactly the project you described. Guide price; for sale by auction next month.",
   },
   {
-    id: "01HZ8G",
+    id: "01HZ8G", lat: 52.2435, lng: -3.3785,
     address: "Building plot, Llandrindod Wells",
     outcode: "LD1", postcode: "LD1 5AA",
     price: 165000, bedrooms: null, bathrooms: null,
@@ -180,13 +180,144 @@ const LISTINGS = [
     tag: "Planning granted",
     note: "Level half-acre plot with outline planning for a single dwelling, services to the boundary. Quiet edge-of-town lane with open views.",
   },
+
+  /* --- Scraped lots: auction houses + land/farm portals (the Sources path) ---
+     These arrive by crawl, not by email. They carry a `sourceId` (the site
+     that found them) instead of being tied to an agent, and they link straight
+     out to the lot / particulars page. Most sit in the rural patches the land
+     + restoration searches work, so they surface there too. */
+  {
+    id: "lot-allsop-1", lat: 52.4475, lng: -3.5365,
+    address: "Capel Soar, near Llanidloes", outcode: "SY18", postcode: "SY18 6AB",
+    price: 145000, bedrooms: null, bathrooms: null,
+    propertyType: "Detached", tenure: "Freehold", epc: null,
+    status: "live", listingUrl: "https://www.allsop.co.uk/auctions/lot/capel-soar",
+    sourceId: "src-allsop", sourceName: "Allsop", sourceKind: "auction",
+    photoCount: 7, score: 83, lastSeen: "3h ago", ageHours: 3, tag: "Auction",
+    note: "Former chapel with consent to convert, under the hammer next week. No services connected — a complete project, but the bones are extraordinary.",
+  },
+  {
+    id: "lot-allsop-2", lat: 52.7395, lng: -3.8815,
+    address: "Glan-yr-Afon, Dolgellau", outcode: "LL40", postcode: "LL40 2YT",
+    price: 320000, bedrooms: 3, bathrooms: 1,
+    propertyType: "Cottage", tenure: "Freehold", epc: "f",
+    status: "live", listingUrl: "https://www.allsop.co.uk/auctions/lot/glan-yr-afon",
+    sourceId: "src-allsop", sourceName: "Allsop", sourceKind: "auction",
+    photoCount: 10, score: 79, lastSeen: "1d ago", ageHours: 28, tag: "Auction",
+    note: "Riverside cottage with a paddock, sold as seen. Damp in the back wall to budget for; the guide looks light for the plot.",
+  },
+  {
+    id: "lot-bondwolfe-1", lat: 51.9955, lng: -3.2345,
+    address: "Talgarth Mill House, near Brecon", outcode: "LD3", postcode: "LD3 0BW",
+    price: 265000, bedrooms: 4, bathrooms: 2,
+    propertyType: "Farmhouse", tenure: "Freehold", epc: "e",
+    status: "live", listingUrl: "https://www.bondwolfe.com/lot/talgarth-mill-house",
+    sourceId: "src-bondwolfe", sourceName: "Bond Wolfe", sourceKind: "auction",
+    photoCount: 12, score: 80, lastSeen: "20m ago", ageHours: 1, tag: "Auction",
+    note: "Stone farmhouse with a derelict mill alongside — rare. EPC E and a tired interior, but the setting is the draw.",
+  },
+  {
+    id: "lot-paulfosh-1", lat: 52.2415, lng: -3.3815,
+    address: "Smallholding, Llandrindod Wells", outcode: "LD1", postcode: "LD1 6YH",
+    price: 295000, bedrooms: 3, bathrooms: 1,
+    propertyType: "Farmhouse", tenure: "Freehold", epc: "f",
+    status: "live", listingUrl: "https://www.paulfoshauctions.com/lot/llandrindod-smallholding",
+    sourceId: "src-paulfosh", sourceName: "Paul Fosh", sourceKind: "auction",
+    photoCount: 14, score: 85, lastSeen: "2h ago", ageHours: 2, tag: "Auction",
+    note: "Three-bed farmhouse with two acres and a range of stone outbuildings. Auction lot — exactly the restoration brief.",
+  },
+  {
+    id: "lot-paulfosh-2", lat: 51.9485, lng: -3.3905,
+    address: "Building plot, near Brecon", outcode: "LD3", postcode: "LD3 7AA",
+    price: 120000, bedrooms: null, bathrooms: null,
+    propertyType: "Land", tenure: "Freehold", epc: null,
+    status: "live", listingUrl: "https://www.paulfoshauctions.com/lot/brecon-plot",
+    sourceId: "src-paulfosh", sourceName: "Paul Fosh", sourceKind: "auction",
+    photoCount: 4, score: 72, lastSeen: "5h ago", ageHours: 5, tag: "Auction",
+    note: "Quarter-acre plot with lapsed planning for a dwelling. You'd reapply, but access and services are already there.",
+  },
+  {
+    id: "lot-sdl-1", lat: 52.5135, lng: -3.3145,
+    address: "The Old Smithy, Newtown", outcode: "SY16", postcode: "SY16 1AA",
+    price: 185000, bedrooms: 2, bathrooms: 1,
+    propertyType: "Cottage", tenure: "Freehold", epc: "g",
+    status: "live", listingUrl: "https://www.sdlauctions.co.uk/lot/old-smithy-newtown",
+    sourceId: "src-sdl", sourceName: "SDL Auctions", sourceKind: "auction",
+    photoCount: 9, score: 76, lastSeen: "4h ago", ageHours: 4, tag: "Auction",
+    note: "Former smithy needing full renovation, going under the hammer this month. EPC G — off-grid heating to plan for.",
+  },
+  {
+    id: "lot-ukland-1", lat: 52.5905, lng: -3.8505,
+    address: "Fferm Bryn Awel, near Machynlleth", outcode: "SY20", postcode: "SY20 8RR",
+    price: 385000, bedrooms: 4, bathrooms: 2,
+    propertyType: "Farmhouse", tenure: "Freehold", epc: "e",
+    status: "live", listingUrl: "https://www.uklandandfarms.co.uk/property/fferm-bryn-awel",
+    sourceId: "src-uklandandfarms", sourceName: "UK Land & Farms", sourceKind: "land",
+    photoCount: 16, score: 88, lastSeen: "12m ago", ageHours: 1,
+    note: "Hill farm with farmhouse, barns and 11 acres. Private treaty; a strong match on land and project appetite.",
+  },
+  {
+    id: "lot-ukland-2", lat: 52.9305, lng: -4.0625,
+    address: "Pasture land, Penrhyndeudraeth", outcode: "LL48", postcode: "LL48 6NN",
+    price: 95000, bedrooms: null, bathrooms: null,
+    propertyType: "Land", tenure: "Freehold", epc: null,
+    status: "live", listingUrl: "https://www.uklandandfarms.co.uk/property/penrhyn-pasture",
+    sourceId: "src-uklandandfarms", sourceName: "UK Land & Farms", sourceKind: "land",
+    photoCount: 5, score: 70, lastSeen: "3h ago", ageHours: 3,
+    note: "Eight acres of grazing with road access and a stream. No building, but room and a quiet aspect.",
+  },
+  {
+    id: "lot-savills-1", lat: 52.7365, lng: -3.8905,
+    address: "Cwmtydu Barn, near Dolgellau", outcode: "LL40", postcode: "LL40 2GH",
+    price: 410000, bedrooms: null, bathrooms: null,
+    propertyType: "Barn", tenure: "Freehold", epc: null,
+    status: "live", listingUrl: "https://www.savills.co.uk/property-detail/cwmtydu-barn",
+    sourceId: "src-savillsrural", sourceName: "Savills Rural", sourceKind: "land",
+    photoCount: 11, score: 84, lastSeen: "2h ago", ageHours: 2,
+    note: "Stone barn with full planning to convert to a four-bed house. Services to the boundary; a clean project on a generous plot.",
+  },
+  {
+    id: "lot-savills-2", lat: 52.2395, lng: -3.3755,
+    address: "Nant-y-Felin, Llandrindod Wells", outcode: "LD1", postcode: "LD1 5RR",
+    price: 540000, bedrooms: 5, bathrooms: 3,
+    propertyType: "Detached", tenure: "Freehold", epc: "d",
+    status: "live", listingUrl: "https://www.savills.co.uk/property-detail/nant-y-felin",
+    sourceId: "src-savillsrural", sourceName: "Savills Rural", sourceKind: "land",
+    photoCount: 18, score: 73, lastSeen: "1d ago", ageHours: 26,
+    note: "Restored country house with paddocks. Above the budget you set for the restoration brief, but kept for reference.",
+  },
+  {
+    id: "lot-hhland-1", lat: 53.1395, lng: -4.2715,
+    address: "Tyddyn Llan, near Caernarfon", outcode: "LL55", postcode: "LL55 2PP",
+    price: 365000, bedrooms: 3, bathrooms: 1,
+    propertyType: "Farmhouse", tenure: "Freehold", epc: "f",
+    status: "live", listingUrl: "https://www.hhland.co.uk/property/tyddyn-llan",
+    sourceId: "src-hhland", sourceName: "H&H Land & Estates", sourceKind: "land",
+    photoCount: 13, score: 86, lastSeen: "1d ago", ageHours: 30,
+    note: "Traditional Gwynedd farmhouse with outbuildings and mountain views. Some updating; otherwise sound.",
+  },
+  {
+    id: "lot-struttparker-1", lat: 52.1465, lng: -3.4025,
+    address: "Garth Estate cottage, near Builth Wells", outcode: "LD2", postcode: "LD2 3AA",
+    price: 295000, bedrooms: 2, bathrooms: 1,
+    propertyType: "Cottage", tenure: "Freehold", epc: "e",
+    status: "live", listingUrl: "https://www.struttandparker.com/properties/garth-estate-cottage",
+    sourceId: "src-struttparker", sourceName: "Strutt & Parker", sourceKind: "land",
+    photoCount: 8, score: 71, lastSeen: "5d ago", ageHours: 122,
+    note: "Estate cottage on a private sale. Smaller than ideal and a shared drive, but well placed for the hills.",
+  },
 ];
 
 window.LISTINGS = LISTINGS;
 
-/* Listings a scout has turned up — matched by its target outcodes. */
-window.matchScout = function (scout) {
-  if (!scout || !scout.outcodes) return [];
-  const set = scout.outcodes.map((o) => o.toUpperCase());
+/* Lots a given source has hydrated (links a source → its listings). */
+window.listingsForSource = function (sourceId) {
+  return LISTINGS.filter((l) => l.sourceId === sourceId);
+};
+
+/* Listings a search has turned up — matched by its target outcodes. */
+window.matchSearch = function (search) {
+  if (!search || !search.outcodes) return [];
+  const set = search.outcodes.map((o) => o.toUpperCase());
   return LISTINGS.filter((l) => set.includes((l.outcode || "").toUpperCase()));
 };

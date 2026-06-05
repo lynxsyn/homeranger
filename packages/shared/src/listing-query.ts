@@ -10,7 +10,7 @@
  * structured-filter contract for both the table read path and KNN ranking.
  */
 import { z } from "zod";
-import { ListingStatusEnum } from "./listing-enums.js";
+import { ListingSourceEnum, ListingStatusEnum } from "./listing-enums.js";
 import { paginationInputSchema } from "./pagination.js";
 import { UK_OUTCODE_REGEX } from "./uk.js";
 
@@ -45,6 +45,9 @@ export const listingFilterSchema = z
     maxPricePence: z.number().int().nonnegative().optional(),
     minBedrooms: z.number().int().min(0).max(50).optional(),
     status: ListingStatusEnum.optional(),
+    // Single scrape source (the Sources drill-in passes exactly one); the repo
+    // maps it scalar→IN-list so a future multi-select is a one-line change.
+    source: ListingSourceEnum.optional(),
   })
   .strict();
 export type ListingFilter = z.infer<typeof listingFilterSchema>;

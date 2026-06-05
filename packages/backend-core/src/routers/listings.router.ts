@@ -33,7 +33,7 @@ import {
   listListingsInputSchema,
   type ListListingsInput as SharedListListingsInput,
 } from "@homeranger/shared";
-import type { ListingStatus } from "@prisma/client";
+import type { ListingSource, ListingStatus } from "@prisma/client";
 import { protectedProcedure, router } from "../trpc.js";
 import { ownerKeyFor } from "../lib/auth/supabase-auth.js";
 import {
@@ -145,6 +145,11 @@ function toRepositoryFilter(
     // The shared enum and the Prisma enum share identical snake_case values
     // (asserted by the M2 enum-drift test), so this narrowing cast is sound.
     mapped.listingStatus = filter.status as ListingStatus;
+  }
+  if (filter.source !== undefined) {
+    // Shared enum values are byte-identical to the Prisma ListingSource enum
+    // (M2 enum-drift test), so this narrowing cast is sound. Scalar wire → IN-list repo filter.
+    mapped.primarySource = [filter.source as ListingSource];
   }
   return mapped;
 }

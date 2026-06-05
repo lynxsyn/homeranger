@@ -26,6 +26,9 @@ vi.mock("./pages/SearchesPage", () => ({
 vi.mock("./pages/AgentsPage", () => ({
   AgentsPage: () => <div data-testid="stub-agents" />,
 }));
+vi.mock("./pages/SourcesPage", () => ({
+  SourcesPage: () => <div data-testid="stub-sources" />,
+}));
 vi.mock("./pages/SettingsPage", () => ({
   SettingsPage: () => <div data-testid="stub-settings" />,
 }));
@@ -93,11 +96,13 @@ describe("App auth gate", () => {
 });
 
 describe("App topbar nav", () => {
-  it("renders the Listings + Searches tabs and the New search CTA", () => {
+  it("renders the Listings + Searches + Sources tabs and the New search CTA", () => {
     authed();
     renderApp();
     expect(screen.getByTestId("nav-listings")).toHaveTextContent("Listings");
     expect(screen.getByTestId("nav-searches")).toHaveTextContent("Searches");
+    // Sources is in the operator tab set (and the non-operator set too).
+    expect(screen.getByTestId("nav-sources")).toHaveTextContent("Sources");
     expect(screen.getByTestId("new-search")).toHaveTextContent(/new search/i);
   });
 
@@ -127,7 +132,7 @@ describe("App topbar nav", () => {
     expect(screen.getByTestId("stub-agents")).toBeInTheDocument();
   });
 
-  it("hides the Agents tab for a non-operator", () => {
+  it("hides the Agents tab for a non-operator but keeps Sources", () => {
     authed();
     meQueryMock.mockReturnValue({
       data: { id: "p1", email: "partner@homeranger.test", isOperator: false },
@@ -137,6 +142,17 @@ describe("App topbar nav", () => {
     // Listings + Searches tabs still render for non-operators.
     expect(screen.getByTestId("nav-listings")).toBeInTheDocument();
     expect(screen.getByTestId("nav-searches")).toBeInTheDocument();
+    // Sources has no operator flag → visible to non-operators too.
+    expect(screen.getByTestId("nav-sources")).toBeInTheDocument();
+  });
+
+  it("shows the Sources tab for an operator and routes to it", () => {
+    authed();
+    renderApp("/listings");
+    const sourcesTab = screen.getByTestId("nav-sources");
+    expect(sourcesTab).toHaveTextContent("Sources");
+    fireEvent.click(sourcesTab);
+    expect(screen.getByTestId("stub-sources")).toBeInTheDocument();
   });
 
   it("routes to /settings via the avatar dropdown is no longer in the topbar tabs", () => {
