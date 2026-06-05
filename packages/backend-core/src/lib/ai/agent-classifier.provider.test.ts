@@ -237,20 +237,20 @@ describe("parseAgentClassify", () => {
     }
   });
 
-  it("throws non-retryable on a non-numeric confidence", () => {
-    try {
-      parseAgentClassify(
-        JSON.stringify({
-          isResidentialSalesAgency: false,
-          kind: "portal",
-          confidence: "high",
-          suggestedName: "X",
-        }),
-      );
-      expect.unreachable("expected a throw");
-    } catch (error) {
-      expect((error as ProviderError).retryable).toBe(false);
-    }
+  it("KEEP-safe defaults on a non-numeric confidence (no throw, no auto-delete)", () => {
+    // A field-level drift must never abort the discovery batch nor auto-delete —
+    // only unparseable JSON throws. A bad confidence resolves keep-safe.
+    const parsed = parseAgentClassify(
+      JSON.stringify({
+        isResidentialSalesAgency: false,
+        kind: "portal",
+        confidence: "high",
+        suggestedName: "X",
+      }),
+    );
+    expect(parsed.isResidentialSalesAgency).toBe(true);
+    expect(parsed.confidence).toBe(0);
+    expect(shouldAutoDelete(parsed)).toBe(false);
   });
 });
 

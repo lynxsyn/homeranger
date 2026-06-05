@@ -389,11 +389,13 @@ function isAgentKind(value: unknown): value is AgentKind {
 }
 
 /**
- * Parse + validate the Claude classification response. Bad JSON / non-finite
- * confidence is a non-retryable parse error (the match-scorer precedent). The
- * confidence is CLAMPED to [0,1] (defence against drift). A malformed/missing
- * `isResidentialSalesAgency` resolves KEEP-SAFE (`isResidentialSalesAgency:true,
- * confidence:0`) — a parse-drift verdict can never auto-delete a real agency.
+ * Parse + validate the Claude classification response. ONLY unparseable JSON
+ * throws (a non-retryable error). Any FIELD-level drift resolves KEEP-SAFE
+ * (`isResidentialSalesAgency:true, confidence:0`) — a malformed/missing verdict
+ * OR a non-numeric confidence can never auto-delete a real agency, and one bad
+ * classification never aborts the whole discovery batch (a network/HTTP error in
+ * classify() still throws retryable, so the job still retries on a real outage).
+ * A valid confidence is CLAMPED to [0,1] (defence against drift).
  */
 export function parseAgentClassify(content: string): ParsedAgentClassify {
   let parsed: Record<string, unknown>;
@@ -407,18 +409,17 @@ export function parseAgentClassify(content: string): ParsedAgentClassify {
     );
   }
 
-  const rawConfidence = parsed.confidence;
-  if (typeof rawConfidence !== "number" || !Number.isFinite(rawConfidence)) {
-    throw createNonRetryableError(
-      "Claude agent classification response missing a numeric confidence",
-    );
-  }
-  const confidence = Math.min(1, Math.max(0, rawConfidence));
-
   const rawVerdict = parsed.isResidentialSalesAgency;
-  // KEEP-safe default: a malformed/missing verdict NEVER auto-deletes (the
-  // deletion bias is toward KEEP). Return the keep verdict with confidence 0.
-  if (typeof rawVerdict !== "boolean") {
+  const rawConfidence = parsed.confidence;
+  // KEEP-safe: a malformed/missing verdict OR a non-numeric confidence is parse
+  // drift — keep the agent (deletion bias toward KEEP), confidence 0 so
+  // shouldAutoDelete is false. Symmetric with the verdict check so a bad
+  // confidence never aborts the batch.
+  if (
+    typeof rawVerdict !== "boolean" ||
+    typeof rawConfidence !== "number" ||
+    !Number.isFinite(rawConfidence)
+  ) {
     return {
       isResidentialSalesAgency: true,
       kind: "other",
@@ -427,6 +428,7 @@ export function parseAgentClassify(content: string): ParsedAgentClassify {
         typeof parsed.suggestedName === "string" ? parsed.suggestedName : "",
     };
   }
+  const confidence = Math.min(1, Math.max(0, rawConfidence));
 
   const kind = isAgentKind(parsed.kind) ? parsed.kind : "other";
   const suggestedName =

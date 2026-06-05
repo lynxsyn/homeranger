@@ -20,9 +20,10 @@
  *     is skipped entirely (report-only; deterministic hits still reported, nothing
  *     erased) so a backfill can never spend or delete with analysis disabled.
  *
- * Erasure goes through the GDPR-complete primitives (eraseAgentById single /
- * deleteManyByIds + emailEventRepository.deleteByEmails batch) — NEVER a raw
- * delete (that would orphan EmailEvent PII).
+ * Erasure goes through `eraseAgentById` — the GDPR-complete primitive that, in one
+ * transaction, deletes the Agent (cascading its OutreachThread/OutreachMessage)
+ * AND purges the EmailEvent rows keyed by its email. NEVER a raw delete, and NOT
+ * the bulk `deleteManyByIds` (that path does not purge EmailEvent PII).
  *
  * Run (dry-run):  pnpm --filter @homeranger/api db:classify-backfill
  * Run (erase):    CONFIRM=1 pnpm --filter @homeranger/api db:classify-backfill
