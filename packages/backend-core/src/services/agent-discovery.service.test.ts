@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DefaultAgentDiscoveryService,
   classifyMailboxType,
+  agentWebsite,
   pickBestEmail,
   getAgentDiscoveryService,
   _setAgentDiscoveryServiceForTesting,
@@ -35,6 +36,31 @@ describe("classifyMailboxType", () => {
   });
 });
 
+describe("agentWebsite", () => {
+  it("prefers the provider's scraped website URL when present", () => {
+    expect(
+      agentWebsite(
+        "info@conwy-estates.co.uk",
+        "https://conwy-estates.co.uk/contact",
+      ),
+    ).toBe("https://conwy-estates.co.uk/contact");
+  });
+
+  it("derives https://<domain> from the email when no URL is scraped", () => {
+    expect(agentWebsite("info@conwy-estates.co.uk")).toBe(
+      "https://conwy-estates.co.uk",
+    );
+    // A blank/whitespace scraped URL is treated as absent → derive from domain.
+    expect(agentWebsite("sales@AgencyName.com", "   ")).toBe(
+      "https://agencyname.com",
+    );
+  });
+
+  it("returns null for a malformed address with no domain", () => {
+    expect(agentWebsite("not-an-email")).toBeNull();
+  });
+});
+
 interface Harness {
   service: DefaultAgentDiscoveryService;
   discover: ReturnType<typeof vi.fn>;
@@ -64,7 +90,7 @@ function makeHarness(opts: {
 afterEach(() => vi.restoreAllMocks());
 
 describe("AgentDiscoveryService.discoverRegion", () => {
-  it("discovers, classifies, and upserts agents with the region's outcodes", async () => {
+  it("upserts corporate agents (with a derived website) and DROPS free-mail", async () => {
     const h = makeHarness({
       agents: [
         { email: "info@conwy-estates.co.uk", agencyName: "Conwy Estates" },
@@ -79,19 +105,23 @@ describe("AgentDiscoveryService.discoverRegion", () => {
         outcodes: expect.arrayContaining(["LL30"]),
       }),
     );
-    // Business domain → corporate_subscriber, with the region outcodes.
+    // Business domain → corporate_subscriber, with the region outcodes AND a
+    // website derived from the email domain (no scraped websiteUrl supplied).
     expect(h.upsertByEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         email: "info@conwy-estates.co.uk",
         mailboxType: "corporate_subscriber",
         coveredOutcodes: expect.arrayContaining(["LL32"]),
+        website: "https://conwy-estates.co.uk",
       }),
     );
-    // Free webmail → individual (sourced, but the guard will block sends to it).
-    expect(h.upsertByEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ email: "joe@gmail.com", mailboxType: "individual" }),
+    // Free webmail (gmail) is DROPPED at discovery — never persisted. PECR: a
+    // personal mailbox is not a corporate subscriber, so it is never cold-emailable.
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
+    expect(h.upsertByEmail).not.toHaveBeenCalledWith(
+      expect.objectContaining({ email: "joe@gmail.com" }),
     );
-    expect(result).toEqual({ discovered: 2, upserted: 2, skipped: 0, collapsed: 0 });
+    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1, collapsed: 0 });
   });
 
   it("skips already-suppressed emails (never re-sourced)", async () => {
@@ -146,10 +176,14 @@ describe("AgentDiscoveryService.discoverRegion", () => {
 });
 
 describe("AgentDiscoveryService.discoverByOutcodes", () => {
-  it("discovers + upserts over an EXPLICIT outcode set (no region resolution)", async () => {
+  it("discovers + upserts over an EXPLICIT outcode set, passing the scraped website through", async () => {
     const h = makeHarness({
       agents: [
-        { email: "info@conwy-estates.co.uk", agencyName: "Conwy Estates" },
+        {
+          email: "info@conwy-estates.co.uk",
+          agencyName: "Conwy Estates",
+          websiteUrl: "https://conwy-estates.co.uk/about",
+        },
         { email: "joe@gmail.com", agencyName: "Joe (sole trader)" },
       ],
     });
@@ -159,15 +193,18 @@ describe("AgentDiscoveryService.discoverByOutcodes", () => {
     expect(h.discover).toHaveBeenCalledWith(
       expect.objectContaining({ outcodes: ["LL30", "LL31"] }),
     );
-    // Upserts stamp the SAME explicit outcodes on the agent.
+    // Upserts stamp the SAME explicit outcodes + the provider's scraped website.
     expect(h.upsertByEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         email: "info@conwy-estates.co.uk",
         mailboxType: "corporate_subscriber",
         coveredOutcodes: ["LL30", "LL31"],
+        website: "https://conwy-estates.co.uk/about",
       }),
     );
-    expect(result).toEqual({ discovered: 2, upserted: 2, skipped: 0, collapsed: 0 });
+    // gmail dropped (free-mail) — only the corporate agent is persisted.
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1, collapsed: 0 });
   });
 
   it("uses the place-name regionLabel as the provider query (not the raw outcodes)", async () => {
@@ -311,7 +348,7 @@ describe("AgentDiscoveryService per-domain collapse", () => {
     });
   });
 
-  it("never collapses free-mail individuals (each is a distinct person)", async () => {
+  it("drops free-mail addresses entirely (never persisted)", async () => {
     const h = makeHarness({
       agents: [
         { email: "jane@gmail.com", agencyName: "Jane (sole trader)" },
@@ -319,12 +356,12 @@ describe("AgentDiscoveryService per-domain collapse", () => {
       ],
     });
     const result = await h.service.discoverRegion("Conwy County");
-    // gmail.com is not "one agency" — both kept (the guard blocks the sends).
-    expect(h.upsertByEmail).toHaveBeenCalledTimes(2);
+    // gmail is free-mail → not a corporate subscriber → dropped at discovery.
+    expect(h.upsertByEmail).not.toHaveBeenCalled();
     expect(result).toEqual({
       discovered: 2,
-      upserted: 2,
-      skipped: 0,
+      upserted: 0,
+      skipped: 2,
       collapsed: 0,
     });
   });

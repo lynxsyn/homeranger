@@ -53,6 +53,7 @@ function makeAgent(overrides: Record<string, unknown> = {}) {
     id: "agent-x",
     agencyName: "Finch & Co",
     email: "sales@finch.co.uk",
+    website: "https://finch.co.uk",
     outcodes: ["SE16", "SE1"],
     coverage: COVERAGE_SE16,
     status: "awaiting" as const,
@@ -301,6 +302,35 @@ describe("AgentsPage remove", () => {
     fireEvent.click(screen.getByRole("button", { name: /keep agent/i }));
     expect(screen.queryByTestId("agent-remove-confirm")).not.toBeInTheDocument();
     expect(removeMutateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("AgentsPage website cell", () => {
+  it("renders an external website link for an agent with a website", () => {
+    withAgents([
+      makeAgent({
+        id: "agent-with-site",
+        agencyName: "Finch & Co",
+        website: "https://finch.co.uk",
+      }),
+    ]);
+    render(<AgentsPage filter={null} onClearFilter={vi.fn()} />);
+    const row = screen.getByTestId("agent-row");
+    const link = within(row).getByTestId("agent-site-link");
+    expect(link).toHaveAttribute("href", "https://finch.co.uk");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
+    expect(within(row).queryByTestId("agent-site-none")).not.toBeInTheDocument();
+  });
+
+  it("renders a muted placeholder when an agent has no website", () => {
+    withAgents([
+      makeAgent({ id: "agent-no-site", agencyName: "No Site Ltd", website: null }),
+    ]);
+    render(<AgentsPage filter={null} onClearFilter={vi.fn()} />);
+    const row = screen.getByTestId("agent-row");
+    expect(within(row).getByTestId("agent-site-none")).toBeInTheDocument();
+    expect(within(row).queryByTestId("agent-site-link")).not.toBeInTheDocument();
   });
 });
 

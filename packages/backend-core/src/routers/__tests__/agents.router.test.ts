@@ -43,6 +43,7 @@ function makeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
     id: `00000000-0000-7000-8000-0000000000${suffix}`,
     email: `info@agency-${suffix}.co.uk`,
     agencyName: `Agency ${suffix}`,
+    website: `https://agency-${suffix}.co.uk`,
     mailboxType: "corporate_subscriber",
     optedOut: false,
     coveredOutcodes: ["LL30"],
@@ -168,6 +169,7 @@ describe("agentsRouter.list homesCount join", () => {
     const agent = makeAgent({
       agencyName: "Conwy Estates",
       email: "info@conwy.co.uk",
+      website: "https://conwy.co.uk",
       coveredOutcodes: ["LL30", "LL31"],
       lastContactedAt: contactedAt,
     });
@@ -181,6 +183,7 @@ describe("agentsRouter.list homesCount join", () => {
       id: agent.id,
       agencyName: "Conwy Estates",
       email: "info@conwy.co.uk",
+      website: "https://conwy.co.uk",
       outcodes: ["LL30", "LL31"],
       status: "queued",
       homesCount: 0,
