@@ -384,9 +384,12 @@ const IMAGE_HOST_SUFFIXES = [
 ];
 
 /**
- * TRUE for a safe hotlink image URL: an absolute https URL on a known source
- * host (above) OR with a real image file extension, length-bounded, rejecting
- * `<…>` / data-URI / base64 placeholder artifacts. Pure.
+ * TRUE for a safe hotlink image URL: an absolute https URL on a known SOURCE
+ * host (the allowlist above), length-bounded, rejecting `<…>` / data-URI /
+ * base64 placeholder artifacts. Host-allowlist ONLY — we hotlink exclusively
+ * from the listing sites' own image hosts (no arbitrary third-party URL), which
+ * matches the no-redistribution posture in docs/compliance/listing-sourcing-basis.md.
+ * Extend IMAGE_HOST_SUFFIXES when a new source's CDN is confirmed live. Pure.
  */
 export function isHotlinkableImageUrl(url: string): boolean {
   if (!url || url.length > 500 || url.includes("<")) {
@@ -402,11 +405,9 @@ export function isHotlinkableImageUrl(url: string): boolean {
     return false;
   }
   const host = parsed.hostname.toLowerCase();
-  const hostOk = IMAGE_HOST_SUFFIXES.some(
+  return IMAGE_HOST_SUFFIXES.some(
     (s) => host === s || host.endsWith(`.${s}`),
   );
-  const extOk = /\.(?:jpe?g|png|webp)$/i.test(parsed.pathname);
-  return hostOk || extOk;
 }
 
 /**

@@ -516,12 +516,21 @@ describe("isHotlinkableImageUrl", () => {
     ).toBe(true);
   });
 
-  it("accepts an https URL with a real image extension on any host", () => {
-    expect(isHotlinkableImageUrl("https://cdn.example/a/b/photo.webp")).toBe(true);
-    expect(isHotlinkableImageUrl("https://cdn.example/p.jpeg?v=2")).toBe(true);
+  it("matches a subdomain of an allowlisted source host", () => {
+    expect(
+      isHotlinkableImageUrl("https://online.auctionhouse.co.uk/img/lot.jpg"),
+    ).toBe(true);
   });
 
-  it("rejects non-https, off-allowlist non-image, base64, and oversized URLs", () => {
+  it("rejects an OFF-allowlist host even with a real image extension", () => {
+    // Host-allowlist only — we never hotlink from a third-party host, even one
+    // serving a .jpg/.webp (no arbitrary URL injection; no off-source tracking).
+    expect(isHotlinkableImageUrl("https://cdn.example/a/b/photo.webp")).toBe(false);
+    expect(isHotlinkableImageUrl("https://cdn.example/p.jpeg?v=2")).toBe(false);
+    expect(isHotlinkableImageUrl("https://evil.example/pixel.png")).toBe(false);
+  });
+
+  it("rejects non-https, base64, malformed, and oversized URLs", () => {
     expect(isHotlinkableImageUrl("")).toBe(false);
     expect(
       isHotlinkableImageUrl("http://www.uklandandfarms.co.uk/img/x.jpg"),
@@ -529,8 +538,10 @@ describe("isHotlinkableImageUrl", () => {
     expect(isHotlinkableImageUrl("https://evil.example/tracker.gif")).toBe(false);
     expect(isHotlinkableImageUrl("<Base64-Image-Removed>")).toBe(false);
     expect(isHotlinkableImageUrl("not a url")).toBe(false);
-    expect(isHotlinkableImageUrl(`https://cdn.example/${"a".repeat(600)}.jpg`)).toBe(
-      false,
-    ); // > 500 chars
+    expect(
+      isHotlinkableImageUrl(
+        `https://www.uklandandfarms.co.uk/${"a".repeat(600)}.jpg`,
+      ),
+    ).toBe(false); // > 500 chars
   });
 });

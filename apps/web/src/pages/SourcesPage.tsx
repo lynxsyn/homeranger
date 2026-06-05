@@ -3,13 +3,13 @@
  * Agents screen. Where Agents shows the estate AGENTS HomeRanger contacted, this
  * shows the crawled listing SOURCES (auction houses + land/farm sites) the
  * scheduler scrapes on a cadence, with their configured coverage and the live
- * telemetry of how many lots each has ingested and when it last found one.
+ * telemetry of how many listings each has ingested and when it last found one.
  *
  * Unlike Agents this is a GLOBAL catalogue with no per-user/PII data, so the tab
  * is visible to every authenticated user (protectedProcedure, not operator-only)
  * and there are NO row actions — a source is config, not something you remove.
  *
- * Each row's "View N lots" drills out to the Listings view, scoped to that
+ * Each row's "View N listings" drills out to the Listings view, scoped to that
  * source's `primarySource` via a lifted App-level filter + a banner (mirroring
  * the search-filter drill-in). The three metric tiles are derived client-side
  * from the `sources.list` rows (no second round-trip); the kind-filter chips

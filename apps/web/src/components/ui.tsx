@@ -163,7 +163,16 @@ export interface PhotoProps {
 
 export function Photo({ count, src, style, className = "" }: PhotoProps) {
   // A failed hotlink (404, hotlink-blocked) falls back to the placeholder glyph.
+  // Reset the failure flag when `src` changes — a re-used row (keyed by listing
+  // id) whose listing got a new image URL on a later scrape must re-attempt the
+  // new src, not stay stuck on the placeholder. React "adjust state on prop
+  // change" pattern (no effect, no flash).
   const [broken, setBroken] = useState(false);
+  const [seenSrc, setSeenSrc] = useState(src);
+  if (src !== seenSrc) {
+    setSeenSrc(src);
+    setBroken(false);
+  }
   const showImg = Boolean(src) && !broken;
   return (
     <div className={`hs-photo ${className}`.trim()} style={style}>
