@@ -16,10 +16,19 @@ falls inside an active operator Search:
 - property **address** + derived **postcode/outcode**,
 - **asking/guide price** (integer pence),
 - the **source listing URL** (the click-out),
+- a **single hotlinked image URL** (a *reference* only — see below),
 - provenance: the site (`sourceType`) + the site's listing id (`externalId`).
 
-**Not collected:** listing photos, descriptive marketing copy, floorplans, EPC
-documents, agent or vendor personal contact details. No special-category data.
+**Hotlinked, not stored:** one image **URL** per listing is captured so the table
+can show a thumbnail. The image itself is **never downloaded, copied, or stored** —
+the browser loads it **directly from the source's own image host** (an allowlist of
+the sites' CDNs), and we hold only the URL string. This is the lowest-footprint way
+to show a photo: no reproduction, no redistribution, just a pointer back to the
+publisher's own copy. A failed/blocked hotlink falls back to a placeholder.
+
+**Not collected:** downloaded/stored images, descriptive marketing copy,
+floorplans, EPC documents, agent or vendor personal contact details. No
+special-category data.
 
 ## Contractual basis (site terms)
 
@@ -40,7 +49,8 @@ documents, agent or vendor personal contact details. No special-category data.
 
 UK database right / copyright can be engaged by systematic extraction of a
 substantial part of a database. Held in balance by **minimisation** (facts needed
-to identify + link only — address, price, outcode, URL; no images, no copy), **no
+to identify + link only — address, price, outcode, URL, plus an image URL we
+hotlink but never copy; no stored images, no descriptive copy), **no
 redistribution** (single user, results behind Cloudflare Access), provenance
 retention, and an operator-triggered / scheduled-not-continuous cadence. This is the
 `personal_use_ok` posture reserved in the data-source-viability ADR.

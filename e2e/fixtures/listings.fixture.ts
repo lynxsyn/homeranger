@@ -32,6 +32,8 @@ export interface ListingFixture {
   listingStatus: "pre_market" | "live" | "under_offer" | "sold" | "withdrawn";
   isPreMarket: boolean;
   listingUrl: string | null;
+  /** Hotlinked source thumbnail (scraped fixtures only); the table shows it. */
+  imageUrl?: string | null;
   primarySource: "agent_email" | "manual" | ScrapedSource;
   /**
    * For SCRAPED fixtures only: the composite-unique key for the
@@ -110,6 +112,8 @@ export const LISTING_FIXTURES: ListingFixture[] = [
     listingStatus: "live",
     isPreMarket: false,
     listingUrl: "https://online.auctionhouse.co.uk/lot/redirect/346219",
+    imageUrl:
+      "https://cdn.eigpropertyauctions.co.uk/ams/images/96/auction/0/2666894_web_medium",
     primarySource: "auctionhouse",
     externalId: "auctionhouse-lot-346219",
   },
@@ -124,6 +128,8 @@ export const LISTING_FIXTURES: ListingFixture[] = [
     listingStatus: "live",
     isPreMarket: false,
     listingUrl: "https://online.auctionhouse.co.uk/lot/redirect/351804",
+    imageUrl:
+      "https://cdn.eigpropertyauctions.co.uk/ams/images/96/auction/0/2671200_web_medium",
     primarySource: "auctionhouse",
     externalId: "auctionhouse-lot-351804",
   },
@@ -140,6 +146,8 @@ export const LISTING_FIXTURES: ListingFixture[] = [
     listingStatus: "live",
     isPreMarket: false,
     listingUrl: "https://www.uklandandfarms.co.uk/property/nant-farm-llanrwst",
+    imageUrl:
+      "https://www.uklandandfarms.co.uk/images/property/nant-farm-llanrwst.jpg",
     primarySource: "uklandandfarms",
     externalId: "uklandandfarms-nant-farm-llanrwst",
   },

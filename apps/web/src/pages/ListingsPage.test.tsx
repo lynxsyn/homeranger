@@ -79,6 +79,7 @@ function makeItem(overrides: Record<string, unknown> = {}) {
     listingStatus: "live",
     isPreMarket: false,
     listingUrl: "https://x.test/a",
+    imageUrl: null,
     primarySource: "agent_email",
     agentEmail: "agent@a.test",
     agency: "Acme Estates",
@@ -335,6 +336,29 @@ describe("ListingsPage agent + beds/baths", () => {
     // Scraped lots resolve primarySource → SOURCE_NAMES, not the (null) agency.
     expect(within(row).getByText("Auction House")).toBeInTheDocument();
     expect(within(row).queryByText("—")).not.toBeInTheDocument();
+  });
+
+  it("hotlinks the source image as the row thumbnail when imageUrl is present", () => {
+    withData([
+      makeItem({
+        addressNormalized: "auction lot with photo",
+        primarySource: "auctionhouse",
+        imageUrl: "https://cdn.eigpropertyauctions.co.uk/x/photo",
+      }),
+    ]);
+    const { container } = render(<ListingsPage />);
+    const img = container.querySelector("img.hs-photo__img");
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute(
+      "src",
+      "https://cdn.eigpropertyauctions.co.uk/x/photo",
+    );
+  });
+
+  it("renders the photo placeholder (no img) when a row has no imageUrl", () => {
+    withData([makeItem({ addressNormalized: "no photo road", imageUrl: null })]);
+    const { container } = render(<ListingsPage />);
+    expect(container.querySelector("img.hs-photo__img")).not.toBeInTheDocument();
   });
 
   it("shows the agency in the From cell for an agent_email row", () => {
@@ -631,19 +655,19 @@ describe("ListingsPage source drill-in banner", () => {
     );
   });
 
-  it("reads the count as 'lots from <source>' under a source drill-in (not 'from your agents')", () => {
+  it("reads the count as 'listings from <source>' under a source drill-in (not 'from your agents')", () => {
     withData();
     render(<ListingsPage sourceFilter={AUCTION_FILTER} onClearSourceFilter={vi.fn()} />);
     const count = screen.getByTestId("listings-count");
-    expect(count).toHaveTextContent(/lots from Auction House/i);
+    expect(count).toHaveTextContent(/listings from Auction House/i);
     expect(count).not.toHaveTextContent(/from your agents/i);
   });
 
-  it("shows a source-specific empty state (not the agent-reply copy) when a source has no lots", () => {
+  it("shows a source-specific empty state (not the agent-reply copy) when a source has no listings", () => {
     withData([]);
     render(<ListingsPage sourceFilter={AUCTION_FILTER} onClearSourceFilter={vi.fn()} />);
     const empty = screen.getByTestId("listings-empty");
-    expect(empty).toHaveTextContent(/No lots from Auction House yet/i);
+    expect(empty).toHaveTextContent(/No listings from Auction House yet/i);
     expect(empty).not.toHaveTextContent(/Once your agents reply/i);
   });
 });

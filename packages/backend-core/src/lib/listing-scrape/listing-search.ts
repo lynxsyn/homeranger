@@ -254,6 +254,8 @@ export interface ParsedHubListing {
   sourceUrl: string;
   addressRaw: string;
   postcode: string;
+  /** Hotlinkable thumbnail URL from the hub (the lot's `![…](url)` image). */
+  imageUrl?: string;
 }
 
 /**
@@ -285,6 +287,7 @@ export function parseAuctionHubListings(markdown: string): ParsedHubListing[] {
   }
   const out: ParsedHubListing[] = [];
   const seen = new Set<string>();
+  const imageById = auctionHubImagesById(markdown);
   for (const match of markdown.matchAll(AUCTION_LOT_LINK_RE)) {
     // Strip any leading image-artifact: if Firecrawl collapses the lot onto ONE
     // line (no newline before the address), the captured text can begin with the
@@ -305,9 +308,105 @@ export function parseAuctionHubListings(markdown: string): ParsedHubListing[] {
     }
     const addressRaw = cleanAddress(addressText) || postcode;
     seen.add(externalId);
-    out.push({ externalId, sourceUrl: lotUrl, addressRaw, postcode });
+    const imageUrl = imageById.get(id);
+    out.push({
+      externalId,
+      sourceUrl: lotUrl,
+      addressRaw,
+      postcode,
+      ...(imageUrl ? { imageUrl } : {}),
+    });
   }
   return out;
+}
+
+/**
+ * Map auctionhouse lot id -> its hub thumbnail image URL. The hub renders each
+ * lot as `[![alt](IMGURL)\<newline>ADDR](.../lot/redirect/<id>)`, so the lot's
+ * image URL sits a short span BEFORE its own lot id. We pair each `![…](url)`
+ * with the FIRST lot id that follows within a bounded window (so it can never
+ * bridge to a different lot), keeping only hotlinkable URLs (first seen wins).
+ */
+function auctionHubImagesById(markdown: string): Map<string, string> {
+  const byId = new Map<string, string>();
+  for (const m of markdown.matchAll(AUCTION_LOT_IMAGE_RE)) {
+    const url = m[1] ?? "";
+    const id = m[2] ?? "";
+    if (id && !byId.has(id) && isHotlinkableImageUrl(url)) {
+      byId.set(id, url);
+    }
+  }
+  return byId;
+}
+
+/**
+ * A hub `![alt](IMGURL)` image immediately preceding (within a bounded span) a
+ * `/lot/redirect/<id>` anchor. g1 = the image URL; g2 = the lot id. The lazy
+ * `{0,400}` bridge crosses only the address line between the image and its lot
+ * link, never a neighbouring lot.
+ */
+const AUCTION_LOT_IMAGE_RE =
+  /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)[\s\S]{0,400}?\/lot\/redirect\/(\d+)/gi;
+
+/** Any markdown `![alt](https://url)` image — g1 = the URL. */
+const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/gi;
+
+/**
+ * The FIRST hotlinkable property image URL in a detail page's markdown, or
+ * undefined. Used for uklandandfarms detail pages (the auctionhouse hub carries
+ * its image inline — see parseAuctionHubListings). Skips data/base64 +
+ * off-allowlist artifacts via isHotlinkableImageUrl. Pure.
+ */
+export function extractImageUrl(markdown: string): string | undefined {
+  if (!markdown) {
+    return undefined;
+  }
+  for (const m of markdown.matchAll(MARKDOWN_IMAGE_RE)) {
+    const url = m[1] ?? "";
+    if (isHotlinkableImageUrl(url)) {
+      return url;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The source image hosts we are willing to HOTLINK from (the listing sites' own
+ * domains + their image CDNs). We display these URLs directly in the browser —
+ * never download them — so pinning to the source's own hosts keeps the hotlink
+ * pointing at the publisher's CDN (no arbitrary third-party URL injection).
+ */
+const IMAGE_HOST_SUFFIXES = [
+  "eigpropertyauctions.co.uk", // auctionhouse lot images (AMS CDN)
+  "auctionhouse.co.uk",
+  "auctionhouse.uk.net",
+  "uklandandfarms.co.uk",
+];
+
+/**
+ * TRUE for a safe hotlink image URL: an absolute https URL on a known source
+ * host (above) OR with a real image file extension, length-bounded, rejecting
+ * `<…>` / data-URI / base64 placeholder artifacts. Pure.
+ */
+export function isHotlinkableImageUrl(url: string): boolean {
+  if (!url || url.length > 500 || url.includes("<")) {
+    return false;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") {
+    return false;
+  }
+  const host = parsed.hostname.toLowerCase();
+  const hostOk = IMAGE_HOST_SUFFIXES.some(
+    (s) => host === s || host.endsWith(`.${s}`),
+  );
+  const extOk = /\.(?:jpe?g|png|webp)$/i.test(parsed.pathname);
+  return hostOk || extOk;
 }
 
 /**

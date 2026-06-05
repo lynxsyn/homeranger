@@ -59,6 +59,7 @@ function makeRow(overrides: Partial<ListingRecord> = {}): ListingRecord {
     listingStatus: "live",
     isPreMarket: false,
     listingUrl: "https://example.test/1",
+    imageUrl: null,
     primarySource: "agent_email",
     agentEmail: "agent@acme.test",
     agencyName: "Acme Estates",

@@ -142,7 +142,7 @@ export function SourcesPage({ onViewLots }: SourcesPageProps) {
         <SourceMetric
           icon="home"
           value={totalLots}
-          label="Lots ingested"
+          label="Listings ingested"
           testid="sources-metric-lots"
         />
         <SourceMetric
@@ -199,8 +199,8 @@ export function SourcesPage({ onViewLots }: SourcesPageProps) {
               <InfoTip label="About sources" align="right" size={14}>
                 <b>The sites HomeRanger crawls.</b> Auction houses and land &amp;
                 farm listings, scraped on a schedule and scored against your
-                taste. Their lots become listings, found a different way to the
-                agent inbox.
+                taste. Their listings appear in your feed, found a different way
+                to the agent inbox.
               </InfoTip>
             </span>
           </div>
@@ -226,10 +226,10 @@ export function SourcesPage({ onViewLots }: SourcesPageProps) {
                       Coverage
                     </th>
                     <th scope="col" className="num col-lots">
-                      Lots found
+                      Listings found
                     </th>
                     <th scope="col" className="num col-seen">
-                      Latest lot
+                      Latest listing
                     </th>
                   </tr>
                 </thead>
@@ -280,7 +280,7 @@ export function SourcesPage({ onViewLots }: SourcesPageProps) {
                           }
                         >
                           <Icon name="home" size={14} />
-                          View {s.lotsFound} lots
+                          View {s.lotsFound} listings
                           <Icon name="arrow-right" size={13} />
                         </button>
                       </td>

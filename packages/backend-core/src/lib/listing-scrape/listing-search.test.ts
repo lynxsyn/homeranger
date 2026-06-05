@@ -8,7 +8,9 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  extractImageUrl,
   extractListingLinks,
+  isHotlinkableImageUrl,
   isListingUrl,
   parseAuctionHubListings,
   siteCoverage,
@@ -354,31 +356,35 @@ A lot with no postcode at all](https://online.auctionhouse.co.uk/lot/redirect/99
 23 Deganwy Avenue, Llandudno, Conwy, LL30 2YB](https://online.auctionhouse.co.uk/lot/redirect/346219 "View property details")
 `;
 
-  it("parses the live two-line image-link lots (address + postcode + lot URL)", () => {
+  it("parses the live two-line image-link lots (address + postcode + lot URL + image)", () => {
     expect(parseAuctionHubListings(HUB_MARKDOWN)).toEqual([
       {
         externalId: "auctionhouse-346219",
         sourceUrl: "https://online.auctionhouse.co.uk/lot/redirect/346219",
         addressRaw: "23 Deganwy Avenue, Llandudno, Conwy, LL30 2YB",
         postcode: "LL30 2YB",
+        imageUrl: "https://cdn.eigpropertyauctions.co.uk/abc/image",
       },
       {
         externalId: "auctionhouse-347676",
         sourceUrl: "https://online.auctionhouse.co.uk/lot/redirect/347676",
         addressRaw: "5 Ty Isa Road, Llandudno, Conwy, LL30 2PL",
         postcode: "LL30 2PL",
+        imageUrl: "https://cdn.eigpropertyauctions.co.uk/def/image",
       },
       {
         externalId: "auctionhouse-346740",
         sourceUrl: "https://online.auctionhouse.co.uk/lot/redirect/346740",
         addressRaw: "Inglewood Celyn Avenue, Penmaenmawr, Conwy, LL34 6LR",
         postcode: "LL34 6LR",
+        imageUrl: "https://cdn.eigpropertyauctions.co.uk/ghi/image",
       },
       {
         externalId: "auctionhouse-348421",
         sourceUrl: "https://wales.auctionhouse.co.uk/lot/redirect/348421",
         addressRaw: "18 Bryn Castell, Abergele, Conwy, LL22 8QA",
         postcode: "LL22 8QA",
+        imageUrl: "https://cdn.eigpropertyauctions.co.uk/jkl/image",
       },
     ]);
   });
@@ -425,6 +431,22 @@ A lot with no postcode at all](https://online.auctionhouse.co.uk/lot/redirect/99
         sourceUrl: "https://online.auctionhouse.co.uk/lot/redirect/350001",
         addressRaw: "7 Bodnant Road, Llandudno, Conwy, LL30 1AA",
         postcode: "LL30 1AA",
+        imageUrl: "https://cdn.eigpropertyauctions.co.uk/x/image",
+      },
+    ]);
+  });
+
+  it("omits imageUrl when the lot's image host is not an allowlisted source", () => {
+    // A lot whose image is on some random CDN is still parsed, but with NO
+    // imageUrl (we only hotlink from the source sites' own image hosts).
+    const md =
+      "[![alt](https://evil.example/tracker.gif)\\9 Foo Road, Conwy, LL30 2YB](https://online.auctionhouse.co.uk/lot/redirect/355000)";
+    expect(parseAuctionHubListings(md)).toEqual([
+      {
+        externalId: "auctionhouse-355000",
+        sourceUrl: "https://online.auctionhouse.co.uk/lot/redirect/355000",
+        addressRaw: "9 Foo Road, Conwy, LL30 2YB",
+        postcode: "LL30 2YB",
       },
     ]);
   });
@@ -446,5 +468,69 @@ A lot with no postcode at all](https://online.auctionhouse.co.uk/lot/redirect/99
 2 Bar Street, Conwy, LL30 2YB](https://www.auctionhouse.co.uk/lot/redirect/2)
 `;
     expect(parseAuctionHubListings(md)).toEqual([]);
+  });
+});
+
+describe("extractImageUrl — detail page markdown", () => {
+  it("returns the first hotlinkable image URL in the markdown", () => {
+    const md = `
+# A farm
+![hero](https://www.uklandandfarms.co.uk/images/property/farm-1.jpg)
+Some prose.
+![second](https://www.uklandandfarms.co.uk/images/property/farm-2.jpg)
+`;
+    expect(extractImageUrl(md)).toBe(
+      "https://www.uklandandfarms.co.uk/images/property/farm-1.jpg",
+    );
+  });
+
+  it("skips a data/base64 placeholder and returns the next real image", () => {
+    const md = `
+![placeholder](<Base64-Image-Removed>)
+![real](https://www.uklandandfarms.co.uk/images/property/farm-9.jpg)
+`;
+    expect(extractImageUrl(md)).toBe(
+      "https://www.uklandandfarms.co.uk/images/property/farm-9.jpg",
+    );
+  });
+
+  it("returns undefined when there is no hotlinkable image", () => {
+    expect(extractImageUrl("")).toBeUndefined();
+    expect(extractImageUrl("just prose, no images")).toBeUndefined();
+    expect(
+      extractImageUrl("![x](https://evil.example/tracker.gif)"),
+    ).toBeUndefined();
+  });
+});
+
+describe("isHotlinkableImageUrl", () => {
+  it("accepts an https URL on an allowlisted source host (no extension needed)", () => {
+    // The auctionhouse AMS CDN serves extension-less image paths.
+    expect(
+      isHotlinkableImageUrl(
+        "https://cdn.eigpropertyauctions.co.uk/ams/images/96/auction/0/2666894_web_medium",
+      ),
+    ).toBe(true);
+    expect(
+      isHotlinkableImageUrl("https://www.uklandandfarms.co.uk/img/x.jpg"),
+    ).toBe(true);
+  });
+
+  it("accepts an https URL with a real image extension on any host", () => {
+    expect(isHotlinkableImageUrl("https://cdn.example/a/b/photo.webp")).toBe(true);
+    expect(isHotlinkableImageUrl("https://cdn.example/p.jpeg?v=2")).toBe(true);
+  });
+
+  it("rejects non-https, off-allowlist non-image, base64, and oversized URLs", () => {
+    expect(isHotlinkableImageUrl("")).toBe(false);
+    expect(
+      isHotlinkableImageUrl("http://www.uklandandfarms.co.uk/img/x.jpg"),
+    ).toBe(false); // not https
+    expect(isHotlinkableImageUrl("https://evil.example/tracker.gif")).toBe(false);
+    expect(isHotlinkableImageUrl("<Base64-Image-Removed>")).toBe(false);
+    expect(isHotlinkableImageUrl("not a url")).toBe(false);
+    expect(isHotlinkableImageUrl(`https://cdn.example/${"a".repeat(600)}.jpg`)).toBe(
+      false,
+    ); // > 500 chars
   });
 });

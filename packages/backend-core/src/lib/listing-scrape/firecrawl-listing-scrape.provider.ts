@@ -58,6 +58,7 @@ import {
   type ScrapedListing,
 } from "./listing-scrape.provider.js";
 import {
+  extractImageUrl,
   extractListingLinks,
   parseAuctionHubListings,
   siteRegionIndexUrls,
@@ -212,6 +213,7 @@ export class FirecrawlListingScrapeProvider implements ListingScrapeProvider {
           sourceUrl: lot.sourceUrl,
           addressRaw: lot.addressRaw,
           postcode: lot.postcode,
+          ...(lot.imageUrl ? { imageUrl: lot.imageUrl } : {}),
         });
       }
     }
@@ -347,6 +349,10 @@ export class FirecrawlListingScrapeProvider implements ListingScrapeProvider {
     const pricePence = priceMatch
       ? Number.parseInt(priceMatch[1]!.replace(/,/g, ""), 10) * 100
       : undefined;
+    // Hotlink the first property image off the detail page (display-only; never
+    // downloaded — see the listing-sourcing-basis). Off-allowlist / base64
+    // artifacts are rejected by isHotlinkableImageUrl → undefined (placeholder).
+    const imageUrl = extractImageUrl(text);
 
     return {
       externalId: `${site}-${externalIdOf(sourceUrl)}`,
@@ -356,6 +362,7 @@ export class FirecrawlListingScrapeProvider implements ListingScrapeProvider {
       ...(pricePence !== undefined && Number.isFinite(pricePence)
         ? { pricePence }
         : {}),
+      ...(imageUrl ? { imageUrl } : {}),
     };
   }
 }

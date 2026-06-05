@@ -49,6 +49,8 @@ export interface ScrapedListing {
   postcode?: string;
   /** Integer pence (never float). */
   pricePence?: number;
+  /** Hotlinkable source image URL (displayed directly, never downloaded). */
+  imageUrl?: string;
 }
 
 export interface ListingScrapeProvider {
