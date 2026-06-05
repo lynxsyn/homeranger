@@ -14,13 +14,18 @@ import {
  * (`LISTING_SCRAPE_SITES`); keep this set in lockstep with it. The backend-side
  * drift (shared enum == Prisma enum) is covered by the M2 enum-drift test.
  */
-const LISTING_SCRAPE_SITES = ["uklandandfarms", "auctionhouse"] as const;
+const LISTING_SCRAPE_SITES = [
+  "uklandandfarms",
+  "auctionhouse",
+  "pughauctions",
+] as const;
 
 describe("SOURCE_CATALOGUE", () => {
-  it("ships exactly the 2 wired sources in render order (auction first)", () => {
-    expect(SOURCE_CATALOGUE).toHaveLength(2);
+  it("ships exactly the 3 wired sources in render order (auctions first)", () => {
+    expect(SOURCE_CATALOGUE).toHaveLength(3);
     expect(SOURCE_CATALOGUE.map((s) => s.id)).toEqual([
       "auctionhouse",
+      "pughauctions",
       "uklandandfarms",
     ]);
   });
@@ -54,6 +59,11 @@ describe("SOURCE_CATALOGUE", () => {
       domain: "uklandandfarms.co.uk",
       kind: "land",
     });
+    expect(SOURCE_CATALOGUE.find((s) => s.id === "pughauctions")).toMatchObject({
+      name: "Pugh Auctions",
+      domain: "pugh-auctions.com",
+      kind: "auction",
+    });
     // domains carry no scheme (the FE adds https://).
     for (const entry of SOURCE_CATALOGUE) {
       expect(entry.domain).not.toMatch(/^https?:\/\//);
@@ -64,6 +74,7 @@ describe("SOURCE_CATALOGUE", () => {
 describe("SOURCE_NAMES", () => {
   it("maps a crawled id to its display name", () => {
     expect(SOURCE_NAMES.auctionhouse).toBe("Auction House");
+    expect(SOURCE_NAMES.pughauctions).toBe("Pugh Auctions");
     expect(SOURCE_NAMES.uklandandfarms).toBe("UK Land & Farms");
   });
 

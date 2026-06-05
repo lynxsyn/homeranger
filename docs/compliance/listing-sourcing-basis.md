@@ -1,7 +1,8 @@
 # Listing-sourcing basis (scraped public listing sites)
 
-> **Scope:** SOURCING listings by reading two specific public UK listing sites
-> (`uklandandfarms.co.uk`, `auctionhouse.co.uk`) for a single-user, self-hosted,
+> **Scope:** SOURCING listings by reading specific public UK listing sites
+> (`uklandandfarms.co.uk`, `auctionhouse.co.uk`, `pugh-auctions.com`) for a
+> single-user, self-hosted,
 > non-commercial tool. This records the lawful + contractual basis for COLLECTING
 > those listings. It complements `agent-sourcing-basis.md` (agent contacts) and the
 > M6 send LIA (`legitimate-interest-basis.md`); scraped listings are a **read-only
@@ -44,6 +45,16 @@ special-category data.
   cookie policy, and auction *sale* conditions exist). Nothing prohibits personal
   automated link-out use. Posture: proceed strictly within robots.txt +
   minimisation + no redistribution.
+- **pughauctions** (`pugh-auctions.com`) Terms of Use *expressly permit* personal
+  use (verified 2026-06-05): *"You are permitted to display the materials on this
+  website on a computer screen and to download and print a hard copy for your
+  personal use provided that you do not alter or remove any copyright, trade mark
+  or other proprietary notices."* No clause prohibits automated access. Our use is
+  single-user, non-commercial, link-out, and does not alter their content, so it is
+  within the granted licence (the same posture as uklandandfarms; the commercial /
+  multi-tenant caveat applies equally). NB the firm is migrating to BTG Eddisons —
+  lot images already serve from `asta.btgeddisonspropertyauctions.com`, which is on
+  the hotlink host-allowlist.
 
 ## Data-right basis
 
@@ -66,6 +77,11 @@ retention, and an operator-triggered / scheduled-not-continuous cadence. This is
     is allowed; **respect `Crawl-delay: 5`**; the fetcher's user-agent must not be
     on the ~150-bot denylist. Confirm Firecrawl's UA + robots handling before
     enabling.
+  - `www.pugh-auctions.com` — `Allow: /` with only `/adm` disallowed; **no
+    `Crawl-delay`**. Enumerate via the national `/auction-diary` → each
+    `/auction/<id>` event page (lots inline) → the `/property/<id>` link-out. Never
+    fetch `/adm`. A national catalogue: scraped whenever a Search has target
+    outcodes, then outcode-filtered to the operator's patch.
 - **Minimise**: persist only the fields listed above.
 - **Per-run cap** (`LISTING_SCRAPE_LIMIT`) bounds volume + spend.
 - **Provenance**: store the source URL + site listing id (`ListingSourceRecord`),

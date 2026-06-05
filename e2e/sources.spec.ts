@@ -5,8 +5,8 @@
  * protectedProcedure (any authenticated user), so unlike the operator-only
  * Agents tab the nav button is always visible.
  *
- * Sources are the genuinely-wired listing-scrape sites (PR #80/#81/#82):
- * Auction House (auction) and UK Land & Farms (land). Each row folds in DERIVED
+ * Sources are the genuinely-wired listing-scrape sites (PR #80/#81/#82 + Pugh):
+ * Auction House + Pugh Auctions (auction) and UK Land & Farms (land). Each row folds in DERIVED
  * telemetry from real data — lotsFound = COUNT(ListingSourceRecord), latest lot
  * = MAX(observedAt) — plus the configured coverage outcodes from REGION_TAXONOMY.
  * The seed (apps/api/prisma/seed.ts) upserts scraped lots WITH ListingSourceRecord
@@ -16,16 +16,16 @@
  * Covers:
  *   1. The topbar Sources tab navigates to /sources and the page renders: the
  *      metrics strip (Monitored sources / Lots ingested / Latest activity), the
- *      sr-only "Sources" heading, and EXACTLY 2 source rows (the catalogue is a
- *      fixed 2-element config, so a hard count is valid here — unlike agents).
+ *      sr-only "Sources" heading, and EXACTLY 3 source rows (the catalogue is a
+ *      fixed 3-element config, so a hard count is valid here — unlike agents).
  *   2. The kind-filter chips (All / Auction houses / Land & farm) narrow the
- *      table to the matching kind and All restores both rows.
+ *      table to the matching kind (2 auction, 1 land) and All restores every row.
  *   3. Drilling in from a source's "View N lots" link lands on /listings WITH the
  *      source filter banner; the listings narrow to that source (every visible
  *      row's From cell shows the source name); clearing the banner restores all.
  *
  * Stable locators only (testids + data-source). The catalogue count is fixed at
- * 2 so it is asserted exactly; per-source lot counts are read from the page, not
+ * 3 so it is asserted exactly; per-source lot counts are read from the page, not
  * hard-coded, so a seed refresh does not flake. Where a sticky / scrolled
  * control defeats the center-point hit-test we invoke the React onClick via
  * el.click() (the same documented workaround the listings + agents specs use).
@@ -65,14 +65,15 @@ test("the Sources tab renders the metrics strip and exactly two source rows", as
   // The accessible heading survives the page-head removal (sr-only h1).
   await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
 
-  // The catalogue is a FIXED 2-element config (Auction House + UK Land & Farms),
-  // so a hard count is valid here (unlike the agents pool, which is seed-sized).
+  // The catalogue is a FIXED 3-element config (Auction House + Pugh Auctions +
+  // UK Land & Farms), so a hard count is valid here (unlike the agents pool,
+  // which is seed-sized).
   await expect(page.getByTestId("sources-table")).toBeVisible();
-  await expect(page.getByTestId("source-row")).toHaveCount(2);
+  await expect(page.getByTestId("source-row")).toHaveCount(3);
   await expect(page.getByTestId("sources-empty")).toHaveCount(0);
 
   // The count line agrees with the rendered rows.
-  await expect(page.getByTestId("sources-count")).toContainText("2");
+  await expect(page.getByTestId("sources-count")).toContainText("3");
 });
 
 test("a kind-filter chip narrows the table to that kind, and All restores both", async ({
@@ -82,7 +83,7 @@ test("a kind-filter chip narrows the table to that kind, and All restores both",
   await expect(page.getByTestId("sources-table")).toBeVisible();
 
   const allSources = await renderedSources(page);
-  expect(allSources).toHaveLength(2);
+  expect(allSources).toHaveLength(3);
 
   // Filter to Auction houses. Invoke the chip's React onClick directly: the chip
   // sits in a controls row that can scroll under the sticky topbar.
@@ -93,12 +94,14 @@ test("a kind-filter chip narrows the table to that kind, and All restores both",
     "aria-pressed",
     "true",
   );
+  // Two auction sources: Auction House + Pugh Auctions (catalogue order).
   const auctionRows = page.getByTestId("source-row");
-  await expect(auctionRows).toHaveCount(1);
+  await expect(auctionRows).toHaveCount(2);
   await expect(auctionRows.first()).toHaveAttribute(
     "data-source",
     "auctionhouse",
   );
+  await expect(auctionRows.nth(1)).toHaveAttribute("data-source", "pughauctions");
 
   // Filter to Land & farm → only the land source.
   await page
@@ -115,7 +118,7 @@ test("a kind-filter chip narrows the table to that kind, and All restores both",
     "uklandandfarms",
   );
 
-  // All restores both rows.
+  // All restores every row.
   await page
     .getByTestId("source-filter-all")
     .evaluate((el) => (el as HTMLElement).click());
@@ -123,7 +126,7 @@ test("a kind-filter chip narrows the table to that kind, and All restores both",
     "aria-pressed",
     "true",
   );
-  await expect(page.getByTestId("source-row")).toHaveCount(2);
+  await expect(page.getByTestId("source-row")).toHaveCount(3);
   expect(await renderedSources(page)).toEqual(allSources);
 });
 

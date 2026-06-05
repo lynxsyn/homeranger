@@ -52,6 +52,7 @@
  * docs/compliance/listing-sourcing-basis.md.
  */
 import {
+  LISTING_SCRAPE_SITES,
   type ListingScrapeProvider,
   type ListingScrapeSite,
   type ScrapeListingsInput,
@@ -60,7 +61,9 @@ import {
 import {
   extractImageUrl,
   extractListingLinks,
+  extractPughAuctionLinks,
   parseAuctionHubListings,
+  parsePughLots,
   parseUklfDetail,
   siteRegionIndexUrls,
 } from "./listing-search.js";
@@ -71,10 +74,11 @@ interface FirecrawlScrapeResult {
   metadata?: { title?: string; sourceURL?: string };
 }
 
-/** robots.txt Crawl-delay (ms) per site — auctionhouse asks for 5s. */
+/** robots.txt Crawl-delay (ms) per site — auctionhouse asks for 5s; pugh sets none. */
 const CRAWL_DELAY_MS: Record<ListingScrapeSite, number> = {
   uklandandfarms: 0,
   auctionhouse: 5_000,
+  pughauctions: 0,
 };
 
 /** Default cap on region INDEX pages expanded per scrape (bounds spend). */
@@ -157,9 +161,102 @@ export class FirecrawlListingScrapeProvider implements ListingScrapeProvider {
       return [];
     }
 
-    return input.site === "auctionhouse"
-      ? this.scrapeAuctionHub(indexUrls, wanted)
-      : this.scrapeUklfIndexes(indexUrls, wanted);
+    if (input.site === "auctionhouse") {
+      return this.scrapeAuctionHub(indexUrls, wanted);
+    }
+    if (input.site === "pughauctions") {
+      return this.scrapePugh(indexUrls, wanted);
+    }
+    return this.scrapeUklfIndexes(indexUrls, wanted);
+  }
+
+  /**
+   * pugh: scrape the national auction DIARY, harvest its upcoming auction-EVENT
+   * URLs, then scrape up to maxIndex event pages and parse their lots straight out
+   * of the markdown (full address + postcode + lot URL + guide price are inline —
+   * NO per-lot detail scrape). Best-effort per page (a failed scrape logs + skips,
+   * never aborts). Per-REQUEST crawl-delay; outcode-filter + cap at
+   * LISTING_SCRAPE_LIMIT; event fetches bounded by maxIndex.
+   */
+  private async scrapePugh(
+    diaryUrls: string[],
+    wanted: ReadonlySet<string>,
+  ): Promise<ScrapedListing[]> {
+    const delayMs = CRAWL_DELAY_MS.pughauctions;
+    let requestsMade = 0;
+
+    // 1. Harvest upcoming auction-event URLs from the diary page(s).
+    const eventUrls = new Set<string>();
+    for (const diaryUrl of diaryUrls) {
+      if (delayMs > 0 && requestsMade > 0) {
+        await sleep(delayMs);
+      }
+      requestsMade += 1;
+      let markdown: string;
+      try {
+        markdown = await this.scrapePageMarkdown(diaryUrl);
+      } catch (error) {
+        warnScrapeFailure(
+          "listing-scrape.diary.failed",
+          "pughauctions",
+          diaryUrl,
+          error,
+        );
+        continue;
+      }
+      for (const url of extractPughAuctionLinks(markdown)) {
+        eventUrls.add(url);
+      }
+    }
+
+    // 2. Scrape up to maxIndex event pages; parse lots inline + outcode-filter.
+    const results: ScrapedListing[] = [];
+    const seenExternalIds = new Set<string>();
+    let eventFetches = 0;
+    for (const eventUrl of eventUrls) {
+      if (results.length >= this.limit || eventFetches >= this.maxIndex) {
+        break;
+      }
+      if (delayMs > 0 && requestsMade > 0) {
+        await sleep(delayMs);
+      }
+      requestsMade += 1;
+      eventFetches += 1;
+      let markdown: string;
+      try {
+        markdown = await this.scrapePageMarkdown(eventUrl);
+      } catch (error) {
+        warnScrapeFailure(
+          "listing-scrape.event.failed",
+          "pughauctions",
+          eventUrl,
+          error,
+        );
+        continue;
+      }
+      for (const lot of parsePughLots(markdown)) {
+        if (results.length >= this.limit) {
+          break;
+        }
+        if (seenExternalIds.has(lot.externalId)) {
+          continue;
+        }
+        const outcode = outcodeOf(lot.postcode);
+        if (!outcode || !wanted.has(outcode)) {
+          continue; // outside the target patch
+        }
+        seenExternalIds.add(lot.externalId);
+        results.push({
+          externalId: lot.externalId,
+          sourceUrl: lot.sourceUrl,
+          addressRaw: lot.addressRaw,
+          postcode: lot.postcode,
+          ...(lot.pricePence !== undefined ? { pricePence: lot.pricePence } : {}),
+          ...(lot.imageUrl ? { imageUrl: lot.imageUrl } : {}),
+        });
+      }
+    }
+    return results;
   }
 
   /**
@@ -383,7 +480,7 @@ function throwOnHttp(status: number, message: string): never {
 }
 
 function parseEnabledSites(raw: string | undefined): ReadonlySet<ListingScrapeSite> {
-  const valid = new Set<ListingScrapeSite>(["uklandandfarms", "auctionhouse"]);
+  const valid = new Set<ListingScrapeSite>(LISTING_SCRAPE_SITES);
   const enabled = new Set<ListingScrapeSite>();
   for (const token of (raw ?? "").split(",")) {
     const t = token.trim() as ListingScrapeSite;
