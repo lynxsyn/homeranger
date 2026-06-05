@@ -13,6 +13,10 @@ import type {
 } from "../lib/discovery/agent-discovery.provider.js";
 import type { AgentRepository } from "../repositories/agent.repository.js";
 import type { SuppressionEntryRepository } from "../repositories/suppression-entry.repository.js";
+import type {
+  AgentClassifier,
+  AgentClassifyResult,
+} from "../lib/ai/agent-classifier.provider.js";
 
 describe("classifyMailboxType", () => {
   it("classifies a business/agency domain as corporate_subscriber", () => {
@@ -75,16 +79,59 @@ interface Harness {
   discover: ReturnType<typeof vi.fn>;
   upsertByEmail: ReturnType<typeof vi.fn>;
   isSuppressed: ReturnType<typeof vi.fn>;
+  classify: ReturnType<typeof vi.fn>;
+}
+
+/** A KEEP verdict (a genuine residential sales agency) — the default for tests. */
+function keepVerdict(): AgentClassifyResult {
+  return {
+    isResidentialSalesAgency: true,
+    kind: "estate_agent",
+    confidence: 1,
+    suggestedName: "",
+    metrics: {
+      model: "stub",
+      inputTokens: 0,
+      outputTokens: 0,
+      costPence: 0,
+      durationMs: 0,
+    },
+  };
+}
+
+/** A CONFIDENT non-agency verdict (>= the 0.85 auto-delete threshold). */
+function confidentJunkVerdict(
+  kind: AgentClassifyResult["kind"] = "portal",
+): AgentClassifyResult {
+  return { ...keepVerdict(), isResidentialSalesAgency: false, kind, confidence: 0.95 };
+}
+
+/** An UNCERTAIN non-agency verdict (below the threshold) — KEPT, not deleted. */
+function uncertainJunkVerdict(): AgentClassifyResult {
+  return {
+    ...keepVerdict(),
+    isResidentialSalesAgency: false,
+    kind: "other",
+    confidence: 0.4,
+  };
 }
 
 function makeHarness(opts: {
   agents: DiscoveredAgent[];
   suppressed?: string[];
+  /**
+   * The classifier verdict, by email or a single default. Omit to wire NO
+   * classifier (the gate is then a no-op — every survivor KEPT).
+   */
+  classifyBy?: (email: string) => AgentClassifyResult;
 }): Harness {
   const discover = vi.fn().mockResolvedValue(opts.agents);
   const upsertByEmail = vi.fn().mockResolvedValue({});
   const suppressedSet = new Set(opts.suppressed ?? []);
   const isSuppressed = vi.fn(async (email: string) => suppressedSet.has(email));
+  const classify = vi.fn(async (input: { email: string }) =>
+    (opts.classifyBy ?? (() => keepVerdict()))(input.email),
+  );
 
   const service = new DefaultAgentDiscoveryService({
     provider: { discover } as unknown as AgentDiscoveryProvider,
@@ -92,11 +139,17 @@ function makeHarness(opts: {
     suppressionEntryRepository: {
       isSuppressed,
     } as unknown as SuppressionEntryRepository,
+    ...(opts.classifyBy
+      ? { classifier: { classify } as unknown as AgentClassifier }
+      : {}),
   });
-  return { service, discover, upsertByEmail, isSuppressed };
+  return { service, discover, upsertByEmail, isSuppressed, classify };
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  delete process.env.ANALYSIS_KILL_SWITCH;
+  vi.restoreAllMocks();
+});
 
 describe("AgentDiscoveryService.discoverRegion", () => {
   it("upserts corporate agents (with a derived website) and DROPS free-mail", async () => {
@@ -130,7 +183,13 @@ describe("AgentDiscoveryService.discoverRegion", () => {
     expect(h.upsertByEmail).not.toHaveBeenCalledWith(
       expect.objectContaining({ email: "joe@gmail.com" }),
     );
-    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1, collapsed: 0 });
+    expect(result).toEqual({
+      discovered: 2,
+      upserted: 1,
+      skipped: 1,
+      collapsed: 0,
+      classifiedOut: 0,
+    });
   });
 
   it("skips already-suppressed emails (never re-sourced)", async () => {
@@ -146,7 +205,13 @@ describe("AgentDiscoveryService.discoverRegion", () => {
     expect(h.upsertByEmail).toHaveBeenCalledWith(
       expect.objectContaining({ email: "info@a.co.uk" }),
     );
-    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1, collapsed: 0 });
+    expect(result).toEqual({
+      discovered: 2,
+      upserted: 1,
+      skipped: 1,
+      collapsed: 0,
+      classifiedOut: 0,
+    });
   });
 
   it("skips a malformed (unknown) address — never persisted", async () => {
@@ -161,7 +226,13 @@ describe("AgentDiscoveryService.discoverRegion", () => {
     expect(h.upsertByEmail).toHaveBeenCalledWith(
       expect.objectContaining({ email: "info@a.co.uk" }),
     );
-    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1, collapsed: 0 });
+    expect(result).toEqual({
+      discovered: 2,
+      upserted: 1,
+      skipped: 1,
+      collapsed: 0,
+      classifiedOut: 0,
+    });
   });
 
   it("dedups duplicate emails within a batch (counted once)", async () => {
@@ -173,14 +244,26 @@ describe("AgentDiscoveryService.discoverRegion", () => {
     });
     const result = await h.service.discoverRegion("Conwy County");
     expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1, collapsed: 0 });
+    expect(result).toEqual({
+      discovered: 2,
+      upserted: 1,
+      skipped: 1,
+      collapsed: 0,
+      classifiedOut: 0,
+    });
   });
 
   it("is a no-op for an unsupported region (provider not called)", async () => {
     const h = makeHarness({ agents: [] });
     const result = await h.service.discoverRegion("Atlantis");
     expect(h.discover).not.toHaveBeenCalled();
-    expect(result).toEqual({ discovered: 0, upserted: 0, skipped: 0, collapsed: 0 });
+    expect(result).toEqual({
+      discovered: 0,
+      upserted: 0,
+      skipped: 0,
+      collapsed: 0,
+      classifiedOut: 0,
+    });
   });
 });
 
@@ -213,7 +296,13 @@ describe("AgentDiscoveryService.discoverByOutcodes", () => {
     );
     // gmail dropped (free-mail) — only the corporate agent is persisted.
     expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1, collapsed: 0 });
+    expect(result).toEqual({
+      discovered: 2,
+      upserted: 1,
+      skipped: 1,
+      collapsed: 0,
+      classifiedOut: 0,
+    });
   });
 
   it("uses the place-name regionLabel as the provider query (not the raw outcodes)", async () => {
@@ -275,21 +364,39 @@ describe("AgentDiscoveryService.discoverByOutcodes", () => {
     });
     const result = await h.service.discoverByOutcodes(["LL30"]);
     expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ discovered: 2, upserted: 1, skipped: 1, collapsed: 0 });
+    expect(result).toEqual({
+      discovered: 2,
+      upserted: 1,
+      skipped: 1,
+      collapsed: 0,
+      classifiedOut: 0,
+    });
   });
 
   it("is a no-op for an empty outcode set (provider not called)", async () => {
     const h = makeHarness({ agents: [] });
     const result = await h.service.discoverByOutcodes([]);
     expect(h.discover).not.toHaveBeenCalled();
-    expect(result).toEqual({ discovered: 0, upserted: 0, skipped: 0, collapsed: 0 });
+    expect(result).toEqual({
+      discovered: 0,
+      upserted: 0,
+      skipped: 0,
+      collapsed: 0,
+      classifiedOut: 0,
+    });
   });
 
   it("is a no-op when every outcode is blank (provider not called)", async () => {
     const h = makeHarness({ agents: [] });
     const result = await h.service.discoverByOutcodes(["", "   "]);
     expect(h.discover).not.toHaveBeenCalled();
-    expect(result).toEqual({ discovered: 0, upserted: 0, skipped: 0, collapsed: 0 });
+    expect(result).toEqual({
+      discovered: 0,
+      upserted: 0,
+      skipped: 0,
+      collapsed: 0,
+      classifiedOut: 0,
+    });
   });
 });
 
@@ -337,6 +444,7 @@ describe("AgentDiscoveryService per-domain collapse", () => {
       upserted: 1,
       skipped: 0,
       collapsed: 2,
+      classifiedOut: 0,
     });
   });
 
@@ -354,6 +462,7 @@ describe("AgentDiscoveryService per-domain collapse", () => {
       upserted: 2,
       skipped: 0,
       collapsed: 0,
+      classifiedOut: 0,
     });
   });
 
@@ -372,6 +481,177 @@ describe("AgentDiscoveryService per-domain collapse", () => {
       upserted: 0,
       skipped: 2,
       collapsed: 0,
+      classifiedOut: 0,
+    });
+  });
+});
+
+describe("AgentDiscoveryService quality classify gate", () => {
+  it("does NOT upsert a confident non-agency verdict (counted classifiedOut)", async () => {
+    const h = makeHarness({
+      agents: [
+        { email: "info@conwy-estates.co.uk", agencyName: "Conwy Estates" },
+        { email: "info@some-portal.co.uk", agencyName: "Some Portal" },
+      ],
+      classifyBy: (email) =>
+        email === "info@some-portal.co.uk"
+          ? confidentJunkVerdict("portal")
+          : keepVerdict(),
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+
+    // The confident non-agency candidate is dropped before upsert; the genuine
+    // agency is kept. Both survived the deterministic filters, so both were
+    // classified by the LLM.
+    expect(h.classify).toHaveBeenCalledTimes(2);
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
+    expect(h.upsertByEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "info@conwy-estates.co.uk" }),
+    );
+    expect(h.upsertByEmail).not.toHaveBeenCalledWith(
+      expect.objectContaining({ email: "info@some-portal.co.uk" }),
+    );
+    expect(result).toEqual({
+      discovered: 2,
+      upserted: 1,
+      skipped: 0,
+      collapsed: 0,
+      classifiedOut: 1,
+    });
+  });
+
+  it("KEEPS an uncertain non-agency verdict (below the auto-delete threshold)", async () => {
+    const h = makeHarness({
+      agents: [{ email: "info@maybe-agency.co.uk", agencyName: "Maybe Agency" }],
+      classifyBy: () => uncertainJunkVerdict(),
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+
+    // Uncertain → KEPT (never silently delete a real agent on a shaky call).
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
+    expect(h.upsertByEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "info@maybe-agency.co.uk" }),
+    );
+    expect(result).toEqual({
+      discovered: 1,
+      upserted: 1,
+      skipped: 0,
+      collapsed: 0,
+      classifiedOut: 0,
+    });
+  });
+
+  it("KEEPS a genuine agency verdict (upserted)", async () => {
+    const h = makeHarness({
+      agents: [{ email: "info@real-agency.co.uk", agencyName: "Real Agency" }],
+      classifyBy: () => keepVerdict(),
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+
+    expect(h.classify).toHaveBeenCalledTimes(1);
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      discovered: 1,
+      upserted: 1,
+      skipped: 0,
+      collapsed: 0,
+      classifiedOut: 0,
+    });
+  });
+
+  it("drops a property-portal email deterministically WITHOUT calling classify", async () => {
+    const h = makeHarness({
+      agents: [
+        { email: "info@conwy-estates.co.uk", agencyName: "Conwy Estates" },
+        { email: "noreply@rightmove.co.uk", agencyName: "Rightmove" },
+      ],
+      classifyBy: () => keepVerdict(),
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+
+    // The portal email is dropped by the deterministic isPortalEmail filter —
+    // never reaching (or paying for) the LLM. The genuine agency IS classified.
+    expect(h.classify).toHaveBeenCalledTimes(1);
+    expect(h.classify).not.toHaveBeenCalledWith(
+      expect.objectContaining({ email: "noreply@rightmove.co.uk" }),
+    );
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
+    expect(h.upsertByEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "info@conwy-estates.co.uk" }),
+    );
+    expect(result).toEqual({
+      discovered: 2,
+      upserted: 1,
+      skipped: 0,
+      collapsed: 0,
+      classifiedOut: 1,
+    });
+  });
+
+  it("drops a housing-association name deterministically WITHOUT calling classify", async () => {
+    const h = makeHarness({
+      agents: [
+        {
+          email: "post@grwpcynefin.org",
+          agencyName: "Grwp Cynefin Housing Association",
+        },
+      ],
+      classifyBy: () => keepVerdict(),
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+
+    // The stored name carries the "housing association" token → isNonAgencyName
+    // drops it deterministically, no LLM call.
+    expect(h.classify).not.toHaveBeenCalled();
+    expect(h.upsertByEmail).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      discovered: 1,
+      upserted: 0,
+      skipped: 0,
+      collapsed: 0,
+      classifiedOut: 1,
+    });
+  });
+
+  it("does NOT call the classifier when the kill-switch is on (everything kept)", async () => {
+    process.env.ANALYSIS_KILL_SWITCH = "1";
+    const h = makeHarness({
+      agents: [
+        { email: "info@a.co.uk", agencyName: "A" },
+        { email: "info@b.co.uk", agencyName: "B" },
+      ],
+      // A confident-junk verdict for everything — proving the gate is short-
+      // circuited (it would otherwise delete both).
+      classifyBy: () => confidentJunkVerdict("portal"),
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+
+    expect(h.classify).not.toHaveBeenCalled();
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({
+      discovered: 2,
+      upserted: 2,
+      skipped: 0,
+      collapsed: 0,
+      classifiedOut: 0,
+    });
+  });
+
+  it("KEEPS everything when no classifier is wired (gate is a no-op)", async () => {
+    // No classifyBy → the harness wires NO classifier; the gate must KEEP all.
+    const h = makeHarness({
+      agents: [{ email: "info@a.co.uk", agencyName: "A" }],
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+
+    expect(h.classify).not.toHaveBeenCalled();
+    expect(h.upsertByEmail).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      discovered: 1,
+      upserted: 1,
+      skipped: 0,
+      collapsed: 0,
+      classifiedOut: 0,
     });
   });
 });

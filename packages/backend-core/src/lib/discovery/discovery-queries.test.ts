@@ -14,7 +14,10 @@ import {
   extractEmails,
   hostnameOf,
   isLikelyAgencyEmail,
+  isNonAgencyName,
   isNonAgencyResult,
+  isPortalDomain,
+  isPortalEmail,
 } from "./discovery-queries.js";
 
 describe("buildDiscoveryQueries", () => {
@@ -225,6 +228,44 @@ describe("isNonAgencyResult", () => {
     ).toBe(true);
   });
 
+  it("flags a property-portal / aggregator host (rightmove, zoopla, onthemarket)", () => {
+    expect(
+      isNonAgencyResult({
+        title: "Properties for sale in Conwy",
+        url: "https://www.rightmove.co.uk/property-for-sale/Conwy.html",
+      }),
+    ).toBe(true);
+    expect(isNonAgencyResult({ url: "https://www.zoopla.co.uk/for-sale/" })).toBe(
+      true,
+    );
+    expect(isNonAgencyResult({ url: "https://onthemarket.com/for-sale/" })).toBe(
+      true,
+    );
+    expect(isNonAgencyResult({ url: "https://homemove.com/conveyancing" })).toBe(
+      true,
+    );
+    expect(isNonAgencyResult({ url: "https://www.allagents.co.uk/agent/x" })).toBe(
+      true,
+    );
+  });
+
+  it("flags a stored agencyName carrying a housing-association / social-housing token", () => {
+    // FIX-1: a housing-assoc whose URL is clean but whose stored name spells the
+    // token is caught deterministically (e.g. abbreviated/Welsh-named assocs).
+    expect(
+      isNonAgencyResult({
+        agencyName: "Wales & West Housing Association",
+        url: "https://www.wwha.co.uk/",
+      }),
+    ).toBe(true);
+    expect(
+      isNonAgencyResult({ agencyName: "Grwp Cynefin registered social landlord" }),
+    ).toBe(true);
+    expect(
+      isNonAgencyResult({ agencyName: "Some Social Housing provider" }),
+    ).toBe(true);
+  });
+
   it("does NOT flag a normal single estate-agency result", () => {
     expect(
       isNonAgencyResult({
@@ -235,6 +276,77 @@ describe("isNonAgencyResult", () => {
     expect(
       isNonAgencyResult({ title: "Wynne Davies Estate Agents | Rhos On Sea" }),
     ).toBe(false);
+    // a clean agency name with no junk token passes
+    expect(
+      isNonAgencyResult({
+        agencyName: "Fletcher & Poole",
+        url: "https://www.fletcherandpoole.co.uk/",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("isPortalDomain", () => {
+  it("flags known portal / aggregator domains (and their subdomains)", () => {
+    expect(isPortalDomain("onthemarket.com")).toBe(true);
+    expect(isPortalDomain("rightmove.co.uk")).toBe(true);
+    expect(isPortalDomain("www.zoopla.co.uk")).toBe(true);
+    expect(isPortalDomain("homemove.com")).toBe(true);
+    expect(isPortalDomain("primelocation.com")).toBe(true);
+    expect(isPortalDomain("ESPC.com")).toBe(true); // case-insensitive
+    expect(isPortalDomain("www.allagents.co.uk")).toBe(true);
+  });
+
+  it("does NOT flag a genuine independent-agency host", () => {
+    expect(isPortalDomain("fletcherandpoole.co.uk")).toBe(false);
+    expect(isPortalDomain("wynnedavies.co.uk")).toBe(false);
+    expect(isPortalDomain("www.fletcherandpoole.co.uk")).toBe(false);
+  });
+
+  it("does NOT match a host that merely contains a portal name as a substring", () => {
+    // belt-and-braces against a naive `.includes` match
+    expect(isPortalDomain("notrightmove.co.uk")).toBe(false);
+    expect(isPortalDomain("zoopla.co.uk.evil.com")).toBe(false);
+  });
+
+  it("returns false for a missing/empty host", () => {
+    expect(isPortalDomain(undefined)).toBe(false);
+    expect(isPortalDomain("")).toBe(false);
+  });
+});
+
+describe("isPortalEmail", () => {
+  it("rejects portal / aggregator email domains", () => {
+    expect(isPortalEmail("noreply@rightmove.co.uk")).toBe(true);
+    expect(isPortalEmail("hello@onthemarket.com")).toBe(true);
+    expect(isPortalEmail("leads@www.zoopla.co.uk")).toBe(true);
+    expect(isPortalEmail("info@homemove.com")).toBe(true);
+  });
+
+  it("accepts a genuine independent-agency email", () => {
+    expect(isPortalEmail("sales@fletcherandpoole.co.uk")).toBe(false);
+    expect(isPortalEmail("info@wynnedavies.co.uk")).toBe(false);
+  });
+
+  it("returns false for a malformed address (no @ / leading @)", () => {
+    expect(isPortalEmail("no-at-sign")).toBe(false);
+    expect(isPortalEmail("@rightmove.co.uk")).toBe(false);
+  });
+});
+
+describe("isNonAgencyName", () => {
+  it("flags a name carrying a housing-association / social-housing / directory token", () => {
+    expect(isNonAgencyName("Wales & West Housing Association")).toBe(true);
+    expect(isNonAgencyName("registered social landlord")).toBe(true);
+    expect(isNonAgencyName("Conwy County Borough Council")).toBe(true);
+    expect(isNonAgencyName("[PDF] Main Housing Landlord Details")).toBe(true);
+  });
+
+  it("does NOT flag a clean agency name (or a blank/missing one)", () => {
+    expect(isNonAgencyName("Fletcher & Poole")).toBe(false);
+    expect(isNonAgencyName("Wynne Davies Estate Agents")).toBe(false);
+    expect(isNonAgencyName("   ")).toBe(false);
+    expect(isNonAgencyName(undefined)).toBe(false);
   });
 });
 
@@ -244,9 +356,17 @@ describe("isLikelyAgencyEmail", () => {
     expect(isLikelyAgencyEmail("info@gov.uk")).toBe(false);
   });
 
+  it("rejects property-portal / aggregator addresses", () => {
+    expect(isLikelyAgencyEmail("noreply@rightmove.co.uk")).toBe(false);
+    expect(isLikelyAgencyEmail("hello@onthemarket.com")).toBe(false);
+    expect(isLikelyAgencyEmail("leads@www.zoopla.co.uk")).toBe(false);
+    expect(isLikelyAgencyEmail("info@homemove.com")).toBe(false);
+  });
+
   it("accepts a normal agency address + rejects a malformed one", () => {
     expect(isLikelyAgencyEmail("sales@wynnedavies.co.uk")).toBe(true);
-    expect(isLikelyAgencyEmail("post@grwpcynefin.org")).toBe(true); // type-filter is gov.uk only; page-skip catches housing assocs
+    expect(isLikelyAgencyEmail("info@fletcherandpoole.co.uk")).toBe(true);
+    expect(isLikelyAgencyEmail("post@grwpcynefin.org")).toBe(true); // type-filter is gov.uk/portal only; name-skip catches housing assocs
     expect(isLikelyAgencyEmail("no-at-sign")).toBe(false);
   });
 });

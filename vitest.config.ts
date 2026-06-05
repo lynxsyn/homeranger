@@ -92,6 +92,11 @@ export default defineConfig({
         "packages/backend-core/src/lib/ai/fake-vision-scorer.provider.ts",
         "packages/backend-core/src/lib/ai/fake-embedding.provider.ts",
         "packages/backend-core/src/lib/ai/fake-match-scorer.provider.ts",
+        // Agent-quality classifier FAKE only (ANALYSIS_FAKE/CLASSIFY_FAKE seam).
+        // The REAL agent-classifier.provider.ts is NOT excluded — its
+        // parseAgentClassify / shouldAutoDelete / AGENT_CLASSIFY_SCHEMA logic is
+        // pure and unit-covered (the parseMatchScore precedent).
+        "packages/backend-core/src/lib/ai/fake-agent-classifier.provider.ts",
         "packages/backend-core/src/lib/ai/fake-photo-source.provider.ts",
         "packages/backend-core/src/lib/ai/r2-photo-source.provider.ts",
         // M5 analysis repositories — Prisma I/O, exercised by the analyze +

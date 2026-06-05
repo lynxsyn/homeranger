@@ -24,7 +24,28 @@ import {
 } from "../repositories/suppression-entry.repository.js";
 import { resolveLocationToOutcodes } from "../lib/geo/uk-locations.js";
 import { emailDomain, emailLocalPart } from "../lib/email/email-domain.js";
+import {
+  isPortalEmail,
+  isNonAgencyName,
+} from "../lib/discovery/discovery-queries.js";
 import type { AgentDiscoveryProvider } from "../lib/discovery/agent-discovery.provider.js";
+import {
+  shouldAutoDelete,
+  type AgentClassifier,
+} from "../lib/ai/agent-classifier.provider.js";
+
+/**
+ * The hard off-switch for the LLM agent classifier (ANALYSIS_KILL_SWITCH=1) —
+ * mirrors the listing-analysis kill-switch read exactly. When on, the classify
+ * gate KEEPS every survivor (no LLM call, no auto-delete): auto-delete must never
+ * fire with the classifier disabled.
+ */
+function isAnalysisKillSwitchOn(): boolean {
+  return (
+    process.env.ANALYSIS_KILL_SWITCH === "1" ||
+    process.env.ANALYSIS_KILL_SWITCH === "true"
+  );
+}
 
 /** Free webmail domains — a mailbox here is `individual` (PECR: not cold-emailable). */
 export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
@@ -158,6 +179,13 @@ export interface AgentDiscoveryResult {
   skipped: number;
   /** Extra same-agency mailboxes dropped by per-domain collapse (kept one each). */
   collapsed: number;
+  /**
+   * Candidates dropped by the quality classifier before upsert — deterministic
+   * portal/housing-association/directory filters + the confident-non-agency LLM
+   * verdict (`shouldAutoDelete`). Non-destructive: the candidate never becomes a
+   * row, so no existing agent is ever erased here.
+   */
+  classifiedOut: number;
 }
 
 export interface AgentDiscoveryService {
@@ -179,18 +207,26 @@ export interface AgentDiscoveryDependencies {
   provider: AgentDiscoveryProvider;
   agentRepository?: AgentRepository;
   suppressionEntryRepository?: SuppressionEntryRepository;
+  /**
+   * The LLM quality classifier (M-classifier). Optional: when absent (or the
+   * kill-switch is on) the classify gate is a no-op and every survivor is KEPT —
+   * auto-delete never fires without an explicitly wired classifier.
+   */
+  classifier?: AgentClassifier;
 }
 
 export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
   private readonly provider: AgentDiscoveryProvider;
   private readonly agentRepository: AgentRepository;
   private readonly suppressionEntryRepository: SuppressionEntryRepository;
+  private readonly classifier: AgentClassifier | null;
 
   constructor(deps: AgentDiscoveryDependencies) {
     this.provider = deps.provider;
     this.agentRepository = deps.agentRepository ?? defaultAgentRepository;
     this.suppressionEntryRepository =
       deps.suppressionEntryRepository ?? defaultSuppressionEntryRepository;
+    this.classifier = deps.classifier ?? null;
   }
 
   async discoverRegion(regionName: string): Promise<AgentDiscoveryResult> {
@@ -204,7 +240,13 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
           region: regionName,
         }),
       );
-      return { discovered: 0, upserted: 0, skipped: 0, collapsed: 0 };
+      return {
+        discovered: 0,
+        upserted: 0,
+        skipped: 0,
+        collapsed: 0,
+        classifiedOut: 0,
+      };
     }
     return this.runDiscovery({ region: regionName, outcodes });
   }
@@ -232,7 +274,13 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
           scope: "discovery.outcodes.empty",
         }),
       );
-      return { discovered: 0, upserted: 0, skipped: 0, collapsed: 0 };
+      return {
+        discovered: 0,
+        upserted: 0,
+        skipped: 0,
+        collapsed: 0,
+        classifiedOut: 0,
+      };
     }
     // The provider takes `region` for its query CONTEXT — the web-search string.
     // Prefer the search's human place-name label (e.g. "Conwy County"): a search
@@ -259,11 +307,15 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
     let upserted = 0;
     let skipped = 0;
     let collapsed = 0;
+    let classifiedOut = 0;
+    const killSwitchOn = isAnalysisKillSwitchOn();
     // `skipped` folds intra-batch duplicates, malformed (unknown) addresses,
     // free-mail (individual) addresses, and already-suppressed contacts.
     // `collapsed` counts extra same-agency mailboxes dropped by per-domain
-    // collapse. So discovered === upserted + skipped + collapsed regardless of
-    // whether the provider deduped.
+    // collapse. `classifiedOut` counts candidates the quality classifier drops
+    // (deterministic portal/housing-association filters + confident-non-agency
+    // LLM verdict) BEFORE upsert. So discovered === upserted + skipped +
+    // collapsed + classifiedOut regardless of whether the provider deduped.
     const seen = new Set<string>();
     // Corporate candidates are grouped by agency domain and collapsed to ONE best
     // mailbox each (a 3-inbox agency = one cold contact). Free-mail addresses are
@@ -293,6 +345,36 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
         skipped += 1;
         continue;
       }
+
+      // ── Quality classify gate (drop confident non-agency junk pre-upsert) ──
+      // 1. Deterministic free filters first (no LLM spend): a known property
+      //    portal/aggregator email, or a stored agency name carrying an
+      //    unambiguous housing-association / social-housing / council / directory
+      //    token (isNonAgencyName reuses NON_AGENCY_SOURCE_RE). These catch the
+      //    hardest named cases (wwha/grwpcynefin housing associations, PDF
+      //    directories) deterministically — no confident LLM verdict needed.
+      if (isPortalEmail(email) || isNonAgencyName(candidate.agencyName)) {
+        classifiedOut += 1;
+        continue;
+      }
+      // 2. Kill-switch / no-classifier short-circuit: when the LLM classifier is
+      //    OFF (ANALYSIS_KILL_SWITCH) or simply not wired, KEEP every survivor —
+      //    auto-delete must never fire without an explicitly enabled classifier.
+      if (!killSwitchOn && this.classifier !== null) {
+        // 3. LLM classify the survivors. Drop only a CONFIDENT non-agency verdict
+        //    (shouldAutoDelete); an uncertain verdict KEEPS the agent. The
+        //    DiscoveredAgent carries no page text, so pageText is omitted here.
+        const verdict = await this.classifier.classify({
+          agencyName: candidate.agencyName,
+          email,
+          ...(candidate.websiteUrl ? { websiteUrl: candidate.websiteUrl } : {}),
+        });
+        if (shouldAutoDelete(verdict)) {
+          classifiedOut += 1;
+          continue;
+        }
+      }
+
       // corporate_subscriber — defer to the per-domain collapse below.
       const domain = emailDomain(email)!; // corporate ⇒ a real domain
       const group = byDomain.get(domain) ?? [];
@@ -331,9 +413,16 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
         upserted,
         skipped,
         collapsed,
+        classifiedOut,
       }),
     );
-    return { discovered: candidates.length, upserted, skipped, collapsed };
+    return {
+      discovered: candidates.length,
+      upserted,
+      skipped,
+      collapsed,
+      classifiedOut,
+    };
   }
 }
 

@@ -17,6 +17,7 @@ import type {
   AgentDiscoveryProvider,
   DiscoveredAgent,
 } from "../lib/discovery/agent-discovery.provider.js";
+import type { AgentClassifier } from "../lib/ai/agent-classifier.provider.js";
 
 const db = getTestPrisma();
 const TEST_PREFIX = "m7-disc";
@@ -28,6 +29,35 @@ function fakeProvider(agents: DiscoveredAgent[]): AgentDiscoveryProvider {
   return { async discover() { return agents; } };
 }
 
+/**
+ * A deterministic KEEP classifier — every candidate is judged a genuine
+ * residential sales agency, so the gate never deletes here. The corp agent then
+ * upserts exactly as before (the free-mail + suppressed candidates are already
+ * dropped earlier in the pipeline, before they ever reach the classifier).
+ */
+function keepAllClassifier(): AgentClassifier {
+  return {
+    async classify() {
+      return {
+        isResidentialSalesAgency: true,
+        kind: "estate_agent",
+        confidence: 1,
+        suggestedName: "",
+        metrics: {
+          model: "fake",
+          inputTokens: 0,
+          outputTokens: 0,
+          costPence: 0,
+          durationMs: 0,
+        },
+      };
+    },
+    getModel() {
+      return "fake";
+    },
+  };
+}
+
 describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
   "AgentDiscoveryService: discover → classify → upsert (real pgvector)",
   () => {
@@ -37,6 +67,7 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
         { email: FREE_EMAIL, agencyName: "Sole Trader" },
         { email: SUPPRESSED_EMAIL, agencyName: "Already Suppressed" },
       ]),
+      classifier: keepAllClassifier(),
     });
 
     beforeAll(async () => {
@@ -60,6 +91,7 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
         upserted: 1,
         skipped: 2,
         collapsed: 0,
+        classifiedOut: 0,
       });
 
       const corp = await db.agent.findUnique({ where: { email: CORP_EMAIL } });
@@ -85,6 +117,7 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
         upserted: 1,
         skipped: 2,
         collapsed: 0,
+        classifiedOut: 0,
       });
       // Only the corporate agent persists; the free-mail address never lands.
       const count = await db.agent.count({

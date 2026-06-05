@@ -16,6 +16,7 @@
  * carries a bound, so re-introducing one fails here instead of in prod.
  */
 import { describe, expect, it } from "vitest";
+import { AGENT_CLASSIFY_SCHEMA } from "./agent-classifier.provider.js";
 import { LISTING_EXTRACTION_SCHEMA } from "./claude-extraction.provider.js";
 import { MATCH_SCORE_SCHEMA } from "./match-scorer.provider.js";
 import { PHOTO_SCORE_SCHEMA } from "./vision-scorer.provider.js";
@@ -84,5 +85,12 @@ describe("Anthropic structured-output schemas carry no numeric bounds", () => {
     // guarded here so a future numeric bound on price/beds/baths/confidence
     // fails in CI, not in prod.
     expect(numericFieldsWithBounds(LISTING_EXTRACTION_SCHEMA)).toEqual([]);
+  });
+
+  it("AGENT_CLASSIFY_SCHEMA has no minimum/maximum on numeric fields", () => {
+    // The agent-quality classifier schema. The `confidence` 0–1 range lives in
+    // the description + is clamped in parseAgentClassify — NO numeric bound on
+    // the schema, or Anthropic structured output 400s (the PR #87 trap).
+    expect(numericFieldsWithBounds(AGENT_CLASSIFY_SCHEMA)).toEqual([]);
   });
 });
