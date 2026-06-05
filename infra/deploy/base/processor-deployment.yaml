@@ -258,16 +258,20 @@ spec:
                   name: homeranger-secret
                   key: FIRECRAWL_API_KEY
                   optional: true
-            # Listing scrape (PR #80/#81/#82 + listing-images) — ENABLE the two
-            # genuinely-wired sources so the daily scrape:listings job (scheduler
-            # cadence) crawls them for the active operator Searches' outcodes and
-            # populates the Sources tab + the listings table (with hotlinked
-            # images, never downloaded). Blank/unset = all sites dormant. Optional
-            # spend caps (code defaults, not wired): LISTING_SCRAPE_LIMIT (25),
-            # LISTING_SCRAPE_MAX_INDEX (2, uklandandfarms), SCRAPE_LISTINGS_EVERY_MS
-            # (24h). Requires FIRECRAWL_API_KEY above (already set).
+            # Listing scrape (PR #80/#81/#82 + listing-images + pughauctions) —
+            # ENABLE the genuinely-wired sources so the daily scrape:listings job
+            # (scheduler cadence) crawls them for the active operator Searches'
+            # outcodes and populates the Sources tab + the listings table (with
+            # hotlinked images, never downloaded). Blank/unset = all sites dormant.
+            # uklandandfarms + auctionhouse are region-mapped (REGION_TAXONOMY);
+            # pughauctions is a NATIONAL auction catalogue (scraped whenever there
+            # are target outcodes, outcode-filtered post-parse) — it yields lots
+            # once a Search covers its English/Welsh auction stock. Optional spend
+            # caps (code defaults, not wired): LISTING_SCRAPE_LIMIT (25),
+            # LISTING_SCRAPE_MAX_INDEX (2 = region-index/event pages),
+            # SCRAPE_LISTINGS_EVERY_MS (24h). Requires FIRECRAWL_API_KEY (already set).
             - name: LISTING_SCRAPE_SITES
-              value: "uklandandfarms,auctionhouse"
+              value: "uklandandfarms,auctionhouse,pughauctions"
           resources:
             requests:
               cpu: 50m

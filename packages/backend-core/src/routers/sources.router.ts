@@ -9,7 +9,7 @@
  * COUNT(ListingSourceRecord), latestObservedAt = MAX(observedAt), coverage from
  * REGION_TAXONOMY. NO health dot, NO sale-date countdown, NO price cap.
  *
- * ONE builder over the fixed SOURCE_CATALOGUE (2 rows), joining two batch groupBy
+ * ONE builder over the fixed SOURCE_CATALOGUE (3 rows), joining two batch groupBy
  * queries via Promise.all — mirrors agentsRouter.buildAgentRows.
  */
 import { SOURCE_CATALOGUE, type SourceKind } from "@homeranger/shared";
@@ -48,7 +48,8 @@ export const sourcesRouter = router({
       listingSourceRecordRepository.latestObservedBySourceType(),
     ]);
     return SOURCE_CATALOGUE.map((entry) => {
-      // entry.id is "auctionhouse" | "uklandandfarms" — both are ListingScrapeSite members.
+      // entry.id is a wired scrape site ("auctionhouse" | "pughauctions" |
+      // "uklandandfarms") — all are ListingScrapeSite members.
       const cov = siteCoverage(entry.id as Parameters<typeof siteCoverage>[0]);
       return {
         id: entry.id,

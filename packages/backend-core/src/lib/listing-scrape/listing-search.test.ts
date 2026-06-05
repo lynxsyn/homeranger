@@ -10,9 +10,11 @@ import { describe, expect, it } from "vitest";
 import {
   extractImageUrl,
   extractListingLinks,
+  extractPughAuctionLinks,
   isHotlinkableImageUrl,
   isListingUrl,
   parseAuctionHubListings,
+  parsePughLots,
   parseUklfDetail,
   siteCoverage,
   siteRegionIndexUrls,
@@ -657,5 +659,102 @@ describe("parseUklfDetail", () => {
         "Country properties, land & Farms for sale or rent - UKLAF",
       ),
     ).toBeNull();
+  });
+});
+
+describe("pughauctions (national auction catalogue)", () => {
+  it("targets the national diary whenever there are outcodes, [] otherwise", () => {
+    expect(siteRegionIndexUrls("pughauctions", "", ["HD4", "BL4"])).toEqual([
+      "https://www.pugh-auctions.com/auction-diary",
+    ]);
+    // A region label it is NOT taxonomy-mapped for still activates (national).
+    expect(siteRegionIndexUrls("pughauctions", "Cornwall", ["TR1"])).toEqual([
+      "https://www.pugh-auctions.com/auction-diary",
+    ]);
+    // No outcodes → nothing to target.
+    expect(siteRegionIndexUrls("pughauctions", "Yorkshire", [])).toEqual([]);
+  });
+
+  it("reports nationwide coverage (not a region-mapped patch)", () => {
+    expect(siteCoverage("pughauctions")).toEqual({
+      outcodes: [],
+      regionLabels: ["nationwide"],
+    });
+  });
+
+  it("isListingUrl accepts a /property/<ref> lot, rejects index/adm/query/host", () => {
+    expect(
+      isListingUrl(
+        "pughauctions",
+        "https://www.pugh-auctions.com/property/202603121543sq_aidl",
+      ),
+    ).toBe(true);
+    // bare section index, robots-disallowed /adm, a query string, wrong host.
+    expect(isListingUrl("pughauctions", "https://www.pugh-auctions.com/property/")).toBe(false);
+    expect(isListingUrl("pughauctions", "https://www.pugh-auctions.com/adm")).toBe(false);
+    expect(
+      isListingUrl("pughauctions", "https://www.pugh-auctions.com/property/x?ref=1"),
+    ).toBe(false);
+    expect(isListingUrl("pughauctions", "https://evil.example/property/x")).toBe(false);
+  });
+
+  it("harvests upcoming auction-event URLs from the diary (dedup, skip the diary itself)", () => {
+    const diary = [
+      `[Sale A](https://www.pugh-auctions.com/auction/202604011436sq_qw8s)`,
+      `[Sale A again](https://www.pugh-auctions.com/auction/202604011436sq_qw8s)`,
+      `[Sale B](https://www.pugh-auctions.com/auction/202605120943sq_exn9)`,
+      `[Diary](https://www.pugh-auctions.com/auction-diary#)`,
+    ].join("\n");
+    expect(extractPughAuctionLinks(diary)).toEqual([
+      "https://www.pugh-auctions.com/auction/202604011436sq_qw8s",
+      "https://www.pugh-auctions.com/auction/202605120943sq_exn9",
+    ]);
+  });
+
+  // A faithful trim of a LIVE Pugh auction-EVENT page (captured 2026-06-05): an
+  // image link to the lot, a "View Property" link, then the ADDRESS as its own
+  // link ending in the PROPERTY postcode, then the guide price.
+  const EVENT_MD = [
+    `[![Land at Bent Street](https://asta.btgeddisonspropertyauctions.com/sdl_data/x/land.jpg?u=1)](https://www.pugh-auctions.com/property/202603121543sq_aidl)`,
+    ``,
+    `[View Property](https://www.pugh-auctions.com/property/202603121543sq_aidl)`,
+    ``,
+    `Multi-Lot Timed Auction`,
+    ``,
+    `[Land at Bent Street & Elm Street, Newsome, Huddersfield, West Yorkshire HD4 6NX](https://www.pugh-auctions.com/property/202603121543sq_aidl)`,
+    ``,
+    `Guide Price: £130,000 plus`,
+  ].join("\n");
+
+  it("parses a lot inline: property address+postcode+price+image, ignoring the image/View links", () => {
+    const lots = parsePughLots(EVENT_MD);
+    expect(lots).toHaveLength(1);
+    expect(lots[0]).toEqual({
+      externalId: "pughauctions-202603121543sq_aidl",
+      sourceUrl: "https://www.pugh-auctions.com/property/202603121543sq_aidl",
+      addressRaw:
+        "Land at Bent Street & Elm Street, Newsome, Huddersfield, West Yorkshire HD4 6NX",
+      postcode: "HD4 6NX",
+      pricePence: 13_000_000,
+      imageUrl:
+        "https://asta.btgeddisonspropertyauctions.com/sdl_data/x/land.jpg?u=1",
+    });
+  });
+
+  it("dedups a lot that appears twice (first seen wins)", () => {
+    expect(parsePughLots(`${EVENT_MD}\n\n${EVENT_MD}`)).toHaveLength(1);
+  });
+
+  it("skips a lot link whose text carries no postcode", () => {
+    const md = `[View Property](https://www.pugh-auctions.com/property/202601010000sq_zzzz)`;
+    expect(parsePughLots(md)).toEqual([]);
+  });
+
+  it("omits the price when the event page has no guide price", () => {
+    const md = `[Land at Foo, Leeds, West Yorkshire LS1 1AA](https://www.pugh-auctions.com/property/202601010000sq_abcd)`;
+    const lots = parsePughLots(md);
+    expect(lots).toHaveLength(1);
+    expect(lots[0]!.pricePence).toBeUndefined();
+    expect(lots[0]!.postcode).toBe("LS1 1AA");
   });
 });

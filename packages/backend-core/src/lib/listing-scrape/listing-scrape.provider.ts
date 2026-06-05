@@ -1,7 +1,8 @@
 /**
  * ListingScrapeProvider — the swappable seam that scrapes public UK listing
- * sites (uklandandfarms.co.uk + auctionhouse.co.uk) for properties to LINK OUT
- * to. The real impl (firecrawl-listing-scrape.provider.ts) does the network
+ * sites (uklandandfarms.co.uk + auctionhouse.co.uk + pugh-auctions.com) for
+ * properties to LINK OUT to. The real impl (firecrawl-listing-scrape.provider.ts)
+ * does the network
  * scrape; this module owns the interface + types + the deterministic, network-
  * free fake the worker uses under LISTING_SCRAPE_FAKE=1 (E2E/CI never hit the
  * network or spend). Mirrors the AgentDiscoveryProvider seam from M7.
@@ -13,13 +14,14 @@
  * to dedup + link out, and the canonical record stays on the source site.
  */
 
-/** The two public listing sites we scrape (mirror the new ListingSource enum values). */
-export type ListingScrapeSite = "uklandandfarms" | "auctionhouse";
+/** The public listing sites we scrape (mirror the new ListingSource enum values). */
+export type ListingScrapeSite = "uklandandfarms" | "auctionhouse" | "pughauctions";
 
 /** The enabled-by-default ordering used when looping every site. */
 export const LISTING_SCRAPE_SITES: readonly ListingScrapeSite[] = [
   "uklandandfarms",
   "auctionhouse",
+  "pughauctions",
 ];
 
 export interface ScrapeListingsInput {
@@ -77,6 +79,7 @@ function titleCase(value: string): string {
 const FAKE_BASE_PRICE_PENCE: Record<ListingScrapeSite, number> = {
   uklandandfarms: 65_000_000, // £650,000
   auctionhouse: 18_500_000, // £185,000 (auction guide)
+  pughauctions: 13_000_000, // £130,000 (auction guide)
 };
 
 /**

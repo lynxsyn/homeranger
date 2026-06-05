@@ -22,12 +22,13 @@ export interface SourceCatalogueEntry {
 }
 
 /**
- * The ONLY genuinely-wired scraper sources (PR #80/#81/#82). Ordered exactly as
- * the Sources table renders. NEVER add agent_email/manual here — they are not
- * crawled. Built to scale to N; ships exactly these 2.
+ * The ONLY genuinely-wired scraper sources (PR #80/#81/#82 + pughauctions).
+ * Ordered exactly as the Sources table renders. NEVER add agent_email/manual
+ * here — they are not crawled. Built to scale to N.
  */
 export const SOURCE_CATALOGUE: readonly SourceCatalogueEntry[] = [
   { id: "auctionhouse", name: "Auction House", domain: "auctionhouse.co.uk", kind: "auction" },
+  { id: "pughauctions", name: "Pugh Auctions", domain: "pugh-auctions.com", kind: "auction" },
   { id: "uklandandfarms", name: "UK Land & Farms", domain: "uklandandfarms.co.uk", kind: "land" },
 ] as const;
 

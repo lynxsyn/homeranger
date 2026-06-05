@@ -83,6 +83,7 @@ enum ListingSource {
   manual
   uklandandfarms
   auctionhouse
+  pughauctions
 }
 
 // Email SPF/DKIM verdicts — reuses the Doxus EmailAuthVerdict enum shape.

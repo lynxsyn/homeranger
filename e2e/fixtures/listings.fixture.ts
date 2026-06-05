@@ -20,7 +20,7 @@
  */
 
 /** The scraped link-out sources (a subset of the ListingSource enum). */
-export type ScrapedSource = "uklandandfarms" | "auctionhouse";
+export type ScrapedSource = "uklandandfarms" | "auctionhouse" | "pughauctions";
 
 /** A seedable listing fixture (the upsertByAddress input shape). */
 export interface ListingFixture {

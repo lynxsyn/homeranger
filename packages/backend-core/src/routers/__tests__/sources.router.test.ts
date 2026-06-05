@@ -9,7 +9,8 @@
  * Asserts:
  *   - auth (the INVERSE of agents): anon → UNAUTHORIZED; a NON-operator authed
  *     caller SUCCEEDS (protectedProcedure admits any authed user, NOT FORBIDDEN).
- *   - exactly 2 rows in catalogue order ["auctionhouse","uklandandfarms"].
+ *   - the catalogue rows in order ["auctionhouse","pughauctions","uklandandfarms"]
+ *     (pugh = a NATIONAL source → "Nationwide" coverage, no outcode chips).
  *   - lotsFound / latestObservedAt join (present → value; absent → 0 / null).
  *   - coverage derives from REGION_TAXONOMY (LL2/LL3); no agent_email/manual row.
  *   - toCoverageLabel: first-alias title-case + empty-alias "" branch.
@@ -72,7 +73,7 @@ describe("sourcesRouter auth", () => {
 });
 
 describe("sourcesRouter.list rows", () => {
-  it("returns exactly 2 rows in catalogue order with the telemetry join applied", async () => {
+  it("returns the catalogue rows in order with the telemetry join applied", async () => {
     const { countSpy, latestSpy } = injectRepo({
       counts: new Map<ListingSource, number>([["auctionhouse", 5]]),
       latest: new Map<ListingSource, Date>([
@@ -82,7 +83,11 @@ describe("sourcesRouter.list rows", () => {
 
     const rows = await partnerCaller.sources.list();
 
-    expect(rows.map((r) => r.id)).toEqual(["auctionhouse", "uklandandfarms"]);
+    expect(rows.map((r) => r.id)).toEqual([
+      "auctionhouse",
+      "pughauctions",
+      "uklandandfarms",
+    ]);
     expect(countSpy).toHaveBeenCalledTimes(1);
     expect(latestSpy).toHaveBeenCalledTimes(1);
 
@@ -100,8 +105,20 @@ describe("sourcesRouter.list rows", () => {
       new Date("2026-06-01T00:00:00.000Z"),
     );
 
-    // Row 1: ABSENT from both Maps → the `?? 0` / `?? null` defaults.
+    // Row 1: Pugh — a NATIONAL catalogue → "Nationwide" coverage, no outcode chips.
     expect(rows[1]).toMatchObject({
+      id: "pughauctions",
+      name: "Pugh Auctions",
+      kind: "auction",
+      domain: "pugh-auctions.com",
+      lotsFound: 0,
+      coverageOutcodes: [],
+      coverageLabel: "Nationwide",
+    });
+    expect(rows[1]!.latestObservedAt).toBeNull();
+
+    // Row 2: ABSENT from both Maps → the `?? 0` / `?? null` defaults.
+    expect(rows[2]).toMatchObject({
       id: "uklandandfarms",
       name: "UK Land & Farms",
       kind: "land",
@@ -109,7 +126,7 @@ describe("sourcesRouter.list rows", () => {
       lotsFound: 0,
       coverageOutcodes: ["LL2", "LL3"],
     });
-    expect(rows[1]!.latestObservedAt).toBeNull();
+    expect(rows[2]!.latestObservedAt).toBeNull();
   });
 
   it("never emits a non-crawled source (agent_email / manual)", async () => {

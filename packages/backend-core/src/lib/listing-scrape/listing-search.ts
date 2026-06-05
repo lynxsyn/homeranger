@@ -73,9 +73,25 @@ const REGION_TAXONOMY: readonly RegionTaxonomyRow[] = [
         "https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/",
       ],
       auctionhouse: ["https://www.auctionhouse.co.uk/wales"],
+      // pughauctions is a NATIONAL catalogue (no per-region URL) — see
+      // NATIONAL_INDEX_URLS; it is not mapped per REGION_TAXONOMY row.
+      pughauctions: [],
     },
   },
 ];
+
+/**
+ * NATIONAL-catalogue sources: sites with a single current-stock catalogue and NO
+ * per-region URL. siteRegionIndexUrls returns the catalogue URL(s) for these
+ * whenever the scrape has target outcodes, and the provider outcode-filters the
+ * parsed listings (the patch is applied AFTER parsing, not via the URL). Today:
+ * pughauctions — the /auction-diary lists upcoming auction EVENTS, each event
+ * page lists its lots inline (address + postcode + lot URL), parsed like a hub.
+ */
+const NATIONAL_INDEX_URLS: Partial<Record<ListingScrapeSite, readonly string[]>> =
+  {
+    pughauctions: ["https://www.pugh-auctions.com/auction-diary"],
+  };
 
 /**
  * Construct the site-specific region INDEX / HUB URLs for a region, deterministic
@@ -92,6 +108,15 @@ export function siteRegionIndexUrls(
   const codes = (outcodes ?? [])
     .map((o) => (o ?? "").trim().toUpperCase())
     .filter((o) => o.length > 0);
+
+  // National-catalogue sources (no per-region URL): scrape the whole current
+  // catalogue whenever the scrape has ANY target outcodes; the operator's patch
+  // is applied by outcode-filtering the parsed lots, not by the URL. Returns []
+  // with no outcodes (nothing to target) — same clean no-op as an unmapped region.
+  const national = NATIONAL_INDEX_URLS[site];
+  if (national) {
+    return codes.length > 0 ? [...national] : [];
+  }
 
   const seen = new Set<string>();
   const result: string[] = [];
@@ -124,6 +149,11 @@ export function siteRegionIndexUrls(
 export function siteCoverage(
   site: ListingScrapeSite,
 ): { outcodes: string[]; regionLabels: string[] } {
+  // A national-catalogue source is not region-mapped — it covers the whole UK,
+  // filtered to whatever outcodes the operator searches. Report it as such.
+  if (NATIONAL_INDEX_URLS[site]) {
+    return { outcodes: [], regionLabels: ["nationwide"] };
+  }
   const outcodes = new Set<string>();
   const labels = new Set<string>();
   for (const row of REGION_TAXONOMY) {
@@ -184,6 +214,21 @@ export function isListingUrl(site: ListingScrapeSite, url: string): boolean {
     // segment carries a ref token (e.g. `83440_chs250018`, `glyn_ceiriog-34141009`,
     // `99991_1283`). The area index (.../<area>/, no ref segment) is NOT a detail.
     return segments.length > 0 && isDetailRefSegment(segments[segments.length - 1]!);
+  }
+
+  if (site === "pughauctions") {
+    // A Pugh LOT detail page: www.pugh-auctions.com/property/<ref>. NEVER /adm
+    // (robots.txt); reject any query string (hygiene — Pugh lot URLs carry none).
+    if (host !== "www.pugh-auctions.com") {
+      return false;
+    }
+    if (lowerPath.startsWith("/adm")) {
+      return false;
+    }
+    if (parsed.search.length > 0) {
+      return false;
+    }
+    return isDeepPathUnder(path, "/property/");
   }
 
   // auctionhouse
@@ -250,6 +295,7 @@ export function extractListingLinks(
 const SITE_BASE_ORIGIN: Record<ListingScrapeSite, string> = {
   uklandandfarms: "https://www.uklandandfarms.co.uk",
   auctionhouse: "https://www.auctionhouse.co.uk",
+  pughauctions: "https://www.pugh-auctions.com",
 };
 
 /**
@@ -260,12 +306,14 @@ const SITE_BASE_ORIGIN: Record<ListingScrapeSite, string> = {
  */
 const LINK_TOKEN_RE = /(?:https?:\/\/[^\s"'()<>[\]]+|\/[^\s"'()<>[\]]+)/gi;
 
-/** One lot parsed directly out of the auctionhouse regional HUB markdown. */
+/** One lot parsed directly out of an auction HUB / event page's markdown. */
 export interface ParsedHubListing {
   externalId: string;
   sourceUrl: string;
   addressRaw: string;
   postcode: string;
+  /** Integer pence when the hub carries a guide price inline (pugh), else absent. */
+  pricePence?: number;
   /** Hotlinkable thumbnail URL from the hub (the lot's `![…](url)` image). */
   imageUrl?: string;
 }
@@ -331,6 +379,136 @@ export function parseAuctionHubListings(markdown: string): ParsedHubListing[] {
   }
   return out;
 }
+
+/**
+ * Harvest the upcoming AUCTION-EVENT URLs from the Pugh `/auction-diary` markdown.
+ * The diary lists each upcoming sale as a `…/auction/<id>` link (NOT a lot); the
+ * provider then scrapes each event page and parsePughLots-es its inline lots.
+ * Deduped, stable first-seen order. Pure.
+ */
+export function extractPughAuctionLinks(markdown: string): string[] {
+  if (!markdown) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of markdown.matchAll(PUGH_AUCTION_LINK_RE)) {
+    const url = `https://www.pugh-auctions.com/auction/${m[1]}`;
+    if (!seen.has(url)) {
+      seen.add(url);
+      out.push(url);
+    }
+  }
+  return out;
+}
+
+/**
+ * Parse the lots straight out of a Pugh auction-EVENT page's markdown. Like the
+ * auctionhouse hub, each lot renders inline with its full address + postcode AND
+ * the lot URL, so we recover the listing WITHOUT a per-lot detail scrape — and
+ * Pugh additionally carries the guide price inline.
+ *
+ * REAL SHAPE (captured live): each lot is an image link to the lot, a "View
+ * Property" link, then the ADDRESS as its own markdown link, then the price:
+ *
+ *   [![alt](https://asta.btgeddisons….com/…jpg)](https://www.pugh-auctions.com/property/<id>)
+ *   [View Property](https://www.pugh-auctions.com/property/<id>)
+ *   Multi-Lot Timed Auction
+ *   [Land at Bent Street, Newsome, Huddersfield, West Yorkshire HD4 6NX](https://www.pugh-auctions.com/property/<id>)
+ *   Guide Price: £130,000 plus
+ *
+ * PUGH_LOT_LINK_RE anchors on the opening `[` of the ADDRESS link (so it skips the
+ * image link — whose text holds a `]` from the inner `![…]` — and "View Property",
+ * which carries no postcode). g1 = the address ending in a postcode; g2 = the lot
+ * URL; g3 = the lot id. The guide price (when present) is the first
+ * `Guide Price: £X` within a bounded window AFTER the address link. The lot image
+ * sits just BEFORE the lot id (paired by pughImagesById). Deduped by externalId
+ * (a lot can appear twice), stable first-seen order. Pure.
+ */
+export function parsePughLots(markdown: string): ParsedHubListing[] {
+  if (!markdown) {
+    return [];
+  }
+  const out: ParsedHubListing[] = [];
+  const seen = new Set<string>();
+  const imageById = pughImagesById(markdown);
+  for (const match of markdown.matchAll(PUGH_LOT_LINK_RE)) {
+    const addressText = match[1] ?? "";
+    const lotUrl = match[2] ?? "";
+    const id = match[3] ?? "";
+    const postcode = firstPostcode(addressText);
+    if (!postcode) {
+      continue; // no postcode in the link text → not placeable by outcode
+    }
+    const externalId = `pughauctions-${id}`;
+    if (seen.has(externalId)) {
+      continue; // a lot can appear twice on the page — first seen wins
+    }
+    seen.add(externalId);
+    const addressRaw = cleanAddress(addressText) || postcode;
+    // Guide price: the first labelled £ within a bounded window after the lot link
+    // (never a stray £ elsewhere on the page).
+    const priceMatch = markdown
+      .slice(match.index! + match[0].length, match.index! + match[0].length + 200)
+      .match(PUGH_GUIDE_PRICE_RE);
+    const pricePence = priceMatch
+      ? Number.parseInt(priceMatch[1]!.replace(/,/g, ""), 10) * 100
+      : undefined;
+    const imageUrl = imageById.get(id);
+    out.push({
+      externalId,
+      sourceUrl: lotUrl,
+      addressRaw,
+      postcode,
+      ...(pricePence !== undefined && Number.isFinite(pricePence) && pricePence > 0
+        ? { pricePence }
+        : {}),
+      ...(imageUrl ? { imageUrl } : {}),
+    });
+  }
+  return out;
+}
+
+/**
+ * Map Pugh lot id -> its event-page thumbnail image URL. Each lot renders as
+ * `[![alt](IMGURL)](…/property/<id>)`, so the image URL sits immediately before
+ * its own lot id. Pair each `![…](url)` with the FIRST lot id within a bounded
+ * window, keeping only hotlinkable URLs (first seen wins).
+ */
+function pughImagesById(markdown: string): Map<string, string> {
+  const byId = new Map<string, string>();
+  for (const m of markdown.matchAll(PUGH_LOT_IMAGE_RE)) {
+    const url = m[1] ?? "";
+    const id = m[2] ?? "";
+    if (id && !byId.has(id) && isHotlinkableImageUrl(url)) {
+      byId.set(id, url);
+    }
+  }
+  return byId;
+}
+
+/** A Pugh `…/auction/<id>` diary link — g1 = the auction-event id. */
+const PUGH_AUCTION_LINK_RE =
+  /https?:\/\/www\.pugh-auctions\.com\/auction\/([a-z0-9_]+)/gi;
+
+/**
+ * A Pugh lot address link as the event page renders it. g1 = the address TEXT
+ * ending in a UK postcode (anchored on the opening `[`, bounded so it never
+ * crosses a `[`/`]`/newline — excludes the image-link text + the "View Property"
+ * link); g2 = the lot URL; g3 = the lot id.
+ */
+const PUGH_LOT_LINK_RE =
+  /\[([^[\]\n]*?[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\]\((https?:\/\/www\.pugh-auctions\.com\/property\/([a-z0-9_]+))\)/gi;
+
+/** A Pugh `Guide Price: £X` (with optional thousands separators) — g1 = digits. */
+const PUGH_GUIDE_PRICE_RE = /guide price:?\s*£\s*([\d,]+)/i;
+
+/**
+ * A Pugh `![alt](IMGURL)` image immediately preceding (within a bounded span) a
+ * `/property/<id>` lot anchor. g1 = the image URL; g2 = the lot id.
+ */
+const PUGH_LOT_IMAGE_RE =
+  /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)[\s\S]{0,300}?\/property\/([a-z0-9_]+)/gi;
 
 /**
  * Map auctionhouse lot id -> its hub thumbnail image URL. The hub renders each
@@ -534,6 +712,8 @@ const IMAGE_HOST_SUFFIXES = [
   "auctionhouse.co.uk",
   "auctionhouse.uk.net",
   "uklandandfarms.co.uk",
+  "pugh-auctions.com", // pugh lot images (own host)
+  "btgeddisonspropertyauctions.com", // pugh/BTG-Eddisons lot image CDN (asta.*)
 ];
 
 /**

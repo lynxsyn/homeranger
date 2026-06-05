@@ -30,6 +30,22 @@ match it to the operator's active Searches.
 > stays within the minimisation + no-redistribution posture below; full-metadata /
 > image **download** remains out of scope.
 
+> **Amendment (2026-06-05, pughauctions):** a **third** scraped source is added —
+> `pugh-auctions.com` (Pugh Auctions, kind `auction`). Same posture as the two
+> above: read-only, link-out, minimal fields, hotlinked image only, dormant unless
+> enabled. ToS **expressly permit** personal use (quoted in
+> `docs/compliance/listing-sourcing-basis.md`); robots `Allow: /` with only `/adm`
+> disallowed and **no** crawl-delay. UNLIKE the two region-mapped sources, Pugh is
+> a **national auction catalogue** with no per-region URL: the `/auction-diary`
+> lists upcoming `/auction/<id>` events whose pages carry their lots inline
+> (address + postcode + lot URL + guide price), so it is parsed like the
+> auctionhouse hub and **outcode-filtered** to the operator's patch after parsing
+> (region selection happens post-fetch, not via the URL). The two ToS-prohibited /
+> postcode-withholding candidates surfaced in the same research (landlister,
+> ruralpropertynetwork — ToS bans automation; ruralscene — withholds the postcode)
+> were **rejected** and not added. The other viable auction firms (Clive Emson,
+> Prime Property) are deferred, not built.
+
 This **amends** `2026-06-01-data-source-viability.md`, which dropped portal
 scraping for v1. That decision was about **gated, scraping-prohibited mass portals**
 (Rightmove RTDF / Zoopla API are agent/broker-gated; their ToS prohibit scraping)

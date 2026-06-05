@@ -63,7 +63,11 @@ describe("FakeListingScrapeProvider", () => {
     ).toEqual([]);
   });
 
-  it("exposes both sites in LISTING_SCRAPE_SITES", () => {
-    expect(LISTING_SCRAPE_SITES).toEqual(["uklandandfarms", "auctionhouse"]);
+  it("exposes all wired sites in LISTING_SCRAPE_SITES", () => {
+    expect(LISTING_SCRAPE_SITES).toEqual([
+      "uklandandfarms",
+      "auctionhouse",
+      "pughauctions",
+    ]);
   });
 });
