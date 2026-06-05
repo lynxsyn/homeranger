@@ -97,7 +97,6 @@ function Chip({ icon, accent, children }) {
 
 /* ---- Status badge -------------------------------------------------------- */
 const STATUS_META = {
-  pre_market: { cls: "premarket", label: "Pre-market", dot: false },
   live: { cls: "live", label: "Live", dot: true },
   under_offer: { cls: "offer", label: "Under offer", dot: true },
   sold: { cls: "sold", label: "Sold", dot: true },

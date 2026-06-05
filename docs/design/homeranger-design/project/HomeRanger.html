@@ -8,6 +8,11 @@
   <link rel="stylesheet" href="assets/colors_and_type.css">
   <link rel="stylesheet" href="assets/components.css">
   <link rel="stylesheet" href="app/styles.css">
+  <!-- Leaflet (map view) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <!-- Restore saved theme before paint to avoid a flash -->
   <script>
     try {
@@ -31,8 +36,10 @@
   <script type="text/babel" src="app/campaign-data.jsx"></script>
   <script type="text/babel" src="app/settings.jsx"></script>
   <script type="text/babel" src="app/listings.jsx"></script>
+  <script type="text/babel" src="app/map.jsx"></script>
   <script type="text/babel" src="app/agents.jsx"></script>
   <script type="text/babel" src="app/campaigns.jsx"></script>
+  <script type="text/babel" src="app/sources.jsx"></script>
 
   <script type="text/babel">
     const { useState, useEffect } = React;
@@ -71,10 +78,12 @@
       const [theme, setTheme] = useStored("hs-theme", "light");
       const [view, setView] = useStored("hs-view", "table");
       const [tab, setTab] = useStored("hs-tab", "listings");
-      const [scoutFilter, setScoutFilter] = useState(null);
+      const [searchFilter, setSearchFilter] = useState(null);
       const [agentFilter, setAgentFilter] = useState(null);
+      const [sourceFilter, setSourceFilter] = useState(null);
       const [profile, setProfile] = useStoredJSON("hs-profile", BLANK_PROFILE);
-      const [agents, setAgents] = useStoredArray("hs-agents", SEED_AGENTS);
+      const [agents, setAgents] = useStoredArray("hs-agents-v2", SEED_AGENTS);
+      const [dismissed, setDismissed] = useStoredArray("hs-dismissed", []);
       const [sending, setSending] = useStored("hs-sending", "on");
       const isLive = sending !== "off";
       const [pendingNew, setPendingNew] = useState(false);
@@ -84,18 +93,28 @@
       }, [theme]);
 
       function goTab(id) {
-        setScoutFilter(null);   // manual nav always shows the full set
+        setSearchFilter(null);   // manual nav always shows the full set
         setAgentFilter(null);
+        setSourceFilter(null);
         setTab(id);
       }
 
-      function viewHomes(scout) {
-        setScoutFilter(scout);
+      function viewHomes(search) {
+        setSourceFilter(null);
+        setSearchFilter(search);
         setTab("listings");
       }
 
-      function viewAgents(scout) {
-        setAgentFilter(scout ? { name: scout.name, outcodes: window.scoutOutcodes(scout), status: scout.status } : null);
+      // Drill from a source into the Listings table, filtered to its lots.
+      function viewLots(source) {
+        setSearchFilter(null);
+        setAgentFilter(null);
+        setSourceFilter({ id: source.id, name: source.name, kind: source.kind, domain: source.domain });
+        setTab("listings");
+      }
+
+      function viewAgents(search) {
+        setAgentFilter(search ? { name: search.name, outcodes: window.searchOutcodes(search), status: search.status } : null);
         setTab("agents");
       }
 
@@ -118,6 +137,21 @@
         });
       }
 
+      // Remove a single agency from the list (its homes stay — see ConfirmRemove).
+      function removeAgent(id) {
+        setAgents((prev) => prev.filter((a) => a.id !== id));
+      }
+
+      // Remove a whole search: drop the agents it found, and HIDE (dismiss) the
+      // homes it brought in — reversible from the Listings → Dismissed view.
+      function removeSearch(search) {
+        const codes = window.searchOutcodes(search).map((o) => o.toUpperCase());
+        setAgents((prev) => prev.filter((a) =>
+          a.searchId !== search.id && !codes.includes((a.outcode || "").toUpperCase())));
+        const ids = window.matchSearch(search).map((l) => l.id);
+        setDismissed((prev) => Array.from(new Set([...prev, ...ids])));
+      }
+
       return (
         <div className="app">
           <header className="topbar">
@@ -129,6 +163,7 @@
                 <button aria-current={tab === "listings"} onClick={() => goTab("listings")}>Listings</button>
                 <button aria-current={tab === "campaigns"} onClick={() => goTab("campaigns")}>Searches</button>
                 <button aria-current={tab === "agents"} onClick={() => goTab("agents")}>Agents</button>
+                <button aria-current={tab === "sources"} onClick={() => goTab("sources")}>Sources</button>
               </nav>
             </div>
             <div className="topbar__right">
@@ -156,10 +191,15 @@
                 onToggleSending={() => setSending(isLive ? "off" : "on")}
                 filter={agentFilter}
                 onClearFilter={() => setAgentFilter(null)}
-                onViewHomes={viewHomes} />
+                onViewHomes={viewHomes}
+                onRemoveAgent={removeAgent} />
+            : tab === "sources"
+            ? <SourcesScreen onViewLots={viewLots} />
             : tab === "listings"
             ? <ListingsScreen view={{ value: view, set: setView }}
-                scoutFilter={scoutFilter} onClearFilter={() => setScoutFilter(null)} />
+                searchFilter={searchFilter} sourceFilter={sourceFilter}
+                onClearFilter={() => { setSearchFilter(null); setSourceFilter(null); }}
+                dismissed={dismissed} setDismissed={setDismissed} />
             : <CampaignsScreen
                 agents={agents}
                 sending={isLive}
@@ -167,6 +207,7 @@
                 onAddAgents={addAgents}
                 onViewAgents={viewAgents}
                 onViewHomes={viewHomes}
+                onRemoveSearch={removeSearch}
                 pendingNew={pendingNew}
                 onConsumedNew={() => setPendingNew(false)} />}
         </div>
