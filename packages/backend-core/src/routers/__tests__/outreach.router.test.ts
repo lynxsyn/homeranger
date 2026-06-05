@@ -28,6 +28,7 @@ function agent(): AgentRecord {
     id: "agent-1",
     email: "branch@agency.test",
     agencyName: "Agency",
+    website: "https://agency.test",
     mailboxType: "corporate_subscriber",
     optedOut: false,
     coveredOutcodes: [],

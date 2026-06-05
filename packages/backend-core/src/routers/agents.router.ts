@@ -54,6 +54,12 @@ export interface AgentRow {
   id: string;
   agencyName: string | null;
   email: string;
+  /**
+   * The agency website (scraped at discovery, else derived from the email
+   * domain) — the table links out to it so the operator can verify the agency
+   * before sending. Null only for legacy rows with no derivable domain.
+   */
+  website: string | null;
   /** = `Agent.coveredOutcodes`. */
   outcodes: string[];
   /**
@@ -153,6 +159,7 @@ async function buildAgentRows(outcodes?: string[]): Promise<AgentRow[]> {
     id: agent.id,
     agencyName: agent.agencyName,
     email: agent.email,
+    website: agent.website,
     outcodes: agent.coveredOutcodes,
     coverage: summariseCoverage(agent.coveredOutcodes),
     status: deriveAgentStatus(agent.optedOut, statusByAgentId.get(agent.id)),

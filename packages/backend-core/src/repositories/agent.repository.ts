@@ -18,6 +18,7 @@ const AGENT_SELECT = Prisma.validator<Prisma.AgentSelect>()({
   id: true,
   email: true,
   agencyName: true,
+  website: true,
   mailboxType: true,
   optedOut: true,
   coveredOutcodes: true,
@@ -33,6 +34,8 @@ export type AgentRecord = Prisma.AgentGetPayload<{
 export interface UpsertAgentByEmailInput {
   email: string;
   agencyName: string | null;
+  /** The agency website (set → written; omitted/undefined → left untouched). */
+  website?: string | null;
   mailboxType?: MailboxType;
   coveredOutcodes?: string[];
 }
@@ -75,6 +78,7 @@ export class AgentRepository {
       create: {
         email,
         agencyName: input.agencyName,
+        ...(input.website !== undefined ? { website: input.website } : {}),
         ...(input.mailboxType ? { mailboxType: input.mailboxType } : {}),
         coveredOutcodes: input.coveredOutcodes ?? [],
       },
@@ -82,6 +86,7 @@ export class AgentRepository {
         ...(input.agencyName !== undefined
           ? { agencyName: input.agencyName }
           : {}),
+        ...(input.website !== undefined ? { website: input.website } : {}),
         ...(input.mailboxType ? { mailboxType: input.mailboxType } : {}),
         ...(input.coveredOutcodes
           ? { coveredOutcodes: input.coveredOutcodes }
