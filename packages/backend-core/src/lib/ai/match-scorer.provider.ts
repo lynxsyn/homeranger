@@ -90,9 +90,11 @@ export const MATCH_SCORE_SCHEMA = {
   required: ["score", "rationale"],
   properties: {
     score: {
+      // NB: NO minimum/maximum — the Anthropic structured-output API rejects
+      // numeric bounds ("For 'number' type, properties maximum, minimum are not
+      // supported"). The 0–1 range lives in the description (to guide the model)
+      // and parseMatchScore clamps to [0,1] in code (defence against drift).
       type: "number",
-      minimum: 0,
-      maximum: 1,
       description: "0–1 relevance of the listing to the buyer's stated preferences.",
     },
     rationale: {
