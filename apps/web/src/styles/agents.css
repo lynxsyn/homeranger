@@ -115,6 +115,11 @@
    phantom width behind). */
 .agents-table {
   table-layout: fixed;
+  /* Scroll floor (the shared .tablewrap scrolls below this): the fixed columns
+     sum to ~700px with Coverage shown, so without a floor the Agency column
+     collapses on a narrow viewport. 820 keeps Agency usable and lets the card
+     scroll instead of clipping. Guarded by pages-visual.spec.ts. */
+  min-width: 820px;
 }
 .agents-table .col-cov {
   width: 270px;
@@ -483,9 +488,13 @@
   font-weight: var(--fw-semibold);
 }
 
-/* ---- Row actions (kebab → portaled menu → Remove) ----------------------- */
+/* ---- Row actions (kebab → portaled menu → Remove) -----------------------
+   The kebab button is 32px and right-aligned with a 10px right pad; at 44px the
+   cell could not hold it (32 + padding) and, because .tablewrap clips with
+   overflow:hidden, the button's right edge was clipped against the table edge.
+   56px seats it fully inside with a real gap. Guarded by pages-visual.spec.ts. */
 .col-act {
-  width: 44px;
+  width: 56px;
 }
 th.col-act {
   padding-right: 14px;

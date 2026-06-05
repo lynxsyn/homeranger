@@ -39,7 +39,21 @@ export const E2E_RESEND_INBOUND_SECRET =
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
-  expect: { timeout: 10_000 },
+  expect: {
+    timeout: 10_000,
+    // Visual snapshots (e2e/pages-snapshots.spec.ts): a small tolerance absorbs
+    // cross-machine anti-aliasing; the spec freezes animations + masks dynamic
+    // regions (relative times, thumbnails, score rings). Baselines are committed
+    // for chromium-linux (the ubuntu-latest CI runner, generated in the pinned
+    // mcr.microsoft.com/playwright:v1.60.0-noble image) AND chromium-darwin
+    // (local) — see the spec header for the regen command.
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.02,
+      animations: "disabled",
+      caret: "hide",
+      scale: "css",
+    },
+  },
   retries: process.env.CI ? 1 : 0,
   // Single worker — the specs share one pgvector DB; parallel workers would race
   // (a concurrent M4 inbound write would change the M3 row count mid-assertion).
@@ -53,7 +67,11 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { browserName: "chromium" } }],
-  webServer: [
+  // PW_NO_WEBSERVER lets a snapshot-baseline run inside the pinned Playwright
+  // Linux container target an already-running host stack (E2E_BASE_URL=
+  // http://host.docker.internal:5173) without Playwright trying to boot the
+  // api/worker/web itself. Unset in normal local + CI runs.
+  webServer: process.env.PW_NO_WEBSERVER ? undefined : [
     {
       command:
         "pnpm --filter @homeranger/api prisma:deploy && " +

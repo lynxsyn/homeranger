@@ -87,23 +87,42 @@ a { color: inherit; text-decoration: none; }
 .viewtoggle button[aria-pressed="true"] { background: var(--surface); color: var(--ink-1); box-shadow: var(--shadow-sm); }
 
 /* ---- Listings table ------------------------------------------------------ */
+/* Shared by the listings, agents and sources tables. `overflow-x: auto` (NOT
+ * hidden) is load-bearing: paired with a `min-width` on each table it means a
+ * viewport too narrow to hold every column SCROLLS the table inside its card,
+ * rather than collapsing the flexible column to 0 and CLIPPING content against
+ * the wrapper edge (the bug class this file fixes). At the operator's real
+ * laptop/monitor widths the table fits and no scrollbar shows. */
 .tablewrap { background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+  border-radius: var(--r-lg); box-shadow: var(--shadow-sm);
+  overflow-x: auto; overflow-y: hidden; }
 table.listings { width: 100%; border-collapse: collapse; }
 /* Fixed layout (LISTINGS table only — NOT the agents/sources tables, which carry
  * the shared `.listings` class but set their own widths): column geometry is
  * content-INDEPENDENT, so a long address can never widen the table past its
- * container (it truncates instead). Widths below size the fixed columns; the
- * address column (no width) absorbs the remainder. col-int fits the two row
- * action buttons (.rowacts: 34 + gap + 32 ≈ 68px of content). */
-table.listings-grid { table-layout: fixed; }
-.listings-grid .col-int { width: 76px; }
-.listings-grid .col-price { width: 96px; }
-.listings-grid .col-bedbath { width: 96px; }
-.listings-grid .col-match { width: 60px; }
-.listings-grid .col-agent { width: 140px; }
+ * container (it truncates instead). The address column (no width) absorbs the
+ * remainder. Each fixed width MUST hold its column's widest non-truncatable
+ * content AND its header label — otherwise the cell spills and, because
+ * an over-narrow column would otherwise spill its content. The values below are
+ * sized to each column's widest non-truncatable content AND its header label,
+ * with headroom; the listings-visual.spec.ts sweep guards them across the laptop
+ * + monitor range:
+ *   - col-int   88: the two row-action buttons (.rowacts ≈ 68 + 18 padding ≈ 86)
+ *   - col-price 112: "Price" header + a comfortably wide (7-figure) value
+ *   - col-match  92: the "MATCH" header (the 36px ring is narrower than its label)
+ *   - col-src    56: the 34px source icon + its 6/12 padding (= 52)
+ * col-bedbath/col-agent/col-seen are header- and truncation-bound. min-width is
+ * the scroll floor (see .tablewrap): below it the table scrolls instead of
+ * collapsing the address column — 640 keeps the address usable (≈ 290px) once
+ * the responsive rules below have dropped the optional columns. */
+table.listings-grid { table-layout: fixed; min-width: 640px; }
+.listings-grid .col-int { width: 88px; }
+.listings-grid .col-price { width: 112px; }
+.listings-grid .col-bedbath { width: 88px; }
+.listings-grid .col-match { width: 92px; }
+.listings-grid .col-agent { width: 128px; }
 .listings-grid .col-seen { width: 84px; }
-.listings-grid .col-src { width: 36px; }
+.listings-grid .col-src { width: 56px; }
 table.listings thead th {
   text-align: left; font-size: var(--fs-label); letter-spacing: var(--tracking-wide);
   text-transform: uppercase; color: var(--ink-3); font-weight: var(--fw-semibold);
