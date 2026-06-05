@@ -3,13 +3,13 @@
  * Agents screen. Where Agents shows the estate AGENTS HomeRanger contacted, this
  * shows the crawled listing SOURCES (auction houses + land/farm sites) the
  * scheduler scrapes on a cadence, with their configured coverage and the live
- * telemetry of how many lots each has ingested and when it last found one.
+ * telemetry of how many listings each has ingested and when it last found one.
  *
  * Unlike Agents this is a GLOBAL catalogue with no per-user/PII data, so the tab
  * is visible to every authenticated user (protectedProcedure, not operator-only)
  * and there are NO row actions — a source is config, not something you remove.
  *
- * Each row's "View N lots" drills out to the Listings view, scoped to that
+ * Each row's "View N listings" drills out to the Listings view, scoped to that
  * source's `primarySource` via a lifted App-level filter + a banner (mirroring
  * the search-filter drill-in). The three metric tiles are derived client-side
  * from the `sources.list` rows (no second round-trip); the kind-filter chips
@@ -142,7 +142,7 @@ export function SourcesPage({ onViewLots }: SourcesPageProps) {
         <SourceMetric
           icon="home"
           value={totalLots}
-          label="Lots ingested"
+          label="Listings ingested"
           testid="sources-metric-lots"
         />
         <SourceMetric
@@ -199,8 +199,8 @@ export function SourcesPage({ onViewLots }: SourcesPageProps) {
               <InfoTip label="About sources" align="right" size={14}>
                 <b>The sites HomeRanger crawls.</b> Auction houses and land &amp;
                 farm listings, scraped on a schedule and scored against your
-                taste. Their lots become listings, found a different way to the
-                agent inbox.
+                taste. Their listings appear in your feed, found a different way
+                to the agent inbox.
               </InfoTip>
             </span>
           </div>
@@ -226,10 +226,10 @@ export function SourcesPage({ onViewLots }: SourcesPageProps) {
                       Coverage
                     </th>
                     <th scope="col" className="num col-lots">
-                      Lots found
+                      Listings found
                     </th>
                     <th scope="col" className="num col-seen">
-                      Latest lot
+                      Latest listing
                     </th>
                   </tr>
                 </thead>
@@ -280,7 +280,7 @@ export function SourcesPage({ onViewLots }: SourcesPageProps) {
                           }
                         >
                           <Icon name="home" size={14} />
-                          View {s.lotsFound} lots
+                          View {s.lotsFound} listings
                           <Icon name="arrow-right" size={13} />
                         </button>
                       </td>

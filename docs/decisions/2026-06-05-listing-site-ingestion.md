@@ -17,10 +17,18 @@ filterable table:
 - `https://www.uklandandfarms.co.uk` — rural property / land / farms portal.
 - `https://www.auctionhouse.co.uk` — UK property auction network.
 
-The explicit, narrow ask: **link out to the source listing; do NOT extract images
-or full metadata.** Just enough to show the row and click through (address, price,
-and the source URL), and enough location (postcode/outcode) to match it to the
-operator's active Searches.
+The explicit, narrow ask: **link out to the source listing; do NOT download or
+store images or full metadata.** Just enough to show the row and click through
+(address, price, and the source URL), and enough location (postcode/outcode) to
+match it to the operator's active Searches.
+
+> **Amendment (2026-06-05, listing-images):** a single **hotlinked image URL** is
+> now also captured per listing so the table can show a thumbnail. This is a
+> *reference only* — the image is **never downloaded or stored**; the browser
+> loads it directly from the source's own image host (an allowlist of the sites'
+> CDNs) and we hold only the URL string. No reproduction, no redistribution. This
+> stays within the minimisation + no-redistribution posture below; full-metadata /
+> image **download** remains out of scope.
 
 This **amends** `2026-06-01-data-source-viability.md`, which dropped portal
 scraping for v1. That decision was about **gated, scraping-prohibited mass portals**
@@ -75,7 +83,8 @@ only to the operator behind Cloudflare Access. The lawful-collection record is
 UK sui-generis database right can be engaged by systematic extraction of a
 substantial part, even for personal use. Mitigations, all enforced in code/conduct:
 extract only the **minimum** to identify and link a listing (address, price,
-outcode, source URL) — **no images, no descriptive copy, no bulk re-publication**;
+outcode, source URL, plus a hotlinked image URL displayed from the source's own
+host) — **no stored/copied images, no descriptive copy, no bulk re-publication**;
 store provenance; **never redistribute** (single user, behind auth). This is the
 lowest-risk shape and matches the `personal_use_ok` class the prior ADR reserved.
 
@@ -137,7 +146,8 @@ source**, never an outreach target.
   collapses into one row (best-effort; auction "Land at …" addresses dedup weakly —
   accepted).
 - **Not in scope / not reopened**: Rightmove, Zoopla, or any gated or
-  scraping-prohibited portal; image/photo extraction from these sites; redistribution.
+  scraping-prohibited portal; image/photo **download or storage** (hotlinked image
+  URL *display* is in scope per the amendment above); redistribution.
 
 ## Review
 

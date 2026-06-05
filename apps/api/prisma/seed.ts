@@ -38,6 +38,7 @@ async function main(): Promise<void> {
       listingStatus: fixture.listingStatus,
       isPreMarket: fixture.isPreMarket,
       listingUrl: fixture.listingUrl,
+      imageUrl: fixture.imageUrl ?? null,
       primarySource: fixture.primarySource,
     });
 

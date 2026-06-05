@@ -69,6 +69,7 @@ interface ViewRow {
   agency: string | null; // agency name, falling back to the agent's email
   sourceName: string | null; // crawled-source display name (scraped lots), else null
   listingUrl: string | null;
+  imageUrl: string | null; // hotlinked source thumbnail (scraped lots), else null
   score: number | null; // 0–100 match score
   ageHours: number; // numeric sort key behind "Seen"
   lastSeen: string; // human relative time
@@ -153,6 +154,7 @@ function toViewRow(item: ListItem, now: Date): ViewRow {
     // From column; agent_email / manual fall through to the agency.
     sourceName: SOURCE_NAMES[item.primarySource] ?? null,
     listingUrl: item.listingUrl,
+    imageUrl: item.imageUrl ?? null,
     // combinedScore is 0..1; clamp the ×100 to a valid 0–100 ring fill in case a
     // bad score ever round-trips out of range.
     score:
@@ -340,7 +342,7 @@ function ListingsTable({
                 </td>
                 <td>
                   <div className="cell-addr">
-                    <Photo className="thumb" />
+                    <Photo src={l.imageUrl} className="thumb" />
                     <span className="at">
                       <b>{l.address}</b>
                       <small>{subline(l)}</small>
@@ -438,7 +440,7 @@ function ListingCard({
       onClick={() => openSource(l.listingUrl)}
     >
       <div className="pcard-photo">
-        <Photo count={null} />
+        <Photo src={l.imageUrl} count={null} />
         <InterestButton
           on={interested}
           onToggle={onToggleInterest}
@@ -1061,12 +1063,12 @@ export function ListingsPage({
                   {hasMore ? "+" : ""}
                 </b>{" "}
                 {sourceFilter
-                  ? `${pageRows.length === 1 ? "lot" : "lots"} from ${sourceFilter.name}`
+                  ? `${pageRows.length === 1 ? "listing" : "listings"} from ${sourceFilter.name}`
                   : `${pageRows.length === 1 ? "home" : "homes"} from your agents`}
               </span>
               <InfoTip label="About listings">
                 {sourceFilter
-                  ? "Lots crawled from this source on a schedule and scored against your taste. Click a lot to open it on the source site; bookmark the ones you like or dismiss the ones you don't to tune your scoring."
+                  ? "Listings crawled from this source on a schedule and scored against your taste. Click a listing to open it on the source site; bookmark the ones you like or dismiss the ones you don't to tune your scoring."
                   : "Homes your agents have sent in, read from their emails and scored against your taste. Click a home to open the agent's page; bookmark the ones you like to draft a follow-up to their agency, or dismiss the ones you don't to tune your scoring."}
               </InfoTip>
             </span>
@@ -1148,7 +1150,7 @@ export function ListingsPage({
                   : bucket === "dismissed"
                     ? "Nothing dismissed. Homes you hide land here, and you can restore them any time."
                     : sourceFilter
-                      ? `No lots from ${sourceFilter.name} yet — it's being crawled on a schedule; lots appear here as they're found.`
+                      ? `No listings from ${sourceFilter.name} yet — it's being crawled on a schedule; listings appear here as they're found.`
                       : "No listings yet. Once your agents reply, the homes they send appear here."}
               </p>
             </div>

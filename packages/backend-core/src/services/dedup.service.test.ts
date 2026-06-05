@@ -25,6 +25,7 @@ function makeRow(overrides: Partial<ListingRecord> = {}): ListingRecord {
     listingStatus: "pre_market",
     isPreMarket: true,
     listingUrl: null,
+    imageUrl: null,
     primarySource: "agent_email",
     bathrooms: 2,
     agentEmail: null,

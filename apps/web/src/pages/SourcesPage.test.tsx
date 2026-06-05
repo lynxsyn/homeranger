@@ -118,13 +118,13 @@ describe("SourcesPage rows + metrics", () => {
     expect(auction).toHaveTextContent("Auction House");
     expect(within(auction).getByText("auctionhouse.co.uk")).toBeInTheDocument();
     expect(within(auction).getByTestId("source-lots-link")).toHaveTextContent(
-      "View 5 lots",
+      "View 5 listings",
     );
 
     const land = rows.find((r) => r.dataset.source === "uklandandfarms")!;
     expect(land).toHaveTextContent("UK Land & Farms");
     expect(within(land).getByTestId("source-lots-link")).toHaveTextContent(
-      "View 2 lots",
+      "View 2 listings",
     );
   });
 

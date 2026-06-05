@@ -8,6 +8,7 @@
  * cross-package imports use the bare specifier.
  */
 import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
+import { useState } from "react";
 import { Icon } from "./Icon";
 
 /* ---- Logo lockup --------------------------------------------------------- */
@@ -148,17 +149,45 @@ export function scoreLabel(value: number | null): string {
   return "Weak match";
 }
 
-/* ---- Photo placeholder (image-glyph tile) -------------------------------- */
+/* ---- Photo tile (hotlinked source image, else image-glyph placeholder) --- */
 export interface PhotoProps {
   count?: number | null;
+  /**
+   * A hotlinked source image URL (scraped listings). Displayed directly from the
+   * source CDN; never downloaded. Absent/failed → the placeholder glyph.
+   */
+  src?: string | null;
   style?: CSSProperties;
   className?: string;
 }
 
-export function Photo({ count, style, className = "" }: PhotoProps) {
+export function Photo({ count, src, style, className = "" }: PhotoProps) {
+  // A failed hotlink (404, hotlink-blocked) falls back to the placeholder glyph.
+  // Reset the failure flag when `src` changes — a re-used row (keyed by listing
+  // id) whose listing got a new image URL on a later scrape must re-attempt the
+  // new src, not stay stuck on the placeholder. React "adjust state on prop
+  // change" pattern (no effect, no flash).
+  const [broken, setBroken] = useState(false);
+  const [seenSrc, setSeenSrc] = useState(src);
+  if (src !== seenSrc) {
+    setSeenSrc(src);
+    setBroken(false);
+  }
+  const showImg = Boolean(src) && !broken;
   return (
     <div className={`hs-photo ${className}`.trim()} style={style}>
-      <Icon name="image" size={32} />
+      {showImg ? (
+        <img
+          className="hs-photo__img"
+          src={src ?? undefined}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        <Icon name="image" size={32} />
+      )}
       {count != null && (
         <span className="hs-photo__count">
           <Icon name="images" size={12} />

@@ -101,6 +101,7 @@ function listing(over: Partial<ScrapedListing> = {}): ScrapedListing {
     addressRaw: "1 Oak Lane, Conwy",
     postcode: "LL30 1AA",
     pricePence: 65_000_000,
+    imageUrl: "https://www.uklandandfarms.co.uk/images/abc.jpg",
     ...over,
   };
 }
@@ -127,6 +128,7 @@ describe("ListingScrapeService.runScrape", () => {
         listingStatus: "live",
         isPreMarket: false,
         listingUrl: "https://uklandandfarms.example/listing/abc",
+        imageUrl: "https://www.uklandandfarms.co.uk/images/abc.jpg",
         primarySource: "uklandandfarms",
         agentEmail: null,
         agencyName: null,

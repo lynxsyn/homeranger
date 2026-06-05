@@ -258,6 +258,16 @@ spec:
                   name: homeranger-secret
                   key: FIRECRAWL_API_KEY
                   optional: true
+            # Listing scrape (PR #80/#81/#82 + listing-images) — ENABLE the two
+            # genuinely-wired sources so the daily scrape:listings job (scheduler
+            # cadence) crawls them for the active operator Searches' outcodes and
+            # populates the Sources tab + the listings table (with hotlinked
+            # images, never downloaded). Blank/unset = all sites dormant. Optional
+            # spend caps (code defaults, not wired): LISTING_SCRAPE_LIMIT (25),
+            # LISTING_SCRAPE_MAX_INDEX (2, uklandandfarms), SCRAPE_LISTINGS_EVERY_MS
+            # (24h). Requires FIRECRAWL_API_KEY above (already set).
+            - name: LISTING_SCRAPE_SITES
+              value: "uklandandfarms,auctionhouse"
           resources:
             requests:
               cpu: 50m

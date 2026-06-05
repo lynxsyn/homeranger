@@ -186,6 +186,7 @@ export class DefaultListingScrapeService implements ListingScrapeService {
           listingStatus: "live",
           isPreMarket: false,
           listingUrl: candidate.sourceUrl,
+          imageUrl: candidate.imageUrl ?? null,
           primarySource: input.site satisfies ListingSource,
           // No sending agent for a scraped listing.
           agentEmail: null,

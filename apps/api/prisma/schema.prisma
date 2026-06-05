@@ -176,6 +176,7 @@ model Listing {
   listingStatus     ListingStatus                @default(pre_market)
   isPreMarket       Boolean                      @default(false)
   listingUrl        String?
+  imageUrl          String?
   primarySource     ListingSource                @default(agent_email)
   agentEmail        String?
   agencyName        String?

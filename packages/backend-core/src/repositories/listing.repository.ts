@@ -49,6 +49,7 @@ const LISTING_SELECT = Prisma.validator<Prisma.ListingSelect>()({
   listingStatus: true,
   isPreMarket: true,
   listingUrl: true,
+  imageUrl: true,
   primarySource: true,
   agentEmail: true,
   agencyName: true,
@@ -114,6 +115,10 @@ export interface UpsertListingByAddressInput {
   listingStatus: ListingStatus;
   isPreMarket: boolean;
   listingUrl: string | null;
+  // Hotlinked source image URL (scraped listings). Optional so write-path callers
+  // that carry no image (inbound email ingestion, read-path tests + the seed for
+  // agent listings) need not supply it; the scrape service sets it, missing → null.
+  imageUrl?: string | null;
   primarySource: ListingSource;
   // The sending agent, captured from the inbound email (M8 PR2). Optional so the
   // many read-path callers (seed + repo integration tests) need not supply them;
@@ -624,6 +629,7 @@ export class ListingRepository {
         listingStatus: input.listingStatus,
         isPreMarket: input.isPreMarket,
         listingUrl: input.listingUrl,
+        imageUrl: input.imageUrl,
         primarySource: input.primarySource,
         agentEmail: input.agentEmail,
         agencyName: input.agencyName,
@@ -641,6 +647,7 @@ export class ListingRepository {
         listingStatus: input.listingStatus,
         isPreMarket: input.isPreMarket,
         listingUrl: input.listingUrl,
+        imageUrl: input.imageUrl,
         primarySource: input.primarySource,
         agentEmail: input.agentEmail,
         agencyName: input.agencyName,
@@ -679,6 +686,7 @@ export class ListingRepository {
         listingStatus: fields.listingStatus,
         isPreMarket: fields.isPreMarket,
         listingUrl: fields.listingUrl,
+        imageUrl: fields.imageUrl,
         primarySource: fields.primarySource,
         agentEmail: fields.agentEmail,
         agencyName: fields.agencyName,
@@ -745,6 +753,7 @@ export class ListingRepository {
         "listingStatus",
         "isPreMarket",
         "listingUrl",
+        "imageUrl",
         "primarySource",
         "agentEmail",
         "agencyName",
@@ -833,6 +842,7 @@ export class ListingRepository {
         l."listingStatus",
         l."isPreMarket",
         l."listingUrl",
+        l."imageUrl",
         l."primarySource",
         l."agentEmail",
         l."agencyName",
