@@ -16,6 +16,7 @@
  * carries a bound, so re-introducing one fails here instead of in prod.
  */
 import { describe, expect, it } from "vitest";
+import { LISTING_EXTRACTION_SCHEMA } from "./claude-extraction.provider.js";
 import { MATCH_SCORE_SCHEMA } from "./match-scorer.provider.js";
 import { PHOTO_SCORE_SCHEMA } from "./vision-scorer.provider.js";
 
@@ -76,5 +77,12 @@ describe("Anthropic structured-output schemas carry no numeric bounds", () => {
 
   it("PHOTO_SCORE_SCHEMA has no minimum/maximum on numeric fields", () => {
     expect(numericFieldsWithBounds(PHOTO_SCORE_SCHEMA)).toEqual([]);
+  });
+
+  it("LISTING_EXTRACTION_SCHEMA has no minimum/maximum on numeric fields", () => {
+    // The third schema we hand to Anthropic (claude-extraction). Clean today —
+    // guarded here so a future numeric bound on price/beds/baths/confidence
+    // fails in CI, not in prod.
+    expect(numericFieldsWithBounds(LISTING_EXTRACTION_SCHEMA)).toEqual([]);
   });
 });
