@@ -145,3 +145,19 @@
 .sf-visit svg {
   flex-shrink: 0;
 }
+
+/* ---- Operator: refresh-listings control ---------------------------------
+   Sits in the controls row (NOT the snapshotted .tablewrap), operator-only.
+   Triggers sources.refresh → the on-demand scrape scan. */
+.src-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.src-refresh__note {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+.src-refresh__note--err {
+  color: var(--danger, #c0392b);
+}

@@ -208,7 +208,9 @@ function AuthedApp() {
         />
         <Route
           path="/sources"
-          element={<SourcesPage onViewLots={viewSourceLots} />}
+          element={
+            <SourcesPage onViewLots={viewSourceLots} isOperator={isOperator} />
+          }
         />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>

@@ -103,12 +103,22 @@ const KIND_FILTERS: { id: KindFilter; label: string }[] = [
 export interface SourcesPageProps {
   /** Drill out to the Listings view scoped to this source's lots. */
   onViewLots: (filter: SourceFilter) => void;
+  /** The signed-in user is the operator → show the operator-only "Refresh
+   *  listings" control. The backend mutation is operatorProcedure regardless;
+   *  this only hides the button from non-operators (UI hiding is not a security
+   *  boundary). */
+  isOperator?: boolean;
 }
 
-export function SourcesPage({ onViewLots }: SourcesPageProps) {
+export function SourcesPage({
+  onViewLots,
+  isOperator = false,
+}: SourcesPageProps) {
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
 
   const { data, isLoading, isError, refetch } = trpc.sources.list.useQuery();
+  // Operator-only: trigger the scrape now instead of waiting for the 24h cron.
+  const refresh = trpc.sources.refresh.useMutation();
   const rows: SourceRow[] = data ?? [];
 
   // The three metric tiles derive from the fetched rows (no second round-trip):
@@ -202,6 +212,37 @@ export function SourcesPage({ onViewLots }: SourcesPageProps) {
                 taste. Their listings appear in your feed, found a different way
                 to the agent inbox.
               </InfoTip>
+              {isOperator && (
+                <span className="src-refresh">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    data-testid="sources-refresh"
+                    disabled={refresh.isPending}
+                    onClick={() => refresh.mutate()}
+                  >
+                    {refresh.isPending ? "Refreshing…" : "Refresh listings"}
+                  </Button>
+                  {refresh.isSuccess && (
+                    <span
+                      className="src-refresh__note"
+                      role="status"
+                      data-testid="sources-refresh-status"
+                    >
+                      Crawl queued - new listings appear here once found
+                    </span>
+                  )}
+                  {refresh.isError && (
+                    <span
+                      className="src-refresh__note src-refresh__note--err"
+                      role="alert"
+                      data-testid="sources-refresh-error"
+                    >
+                      {refresh.error.message}
+                    </span>
+                  )}
+                </span>
+              )}
             </span>
           </div>
 
