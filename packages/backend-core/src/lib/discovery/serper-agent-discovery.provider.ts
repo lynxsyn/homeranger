@@ -47,6 +47,9 @@ import {
   isNonAgencyResult,
 } from "./discovery-queries.js";
 import { extractCfEmails, htmlToText } from "./html-extract.js";
+import { isPrivateIp } from "./ssrf-guard.js";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 
 /** One Serper organic result (the subset we use). */
 interface SerperOrganic {
@@ -59,8 +62,10 @@ interface SerperOrganic {
 const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-/** Cap a fetched page so a pathological response can't blow memory. */
+/** Cap a fetched page so a pathological response can't blow memory (bytes). */
 const MAX_HTML_CHARS = 2_000_000;
+/** Max redirect hops to follow manually (each hop is SSRF-revalidated). */
+const MAX_REDIRECTS = 5;
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(raw ?? "", 10);
@@ -244,44 +249,118 @@ export class SerperAgentDiscoveryProvider implements AgentDiscoveryProvider {
   }
 
   /**
-   * In-process HTTP GET of a contact page → raw HTML (capped). Only http(s) URLs
-   * are fetched (SSRF guard). A non-OK status maps to the retryable flag; a
-   * non-HTML content-type yields "" (skip). Bounded by an AbortController.
+   * In-process HTTP GET of a contact page → raw HTML (capped). SSRF-hardened:
+   * redirects are followed MANUALLY (redirect:"manual") and EVERY hop — the
+   * initial URL and each redirect target — is http(s) and resolved to a PUBLIC
+   * IP before it is fetched (isPrivateIp blocks RFC-1918 / loopback / link-local
+   * / IMDS, defending the new port-80 egress). The body is read with a byte cap
+   * (never fully buffered), a non-HTML content-type is skipped, and the whole
+   * thing is bounded by one AbortController across all hops.
    */
   private async fetchPage(url: string): Promise<string> {
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      return "";
-    }
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return "";
-    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.fetchTimeoutMs);
     try {
-      const response = await fetch(url, {
-        redirect: "follow",
-        signal: controller.signal,
-        headers: {
-          "user-agent": BROWSER_UA,
-          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        },
-      });
-      if (!response.ok) {
-        throwOnHttp(response.status, `page fetch failed: ${response.status}`);
+      let current = url;
+      for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+        let parsed: URL;
+        try {
+          parsed = new URL(current);
+        } catch {
+          return "";
+        }
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          return "";
+        }
+        if (!(await isPublicHost(parsed.hostname))) {
+          return ""; // SSRF: refuses private/link-local/unresolvable targets
+        }
+        const response = await fetch(current, {
+          redirect: "manual",
+          signal: controller.signal,
+          headers: {
+            "user-agent": BROWSER_UA,
+            accept:
+              "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+        });
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers.get("location");
+          await response.body?.cancel();
+          if (!location) {
+            return "";
+          }
+          current = new URL(location, current).toString(); // resolve relative
+          continue; // re-validate the new hop at the top of the loop
+        }
+        if (!response.ok) {
+          throwOnHttp(response.status, `page fetch failed: ${response.status}`);
+        }
+        const contentType = response.headers.get("content-type") ?? "";
+        if (contentType && !contentType.includes("html")) {
+          await response.body?.cancel(); // release the connection, don't buffer
+          return "";
+        }
+        return await readCapped(response, MAX_HTML_CHARS);
       }
-      const contentType = response.headers.get("content-type") ?? "";
-      if (contentType && !contentType.includes("html")) {
-        return "";
-      }
-      const text = await response.text();
-      return text.length > MAX_HTML_CHARS ? text.slice(0, MAX_HTML_CHARS) : text;
+      return ""; // too many redirects
     } finally {
       clearTimeout(timer);
     }
   }
+}
+
+/**
+ * Resolve `hostname` and return true only if EVERY A/AAAA record is a public IP.
+ * An IP literal is checked directly; an unresolvable host (or any private record,
+ * defending against split/rebinding DNS) returns false → the caller won't fetch.
+ */
+async function isPublicHost(hostname: string): Promise<boolean> {
+  if (isIP(hostname)) {
+    return !isPrivateIp(hostname);
+  }
+  try {
+    const records = await lookup(hostname, { all: true });
+    return records.length > 0 && records.every((r) => !isPrivateIp(r.address));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read a Response body up to `maxBytes`, then cancel the stream (closing the
+ * connection) — so a giant / slow-drip response can never buffer beyond the cap.
+ */
+async function readCapped(response: Response, maxBytes: number): Promise<string> {
+  const body = response.body;
+  if (!body) {
+    return "";
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done || !value) {
+        break;
+      }
+      const remaining = maxBytes - total;
+      if (value.length <= remaining) {
+        chunks.push(value);
+        total += value.length;
+      } else {
+        chunks.push(value.subarray(0, remaining));
+        total = maxBytes;
+      }
+      if (total >= maxBytes) {
+        break;
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 /** Map an HTTP status to a thrown error with the retryable flag set correctly. */
