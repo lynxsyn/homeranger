@@ -121,6 +121,11 @@ export default defineConfig({
         // fake + the classification/upsert service are unit-covered; the real
         // adapter is operator-proven (same rationale as the Resend/r2 adapters).
         "packages/backend-core/src/lib/discovery/firecrawl-agent-discovery.provider.ts",
+        // Serper SERP + in-process HTTP-fetch discovery adapter — network I/O,
+        // dormant without SERPER_API_KEY. The recall logic (discovery-queries.ts)
+        // + the HTML helpers (html-extract.ts) are unit-covered; this adapter is
+        // the operator-proven network shell over them (verify Serper shape live).
+        "packages/backend-core/src/lib/discovery/serper-agent-discovery.provider.ts",
         // Listing-site Firecrawl scrape adapter — web-scrape network I/O,
         // dormant without FIRECRAWL_API_KEY + LISTING_SCRAPE_SITES. The interface
         // + the deterministic fake + the dedup/upsert service are unit-covered;

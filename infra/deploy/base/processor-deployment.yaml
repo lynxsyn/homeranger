@@ -268,6 +268,24 @@ spec:
             # searches, not 6 + 25 calls. Remove this (or set "1") to re-enable.
             - name: DISCOVERY_CONTACT_EXTRACT
               value: "0"
+            # AGENT DISCOVERY provider (2026-06 review): "serper" => Serper SERP
+            # API + an in-process HTTP page fetch (global fetch + html-extract);
+            # the page fetch is FREE (no per-call credits) and uses our regex, so
+            # the expensive Firecrawl scrape+LLM-extract is gone. Anything else =>
+            # the legacy Firecrawl provider. Serper is dormant without
+            # SERPER_API_KEY (construction-safe; discover() drops the job, never
+            # the worker). The page fetch is gated by DISCOVERY_FETCH (default on;
+            # a SEPARATE knob from the Firecrawl DISCOVERY_CONTACT_EXTRACT above —
+            # do NOT disable it, the fetch is the load-bearing recall path and is
+            # free) over at most DISCOVERY_FETCH_MAX pages (default 25).
+            - name: DISCOVERY_PROVIDER
+              value: "serper"
+            - name: SERPER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: homeranger-secret
+                  key: SERPER_API_KEY
+                  optional: true
             # Listing scrape (PR #80/#81/#82 + listing-images + pughauctions) —
             # ENABLE the genuinely-wired sources so the daily scrape:listings job
             # (scheduler cadence) crawls them for the active operator Searches'

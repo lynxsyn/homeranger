@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MAX_QUERIES,
   PAGE_TEXT_MAX,
+  agencyNameForEmail,
   agencyNameFrom,
   boundedPageText,
   buildDiscoveryQueries,
@@ -437,5 +438,45 @@ describe("boundedPageText", () => {
 
   it("honours a custom max", () => {
     expect(boundedPageText("abcdefghij", 4)).toBe("abcd");
+  });
+});
+
+describe("agencyNameForEmail", () => {
+  it("uses the page title when the email is on the same site (incl. www/subdomain)", () => {
+    expect(
+      agencyNameForEmail("info@fletcherpoole.com", {
+        title: "Fletcher & Poole",
+        url: "https://www.fletcherpoole.com/contact",
+      }),
+    ).toBe("Fletcher & Poole");
+  });
+
+  it("derives the name from the EMAIL domain when harvested from a different-site listicle", () => {
+    // The tppuk.com / cavmail.co.uk bug: a "Top 5 estate agents in North Wales"
+    // listicle yields emails at MANY domains; stamping the page title on all of
+    // them made the classifier drop the real agencies. Use each email's own host.
+    const listicle = {
+      title: "Top 5 estate agents in North Wales UK: Williams & Goodwin ...",
+      url: "https://directory.denbighshirefreepress.co.uk/best-estate-agents",
+    };
+    expect(agencyNameForEmail("lettings@tppuk.com", listicle)).toBe("tppuk.com");
+    expect(agencyNameForEmail("mold.rentals@cavmail.co.uk", listicle)).toBe(
+      "cavmail.co.uk",
+    );
+  });
+
+  it("strips a leading www. from the derived email-domain name", () => {
+    expect(
+      agencyNameForEmail("info@agency.co.uk", {
+        title: "Some Directory Page",
+        url: "https://www.unrelated-blog.com/list",
+      }),
+    ).toBe("agency.co.uk");
+  });
+
+  it("falls back to the result name when the email has no parseable domain", () => {
+    expect(
+      agencyNameForEmail("not-an-email", { title: "Fallback Agency", url: "https://x.co.uk" }),
+    ).toBe("Fallback Agency");
   });
 });

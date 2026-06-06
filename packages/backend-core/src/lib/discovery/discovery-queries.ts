@@ -340,6 +340,41 @@ export function agencyNameFrom(result: {
   );
 }
 
+/** Two hosts belong to the same site (equal after stripping www, or one is a
+ *  subdomain of the other) — e.g. `www.x.co.uk` ~ `x.co.uk` ~ `online.x.co.uk`. */
+function sameSite(a: string, b: string): boolean {
+  const sa = a.replace(/^www\./, "");
+  const sb = b.replace(/^www\./, "");
+  return sa === sb || sa.endsWith(`.${sb}`) || sb.endsWith(`.${sa}`);
+}
+
+/**
+ * The agency name for a SPECIFIC harvested email, given the page it was found on.
+ * If the email's domain is the SAME site as the page host, the page belongs to
+ * that agency → use the page's title-derived name. Otherwise the email was
+ * harvested from a page that lists MANY agencies (a directory / "Top 5 estate
+ * agents" listicle) — the page title is NOT this agency's name, so derive the
+ * name from the email's OWN hostname instead.
+ *
+ * Fixes the listicle name-stamping bug: a "Top 5 estate agents in North Wales"
+ * page stamped its title on every email it yielded (tppuk.com, cavmail.co.uk),
+ * and the quality classifier then dropped those real agencies as `directory`.
+ */
+export function agencyNameForEmail(
+  email: string,
+  result: { title?: string; metadata?: { title?: string }; url?: string },
+): string {
+  const emailHost = email.split("@")[1]?.trim().toLowerCase();
+  if (!emailHost || !emailHost.includes(".")) {
+    return agencyNameFrom(result);
+  }
+  const pageHost = hostnameOf(result.url);
+  if (pageHost && sameSite(emailHost, pageHost)) {
+    return agencyNameFrom(result);
+  }
+  return emailHost.replace(/^www\./, "");
+}
+
 /**
  * Union + email-dedup a set of discovered agents (across the multi-query fan-out
  * and the two extraction paths). Emails are lower-cased + trimmed; the FIRST
