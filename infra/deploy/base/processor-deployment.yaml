@@ -258,6 +258,16 @@ spec:
                   name: homeranger-secret
                   key: FIRECRAWL_API_KEY
                   optional: true
+            # COST CAP (2026-06): the per-contact-page structured extraction is the
+            # EXPENSIVE Firecrawl call (headless browser + LLM extraction, up to
+            # DISCOVERY_CONTACT_EXTRACT_MAX=25 per discover:agents job). Our own
+            # regex (extractEmails) already harvests emails from the search-result
+            # markdown, so this extra per-page scrape is largely redundant. Disable
+            # it to cap Firecrawl spend until the self-hosted scraper replacement
+            # lands; a search-launch-triggered discovery then costs only the ~6
+            # searches, not 6 + 25 calls. Remove this (or set "1") to re-enable.
+            - name: DISCOVERY_CONTACT_EXTRACT
+              value: "0"
             # Listing scrape (PR #80/#81/#82 + listing-images + pughauctions) —
             # ENABLE the genuinely-wired sources so the daily scrape:listings job
             # (scheduler cadence) crawls them for the active operator Searches'
