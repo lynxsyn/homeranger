@@ -134,6 +134,11 @@ async function collectPatchAgents(outcodes: string[]): Promise<AgentRecord[]> {
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const result = await searchAgentRepository.list({
       outcodes,
+      // Include opted-out agents so the review shows them as blocked (reason
+      // OPTED_OUT) rather than hiding them — reviewDrafts already surfaces every
+      // other block reason (PECR / suppressed / domain-cooldown), and the guard
+      // marks opt-outs ineligible. Matches agents.router's collectAgents.
+      includeOptedOut: true,
       limit: MAX_PAGE_LIMIT,
       ...(cursor ? { cursor } : {}),
     });

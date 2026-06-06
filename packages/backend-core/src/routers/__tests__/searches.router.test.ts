@@ -642,6 +642,42 @@ describe("searchesRouter.reviewDrafts", () => {
     expect(listSpy).toHaveBeenLastCalledWith(
       expect.objectContaining({ cursor: "cursor-1" }),
     );
+    // Opted-out agents are fetched too (shown as blocked, not hidden).
+    expect(listSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ includeOptedOut: true }),
+    );
+  });
+
+  it("includes opted-out agents in the review, shown as blocked (not hidden)", async () => {
+    const fake = injectRepo();
+    vi.spyOn(fake, "getById").mockResolvedValue(makeSearch({ outcodes: ["LL30"] }));
+    injectProfile();
+    const optedOut = makeAgent({
+      id: "agent-optedout",
+      email: "left@conwy-estates.co.uk",
+      optedOut: true,
+    });
+    injectAgents([makeAgent(), optedOut]);
+    // The guard blocks the opted-out agent (gate 2), as the real guard does.
+    injectGuard(async (agentId) => {
+      if (agentId === optedOut.id) {
+        throw new ComplianceError("OPTED_OUT", {
+          retryable: false,
+          trpcCode: "FORBIDDEN",
+        });
+      }
+    });
+
+    const result = await authedCaller.searches.reviewDrafts({
+      id: "00000000-0000-7000-8000-000000000001",
+    });
+    expect(result.agents).toContainEqual(
+      expect.objectContaining({
+        email: "left@conwy-estates.co.uk",
+        eligible: false,
+        reason: "OPTED_OUT",
+      }),
+    );
   });
 
   it("signs + paces the reviewed draft from the buyer profile (Settings)", async () => {
