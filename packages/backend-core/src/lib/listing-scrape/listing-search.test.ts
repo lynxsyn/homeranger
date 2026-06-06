@@ -19,6 +19,8 @@ import {
   siteCoverage,
   siteRegionIndexUrls,
   uklfBodyPostcode,
+  uklfSearchEndpoint,
+  withPageIndex,
 } from "./listing-search.js";
 
 describe("siteRegionIndexUrls", () => {
@@ -822,5 +824,81 @@ describe("pughauctions (national auction catalogue)", () => {
     expect(lots).toHaveLength(1);
     expect(lots[0]!.pricePence).toBeUndefined();
     expect(lots[0]!.postcode).toBe("LS1 1AA");
+  });
+});
+
+describe("uklfSearchEndpoint — paginated search endpoint from the index form", () => {
+  // The REAL shape (captured live 2026-06-06): the region index is an ASP.NET
+  // WebForms page whose <form> posts to /Search/SearchResult.aspx with a PageIndex
+  // param. The pretty index URL 404s on ?PageIndex, but THIS endpoint pages over a
+  // plain GET — so we lift it from the page (never hardcode the params) and walk it.
+  const FORM_HTML = [
+    `<html><body>`,
+    `<form name="aspnetForm" method="post" action="../../../Search/SearchResult.aspx?keyword=&amp;Region=Wales&amp;County=North-Wales&amp;PageIndex=1&amp;kw=&amp;PropertyType=rural-property&amp;Status=sale" id="aspnetForm">`,
+    `<a href='#page' onclick='onPagerClick(2);return false;'>Next</a>`,
+    `</form></body></html>`,
+  ].join("\n");
+  const PAGE_URL =
+    "https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/";
+
+  it("lifts the SearchResult.aspx action, decodes &amp;, resolves it absolute", () => {
+    const endpoint = uklfSearchEndpoint(FORM_HTML, PAGE_URL);
+    expect(endpoint).not.toBeNull();
+    const u = new URL(endpoint!);
+    expect(u.hostname).toBe("www.uklandandfarms.co.uk");
+    expect(u.pathname).toBe("/Search/SearchResult.aspx");
+    expect(u.searchParams.get("Region")).toBe("Wales");
+    expect(u.searchParams.get("County")).toBe("North-Wales");
+    expect(u.searchParams.get("PropertyType")).toBe("rural-property");
+    expect(u.searchParams.get("Status")).toBe("sale");
+  });
+
+  it("returns null when there is no SearchResult.aspx form (single-page → page 1 only)", () => {
+    expect(
+      uklfSearchEndpoint("<html><body>no pager here</body></html>", PAGE_URL),
+    ).toBeNull();
+    expect(uklfSearchEndpoint("", PAGE_URL)).toBeNull();
+  });
+
+  it("accepts an already-absolute action URL", () => {
+    const html = `<form action="https://www.uklandandfarms.co.uk/Search/SearchResult.aspx?Region=Wales&amp;County=North-Wales&amp;PropertyType=rural-property&amp;Status=sale">x</form>`;
+    const endpoint = uklfSearchEndpoint(html, PAGE_URL);
+    expect(new URL(endpoint!).pathname).toBe("/Search/SearchResult.aspx");
+    expect(new URL(endpoint!).searchParams.get("County")).toBe("North-Wales");
+  });
+
+  it("handles a single-quoted action attribute", () => {
+    const html = `<form action='../../../Search/SearchResult.aspx?Region=Wales&amp;County=North-Wales'>x</form>`;
+    expect(new URL(uklfSearchEndpoint(html, PAGE_URL)!).pathname).toBe(
+      "/Search/SearchResult.aspx",
+    );
+  });
+});
+
+describe("withPageIndex — set the page param on the search endpoint", () => {
+  const ENDPOINT =
+    "https://www.uklandandfarms.co.uk/Search/SearchResult.aspx?Region=Wales&County=North-Wales&PageIndex=1&PropertyType=rural-property&Status=sale";
+
+  it("replaces an existing PageIndex (exactly once), preserving the other params", () => {
+    const u = new URL(withPageIndex(ENDPOINT, 3));
+    expect(u.searchParams.getAll("PageIndex")).toEqual(["3"]);
+    expect(u.searchParams.get("Region")).toBe("Wales");
+    expect(u.searchParams.get("County")).toBe("North-Wales");
+    expect(u.searchParams.get("PropertyType")).toBe("rural-property");
+  });
+
+  it("appends PageIndex when the URL has none", () => {
+    const u = new URL(
+      withPageIndex(
+        "https://www.uklandandfarms.co.uk/Search/SearchResult.aspx?Region=Wales",
+        4,
+      ),
+    );
+    expect(u.searchParams.get("PageIndex")).toBe("4");
+    expect(u.searchParams.get("Region")).toBe("Wales");
+  });
+
+  it("returns the input unchanged for an unparseable URL", () => {
+    expect(withPageIndex("not a url", 2)).toBe("not a url");
   });
 });
