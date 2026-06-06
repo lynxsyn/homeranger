@@ -261,8 +261,8 @@ spec:
             # pughauctions is a NATIONAL auction catalogue (scraped whenever there
             # are target outcodes, outcode-filtered post-parse) — it yields lots
             # once a Search covers its English/Welsh auction stock. Optional spend
-            # caps (code defaults, not wired): LISTING_SCRAPE_LIMIT (25),
-            # LISTING_SCRAPE_MAX_INDEX (2 = region-index/event pages),
+            # caps (code defaults, not wired): LISTING_SCRAPE_LIMIT (150),
+            # LISTING_SCRAPE_MAX_INDEX (15 = region-index/search/event pages walked),
             # SCRAPE_LISTINGS_EVERY_MS (24h). NO API key — in-process HTTP fetch.
             - name: LISTING_SCRAPE_SITES
               value: "uklandandfarms,auctionhouse,pughauctions"
