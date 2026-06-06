@@ -301,7 +301,7 @@ export class FetchListingScrapeProvider implements ListingScrapeProvider {
         if (detailUrls.size >= this.limit) {
           break;
         }
-        if (delayMs > 0) {
+        if (delayMs > 0 && requestsMade > 0) {
           await sleep(delayMs);
         }
         requestsMade += 1;

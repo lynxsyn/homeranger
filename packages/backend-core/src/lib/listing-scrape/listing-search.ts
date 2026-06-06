@@ -326,9 +326,12 @@ const LINK_TOKEN_RE = /(?:https?:\/\/[^\s"'()<>[\]]+|\/[^\s"'()<>[\]]+)/gi;
  * the form posts to SearchResult.aspx, which DOES page over a plain GET — so we
  * read the endpoint off the page itself (never hardcode the Region/County/
  * PropertyType params) and walk it with withPageIndex. The action is `&amp;`-
- * decoded and resolved absolute against the page URL. Returns null when the page
- * carries no such form (→ the provider keeps page 1 only — never worse than the
- * pre-pagination behaviour). Pure.
+ * decoded and resolved absolute against the page URL. The resolved host is PINNED
+ * to www.uklandandfarms.co.uk (like isListingUrl) — this endpoint drives the page
+ * walk, so a page-1 form whose action points off-host (CDN injection, an open
+ * redirect, a compromised page) must never redirect the crawl. Returns null when
+ * the page carries no such form OR the action is off-host/unresolvable (→ the
+ * provider keeps page 1 only — never worse than the pre-pagination behaviour). Pure.
  */
 export function uklfSearchEndpoint(html: string, pageUrl: string): string | null {
   if (!html) {
@@ -340,11 +343,16 @@ export function uklfSearchEndpoint(html: string, pageUrl: string): string | null
   if (!m) {
     return null;
   }
+  let resolved: URL;
   try {
-    return new URL(decodeUrlEntities(m[2] ?? ""), pageUrl).toString();
+    resolved = new URL(decodeUrlEntities(m[2] ?? ""), pageUrl);
   } catch {
     return null; // unresolvable action — fall back to page 1 only
   }
+  if (resolved.hostname.toLowerCase() !== "www.uklandandfarms.co.uk") {
+    return null; // off-host action — refuse, fall back to page 1 only
+  }
+  return resolved.toString();
 }
 
 /**

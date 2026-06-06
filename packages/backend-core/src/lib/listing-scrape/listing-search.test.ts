@@ -873,6 +873,16 @@ describe("uklfSearchEndpoint — paginated search endpoint from the index form",
       "/Search/SearchResult.aspx",
     );
   });
+
+  it("refuses an OFF-HOST action (host pinned — the walk can't be redirected away)", () => {
+    // A page-1 form whose action points off uklandandfarms (CDN injection, an
+    // open redirect, a compromised page) must NOT drive the page walk off-host.
+    const evil = `<form action="https://evil.example/Search/SearchResult.aspx?Region=Wales">x</form>`;
+    expect(uklfSearchEndpoint(evil, PAGE_URL)).toBeNull();
+    // A look-alike host suffix is also refused (exact host match).
+    const lookalike = `<form action="https://www.uklandandfarms.co.uk.evil.example/Search/SearchResult.aspx">x</form>`;
+    expect(uklfSearchEndpoint(lookalike, PAGE_URL)).toBeNull();
+  });
 });
 
 describe("withPageIndex — set the page param on the search endpoint", () => {
