@@ -18,7 +18,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TRPCError } from "@trpc/server";
 import { appRouter } from "../index.js";
-import { toCoverageLabel } from "../sources.router.js";
+import {
+  toCoverageLabel,
+  _setScrapeListingsEnqueuerForTesting,
+} from "../sources.router.js";
 import {
   ListingSourceRecordRepository,
   _setListingSourceRecordRepositoryForTesting,
@@ -31,6 +34,15 @@ const partnerCaller = appRouter.createCaller({
   user: {
     id: "33333333-3333-4333-8333-333333333333",
     email: "partner@homeranger.test",
+  },
+});
+
+// dev@homeranger.local is the default operator → ownerKeyFor resolves to null, so
+// operatorProcedure admits it (requires OPERATOR_USER_EMAIL UNSET, as in CI).
+const operatorCaller = appRouter.createCaller({
+  user: {
+    id: "00000000-0000-0000-0000-0000000000de",
+    email: "dev@homeranger.local",
   },
 });
 
@@ -51,6 +63,7 @@ function injectRepo(opts: {
 
 afterEach(() => {
   _setListingSourceRecordRepositoryForTesting(null);
+  _setScrapeListingsEnqueuerForTesting(null);
   vi.restoreAllMocks();
 });
 
@@ -145,5 +158,33 @@ describe("toCoverageLabel", () => {
 
   it("returns an empty string for no aliases", () => {
     expect(toCoverageLabel([])).toBe("");
+  });
+});
+
+describe("sourcesRouter.refresh", () => {
+  it("operator enqueues a fieldless scrape:listings scan and echoes enqueued", async () => {
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    _setScrapeListingsEnqueuerForTesting(enqueue);
+
+    const result = await operatorCaller.sources.refresh();
+
+    expect(result).toEqual({ enqueued: true });
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(enqueue).toHaveBeenCalledWith({
+      // fieldless payload → the processor runs runScheduledScrape() (all enabled
+      // sites × active-search outcodes); per-minute key dedupes rapid clicks.
+      idempotencyKey: expect.stringMatching(/^scrape:listings:manual:\d+$/),
+      payload: {},
+    });
+  });
+
+  it("forbids a non-operator caller and never enqueues", async () => {
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    _setScrapeListingsEnqueuerForTesting(enqueue);
+
+    await expect(partnerCaller.sources.refresh()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    expect(enqueue).not.toHaveBeenCalled();
   });
 });

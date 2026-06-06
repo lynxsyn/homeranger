@@ -13,11 +13,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
-const { listQueryMock } = vi.hoisted(() => ({ listQueryMock: vi.fn() }));
+const { listQueryMock, refreshMutationMock } = vi.hoisted(() => ({
+  listQueryMock: vi.fn(),
+  refreshMutationMock: vi.fn(),
+}));
 vi.mock("../lib/trpc", () => ({
   trpc: {
     useUtils: () => ({ sources: { list: { invalidate: vi.fn() } } }),
-    sources: { list: { useQuery: listQueryMock } },
+    sources: {
+      list: { useQuery: listQueryMock },
+      refresh: { useMutation: refreshMutationMock },
+    },
   },
 }));
 
@@ -70,6 +76,14 @@ function withSources(rows: unknown[] = SOURCES) {
 
 beforeEach(() => {
   listQueryMock.mockReset();
+  refreshMutationMock.mockReset();
+  refreshMutationMock.mockReturnValue({
+    mutate: vi.fn(),
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    error: null,
+  });
   withSources();
 });
 
@@ -222,6 +236,54 @@ describe("SourcesPage kind filter", () => {
     expect(screen.getAllByTestId("source-row")).toHaveLength(1);
     fireEvent.click(screen.getByTestId("source-filter-all"));
     expect(screen.getAllByTestId("source-row")).toHaveLength(2);
+  });
+});
+
+describe("SourcesPage operator refresh", () => {
+  it("hides the Refresh listings control for a non-operator", () => {
+    render(<SourcesPage onViewLots={vi.fn()} />); // isOperator defaults false
+    expect(screen.queryByTestId("sources-refresh")).not.toBeInTheDocument();
+  });
+
+  it("operator sees Refresh listings and clicking it fires the mutation", () => {
+    const mutate = vi.fn();
+    refreshMutationMock.mockReturnValue({
+      mutate,
+      isPending: false,
+      isSuccess: false,
+      isError: false,
+      error: null,
+    });
+    render(<SourcesPage onViewLots={vi.fn()} isOperator />);
+    fireEvent.click(screen.getByTestId("sources-refresh"));
+    expect(mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the queued note after a successful refresh", () => {
+    refreshMutationMock.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isSuccess: true,
+      isError: false,
+      error: null,
+    });
+    render(<SourcesPage onViewLots={vi.fn()} isOperator />);
+    expect(screen.getByTestId("sources-refresh-status")).toBeInTheDocument();
+  });
+
+  it("disables the button while the refresh is pending", () => {
+    refreshMutationMock.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: true,
+      isSuccess: false,
+      isError: false,
+      error: null,
+    });
+    render(<SourcesPage onViewLots={vi.fn()} isOperator />);
+    expect(screen.getByTestId("sources-refresh")).toBeDisabled();
+    expect(screen.getByTestId("sources-refresh")).toHaveTextContent(
+      /refreshing/i,
+    );
   });
 });
 

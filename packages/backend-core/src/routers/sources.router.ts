@@ -14,8 +14,13 @@
  */
 import { SOURCE_CATALOGUE, type SourceKind } from "@homeranger/shared";
 import type { ListingSource } from "@prisma/client";
-import { protectedProcedure, router } from "../trpc.js";
+import { operatorProcedure, protectedProcedure, router } from "../trpc.js";
 import { listingSourceRecordRepository } from "../repositories/listing-source-record.repository.js";
+import {
+  enqueueScrapeListings,
+  type EnqueueInput,
+} from "../lib/queue/queue-client.js";
+import type { ScrapeListingsJobPayload } from "../lib/queue/queue-config.js";
 import { siteCoverage } from "../lib/listing-scrape/listing-search.js";
 
 export interface SourceRow {
@@ -41,6 +46,20 @@ export function toCoverageLabel(aliases: string[]): string {
   return first.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/**
+ * Swappable enqueue seam (mirrors searches.router's `_set*ForTesting`) so the
+ * refresh unit test can assert the enqueued job WITHOUT a live Redis.
+ */
+type ScrapeListingsEnqueuer = (
+  input: EnqueueInput<ScrapeListingsJobPayload>,
+) => Promise<void>;
+let scrapeListingsEnqueuer: ScrapeListingsEnqueuer = enqueueScrapeListings;
+export function _setScrapeListingsEnqueuerForTesting(
+  enqueuer: ScrapeListingsEnqueuer | null,
+): void {
+  scrapeListingsEnqueuer = enqueuer ?? enqueueScrapeListings;
+}
+
 export const sourcesRouter = router({
   list: protectedProcedure.query(async (): Promise<SourceRow[]> => {
     const [countBySource, latestBySource] = await Promise.all([
@@ -63,4 +82,26 @@ export const sourcesRouter = router({
       };
     });
   }),
+
+  /**
+   * Operator-only: trigger the listing scrape NOW instead of waiting for the 24h
+   * scheduler. Enqueues the SAME fieldless scan the scheduler runs — the
+   * processor resolves target outcodes from active operator searches and loops
+   * every enabled site (LISTING_SCRAPE_SITES). A per-minute idempotency key
+   * collapses rapid double-clicks into one scan yet still admits a deliberate
+   * re-refresh a minute later (BullMQ dedupes a jobId until it is evicted, so a
+   * static key would block every refresh after the first completed). Reverses the
+   * Sources tab's original "read-only, no crawl-now" decision (#83) per the
+   * operator's request.
+   */
+  refresh: operatorProcedure.mutation(
+    async (): Promise<{ enqueued: true }> => {
+      const minuteBucket = Math.floor(Date.now() / 60_000);
+      await scrapeListingsEnqueuer({
+        idempotencyKey: `scrape:listings:manual:${minuteBucket}`,
+        payload: {},
+      });
+      return { enqueued: true };
+    },
+  ),
 });
