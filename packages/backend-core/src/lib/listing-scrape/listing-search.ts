@@ -41,8 +41,9 @@ const PRICE_RE = /£\s*([\d,]+)/;
  */
 const PRICE_LABEL_RE =
   /(?:guide|asking|offers(?:\s+(?:over|in excess of|around|invited))?|price)\b[^£\n]{0,16}£\s*([\d,]+)/i;
-/** A markdown H1 line (`# …`), global — for the property-heading fallback. */
-const H1_LINE_RE = /^#[^\S\r\n]+(.+)$/gm;
+/** An HTML `<h1>…</h1>` block, global — g1 = inner HTML — for the property-
+ *  heading + price fallbacks (the detail page carries both in its <h1>). */
+const H1_BLOCK_RE = /<h1\b[^>]*>([\s\S]*?)<\/h1>/gi;
 
 /**
  * One row of a site-taxonomy mapping: a set of region aliases + outcode prefixes
@@ -341,34 +342,30 @@ export interface ParsedHubListing {
  * no postcode is skipped. Deduped by externalId (a lot can appear twice), stable
  * first-seen order.
  */
-export function parseAuctionHubListings(markdown: string): ParsedHubListing[] {
-  if (!markdown) {
+export function parseAuctionHubListings(html: string): ParsedHubListing[] {
+  if (!html) {
     return [];
   }
   const out: ParsedHubListing[] = [];
   const seen = new Set<string>();
-  const imageById = auctionHubImagesById(markdown);
-  for (const match of markdown.matchAll(AUCTION_LOT_LINK_RE)) {
-    // Strip any leading image-artifact: if Firecrawl collapses the lot onto ONE
-    // line (no newline before the address), the captured text can begin with the
-    // image link's trailing `...image)` + the `\` markdown hard-break. Drop a
-    // leading `<...>)` and any leading backslash/whitespace so the address is
-    // clean. With the normal two-line shape the address is already clean (the
-    // newline bounded the capture) and this is a no-op.
-    const addressText = sanitiseHubAddress(match[1] ?? "");
-    const lotUrl = match[2] ?? "";
-    const id = match[3] ?? "";
+  for (const match of html.matchAll(AUCTION_LOT_BLOCK_RE)) {
+    const lotUrl = match[1] ?? "";
+    const id = match[2] ?? "";
+    const innerHtml = match[3] ?? "";
+    const addrFragment = innerHtml.match(AUCTION_GRID_ADDRESS_RE)?.[1] ?? "";
+    const addressText = htmlText(addrFragment);
     const postcode = firstPostcode(addressText);
     if (!postcode) {
-      continue; // no postcode in the link text → not placeable by outcode
+      continue; // no postcode in the lot card → not placeable by outcode
     }
     const externalId = `auctionhouse-${id}`;
     if (seen.has(externalId)) {
       continue; // a lot can appear twice in the hub — first seen wins
     }
-    const addressRaw = cleanAddress(addressText) || postcode;
     seen.add(externalId);
-    const imageUrl = imageById.get(id);
+    const addressRaw = cleanAddress(addressText) || postcode;
+    const imgSrc = firstImageSrc(innerHtml);
+    const imageUrl = imgSrc && isHotlinkableImageUrl(imgSrc) ? imgSrc : undefined;
     out.push({
       externalId,
       sourceUrl: lotUrl,
@@ -425,32 +422,37 @@ export function extractPughAuctionLinks(markdown: string): string[] {
  * sits just BEFORE the lot id (paired by pughImagesById). Deduped by externalId
  * (a lot can appear twice), stable first-seen order. Pure.
  */
-export function parsePughLots(markdown: string): ParsedHubListing[] {
-  if (!markdown) {
+export function parsePughLots(html: string): ParsedHubListing[] {
+  if (!html) {
     return [];
   }
   const out: ParsedHubListing[] = [];
   const seen = new Set<string>();
-  const imageById = pughImagesById(markdown);
-  for (const match of markdown.matchAll(PUGH_LOT_LINK_RE)) {
-    const addressText = match[1] ?? "";
-    const lotUrl = match[2] ?? "";
-    const id = match[3] ?? "";
-    const postcode = firstPostcode(addressText);
+  const imageById = pughImagesById(html);
+  for (const match of html.matchAll(PUGH_LOT_BLOCK_RE)) {
+    const lotUrl = match[1] ?? "";
+    const id = match[2] ?? "";
+    const innerText = htmlText(match[3] ?? "");
+    const postcode = firstPostcode(innerText);
     if (!postcode) {
-      continue; // no postcode in the link text → not placeable by outcode
+      continue; // the image link / a non-address link → not a placeable lot
     }
     const externalId = `pughauctions-${id}`;
     if (seen.has(externalId)) {
       continue; // a lot can appear twice on the page — first seen wins
     }
     seen.add(externalId);
-    const addressRaw = cleanAddress(addressText) || postcode;
-    // Guide price: the first labelled £ within a bounded window after the lot link
-    // (never a stray £ elsewhere on the page).
-    const priceMatch = markdown
-      .slice(match.index! + match[0].length, match.index! + match[0].length + 200)
-      .match(PUGH_GUIDE_PRICE_RE);
+    const addressRaw = cleanAddress(innerText) || postcode;
+    // Guide price: the first labelled £ AFTER the address link, bounded to BEFORE
+    // the next lot's `/property/` link so it can never bleed into another lot (a
+    // price-less lot stops at the next lot's image link, never reaching its
+    // price). When this is the LAST lot (no next `/property/`) take the full
+    // window — the price sits ~400 chars after the address link in the HTML.
+    const end = match.index! + match[0].length;
+    const tail = html.slice(end, end + 900);
+    const nextLot = tail.search(/\/property\/[a-z0-9_]+/i);
+    const window = nextLot >= 0 ? tail.slice(0, nextLot) : tail;
+    const priceMatch = window.match(PUGH_GUIDE_PRICE_RE);
     const pricePence = priceMatch
       ? Number.parseInt(priceMatch[1]!.replace(/,/g, ""), 10) * 100
       : undefined;
@@ -469,95 +471,84 @@ export function parsePughLots(markdown: string): ParsedHubListing[] {
   return out;
 }
 
-/**
- * Map Pugh lot id -> its event-page thumbnail image URL. Each lot renders as
- * `[![alt](IMGURL)](…/property/<id>)`, so the image URL sits immediately before
- * its own lot id. Pair each `![…](url)` with the FIRST lot id within a bounded
- * window, keeping only hotlinkable URLs (first seen wins).
- */
-function pughImagesById(markdown: string): Map<string, string> {
-  const byId = new Map<string, string>();
-  for (const m of markdown.matchAll(PUGH_LOT_IMAGE_RE)) {
-    const url = m[1] ?? "";
-    const id = m[2] ?? "";
-    if (id && !byId.has(id) && isHotlinkableImageUrl(url)) {
-      byId.set(id, url);
-    }
-  }
-  return byId;
-}
-
-/** A Pugh `…/auction/<id>` diary link — g1 = the auction-event id. */
+/** A Pugh `…/auction/<id>` diary link — g1 = the auction-event id. (Format-
+ *  agnostic: matches the URL in an `href`, works on raw HTML.) */
 const PUGH_AUCTION_LINK_RE =
   /https?:\/\/www\.pugh-auctions\.com\/auction\/([a-z0-9_]+)/gi;
 
 /**
- * A Pugh lot address link as the event page renders it. g1 = the address TEXT
- * ending in a UK postcode (anchored on the opening `[`, bounded so it never
- * crosses a `[`/`]`/newline — excludes the image-link text + the "View Property"
- * link); g2 = the lot URL; g3 = the lot id.
+ * One Pugh lot property link as the event page renders it in HTML:
+ * `<a href=".../property/<id>" …>INNER</a>`. Each lot has TWO such links — the
+ * image link (INNER holds `<img>`) and the address link (INNER is the address
+ * text ending in a postcode). g1 = the lot URL (query NOT captured), g2 = the
+ * lot id, g3 = the inner HTML. The non-greedy `[\s\S]*?</a>` is safe — neither
+ * link nests an `<a>`.
  */
-const PUGH_LOT_LINK_RE =
-  /\[([^[\]\n]*?[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\]\((https?:\/\/www\.pugh-auctions\.com\/property\/([a-z0-9_]+))\)/gi;
+const PUGH_LOT_BLOCK_RE =
+  /<a\b[^>]*?\bhref="(https?:\/\/www\.pugh-auctions\.com\/property\/([a-z0-9_]+))[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
 
-/** A Pugh `Guide Price: £X` (with optional thousands separators) — g1 = digits. */
-const PUGH_GUIDE_PRICE_RE = /guide price:?\s*£\s*([\d,]+)/i;
-
-/**
- * A Pugh `![alt](IMGURL)` image immediately preceding (within a bounded span) a
- * `/property/<id>` lot anchor. g1 = the image URL; g2 = the lot id.
- */
-const PUGH_LOT_IMAGE_RE =
-  /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)[\s\S]{0,300}?\/property\/([a-z0-9_]+)/gi;
+/** A Pugh `Guide Price: £X` / `Guide Price: &pound;X` — g1 = digits. (HTML uses
+ *  the `&pound;` entity, the detail pages use the literal `£`; accept both.) */
+const PUGH_GUIDE_PRICE_RE = /guide price:?\s*(?:£|&pound;|&#163;)\s*([\d,]+)/i;
 
 /**
- * Map auctionhouse lot id -> its hub thumbnail image URL. The hub renders each
- * lot as `[![alt](IMGURL)\<newline>ADDR](.../lot/redirect/<id>)`, so the lot's
- * image URL sits a short span BEFORE its own lot id. We pair each `![…](url)`
- * with the FIRST lot id that follows within a bounded window (so it can never
- * bridge to a different lot), keeping only hotlinkable URLs (first seen wins).
+ * Map Pugh lot id -> its hotlinkable thumbnail URL, taken from the lot's IMAGE
+ * link (`<a href=".../property/<id>"><img src=…></a>`). First seen wins; only
+ * hotlinkable (own-CDN, https) URLs are kept.
  */
-function auctionHubImagesById(markdown: string): Map<string, string> {
+function pughImagesById(html: string): Map<string, string> {
   const byId = new Map<string, string>();
-  for (const m of markdown.matchAll(AUCTION_LOT_IMAGE_RE)) {
-    const url = m[1] ?? "";
+  for (const m of html.matchAll(PUGH_LOT_BLOCK_RE)) {
     const id = m[2] ?? "";
-    if (id && !byId.has(id) && isHotlinkableImageUrl(url)) {
-      byId.set(id, url);
+    const src = firstImageSrc(m[3] ?? "");
+    if (id && src && !byId.has(id) && isHotlinkableImageUrl(src)) {
+      byId.set(id, src);
     }
   }
   return byId;
 }
 
 /**
- * A hub `![alt](IMGURL)` image immediately preceding (within a bounded span) a
- * `/lot/redirect/<id>` anchor. g1 = the image URL; g2 = the lot id. The lazy
- * `{0,400}` bridge crosses only the address line between the image and its lot
- * link, never a neighbouring lot.
+ * The FIRST hotlinkable property image URL among a detail page's `<img>` tags, or
+ * undefined. Used for uklandandfarms detail pages (the auction hubs carry their
+ * image inline — see parseAuctionHubListings). isHotlinkableImageUrl skips
+ * relative/placeholder (`/media/viewing.gif`) + off-allowlist artifacts. Pure.
  */
-const AUCTION_LOT_IMAGE_RE =
-  /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)[\s\S]{0,400}?\/lot\/redirect\/(\d+)/gi;
-
-/** Any markdown `![alt](https://url)` image — g1 = the URL. */
-const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/gi;
-
-/**
- * The FIRST hotlinkable property image URL in a detail page's markdown, or
- * undefined. Used for uklandandfarms detail pages (the auctionhouse hub carries
- * its image inline — see parseAuctionHubListings). Skips data/base64 +
- * off-allowlist artifacts via isHotlinkableImageUrl. Pure.
- */
-export function extractImageUrl(markdown: string): string | undefined {
-  if (!markdown) {
+export function extractImageUrl(
+  html: string,
+  baseUrl?: string,
+): string | undefined {
+  if (!html) {
     return undefined;
   }
-  for (const m of markdown.matchAll(MARKDOWN_IMAGE_RE)) {
-    const url = m[1] ?? "";
-    if (isHotlinkableImageUrl(url)) {
+  for (const m of html.matchAll(/<img\b[^>]*?\bsrc="([^"]+)"/gi)) {
+    const url = resolveUrl(decodeUrlEntities(m[1] ?? ""), baseUrl);
+    if (url && isHotlinkableImageUrl(url)) {
       return url;
     }
   }
   return undefined;
+}
+
+/**
+ * Resolve a possibly-relative URL against a base (the page URL). uklandandfarms
+ * detail pages reference images as root-relative paths (`/media/properties/…jpg`)
+ * — Firecrawl absolutized them; the raw HTML does not — so without this the
+ * on-host property photo would be dropped by the absolute-https hotlink check.
+ * Returns "" when unresolvable.
+ */
+function resolveUrl(url: string, baseUrl?: string): string {
+  if (/^https?:\/\//i.test(url)) {
+    return url;
+  }
+  if (!baseUrl) {
+    return "";
+  }
+  try {
+    return new URL(url, baseUrl).toString();
+  } catch {
+    return "";
+  }
 }
 
 /** The minimal fields parsed out of a uklandandfarms DETAIL page. */
@@ -626,8 +617,8 @@ function uklfPropertyHeading(
   if (title && POSTCODE_RE.test(title)) {
     return title;
   }
-  for (const m of markdown.matchAll(H1_LINE_RE)) {
-    const h1 = (m[1] ?? "").replace(/\s+/g, " ").trim();
+  for (const m of markdown.matchAll(H1_BLOCK_RE)) {
+    const h1 = htmlText(m[1] ?? "");
     if (POSTCODE_RE.test(h1)) {
       return h1;
     }
@@ -683,13 +674,15 @@ function isPlausibleAddressWithoutPostcode(addr: string): boolean {
  * requires a price LABEL. Returns undefined when no price is found.
  */
 function uklfPrice(markdown: string): number | undefined {
-  for (const m of markdown.matchAll(H1_LINE_RE)) {
-    const pence = priceToPence((m[1] ?? "").match(PRICE_RE)?.[1]);
+  for (const m of markdown.matchAll(H1_BLOCK_RE)) {
+    const pence = priceToPence(htmlText(m[1] ?? "").match(PRICE_RE)?.[1]);
     if (pence !== undefined) {
       return pence;
     }
   }
-  return priceToPence(markdown.match(PRICE_LABEL_RE)?.[1]);
+  // Body fallback (requires a price LABEL): run on the tag-stripped, entity-
+  // decoded text so `&pound;` and label-across-tags still match.
+  return priceToPence(htmlText(markdown).match(PRICE_LABEL_RE)?.[1]);
 }
 
 /** Parse a £ digit string ("1,500,000") to integer pence, or undefined. */
@@ -737,6 +730,12 @@ export function isHotlinkableImageUrl(url: string): boolean {
   if (parsed.protocol !== "https:") {
     return false;
   }
+  // Reject decorative/UI `.gif` (e.g. uklandandfarms' /media/viewing.gif + icons)
+  // — listing PHOTOS are jpg/png/webp, never gif, so this skips the chrome and
+  // lands on the real property image.
+  if (parsed.pathname.toLowerCase().endsWith(".gif")) {
+    return false;
+  }
   const host = parsed.hostname.toLowerCase();
   return IMAGE_HOST_SUFFIXES.some(
     (s) => host === s || host.endsWith(`.${s}`),
@@ -744,30 +743,20 @@ export function isHotlinkableImageUrl(url: string): boolean {
 }
 
 /**
- * An auctionhouse lot link as the live hub renders it. Group 1 = the link TEXT
- * ending in a UK postcode (the address — bounded to not cross a `]` or newline,
- * so it captures only the trailing address line, never the image-alt prefix);
- * group 2 = the lot URL; group 3 = the numeric lot id. The URL host is pinned to
- * the online./wales. lot subdomains + the /lot/redirect/<id> path (matches
- * isListingUrl's intent; no query string captured).
+ * One auctionhouse lot, as the live regional HUB renders it in HTML: the whole
+ * lot card is a single `<a href=".../lot/redirect/<id>" class="home-lot-wrapper-
+ * link">…</a>` wrapping the lot image (`<img class="lot-image" src=…>`) and the
+ * address (`<p class="…grid-address">…</p>`). g1 = the clean lot URL (host pinned
+ * to the online./wales. subdomains + /lot/redirect/<id>, so a trailing query is
+ * NOT captured — matches isListingUrl's no-query intent); g2 = the numeric lot
+ * id; g3 = the anchor's inner HTML (address + image extracted from it). The
+ * non-greedy `[\s\S]*?</a>` is safe — a lot card has no nested `<a>`.
  */
-const AUCTION_LOT_LINK_RE =
-  /([^\]\n]*?[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\]\((https?:\/\/(?:online|wales)\.auctionhouse\.co\.uk\/lot\/redirect\/(\d+))/gi;
+const AUCTION_LOT_BLOCK_RE =
+  /<a\b[^>]*?\bhref="(https?:\/\/(?:online|wales)\.auctionhouse\.co\.uk\/lot\/redirect\/(\d+))[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
 
-/**
- * Strip a leading image-link artifact from a captured hub address. Removes a
- * leading `...)` (the image URL's closing paren when the lot collapsed to one
- * line) and any leading `\`/whitespace (the markdown hard-break). A normal
- * two-line capture has none of this, so it is returned trimmed unchanged.
- */
-function sanitiseHubAddress(text: string): string {
-  return text
-    // Only strip a leading "...://...)" — i.e. a real (image) URL artifact, so a
-    // legitimate address containing "(...)" is never truncated.
-    .replace(/^[^)]*:\/\/[^)]*\)\s*/, "")
-    .replace(/^[\\\s]+/, "") // drop a leading backslash hard-break / whitespace
-    .trim();
-}
+/** The address `<p class="…grid-address">ADDRESS</p>` within a lot card — g1 = inner. */
+const AUCTION_GRID_ADDRESS_RE = /grid-address[^>]*>([\s\S]*?)<\/p>/i;
 
 /** The first full UK postcode in a string (normalised "OUT IN"), or null. */
 function firstPostcode(text: string): string | null {
@@ -791,6 +780,49 @@ function cleanAddress(text: string): string {
   return collapsed;
 }
 
+
+/**
+ * Strip an HTML fragment to plain text: drop tags, decode the entities that turn
+ * up in addresses/prices (`&amp;`, `&pound;` → £, `&nbsp;`, quotes, numeric), and
+ * collapse whitespace. The listing sites are server-rendered HTML now (not
+ * Firecrawl markdown); addresses live in anchor/`<p>` text and prices as
+ * `Guide Price: &pound;X`, so every captured fragment passes through here before
+ * the postcode/price/address logic. Pure.
+ */
+function htmlText(fragment: string): string {
+  return fragment
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&(?:amp|#0*38);/gi, "&")
+    .replace(/&(?:pound|#0*163);/gi, "£")
+    .replace(/&(?:nbsp|#0*160);/gi, " ")
+    .replace(/&(?:apos|#0*39);/gi, "'")
+    .replace(/&(?:quot|#0*34);/gi, '"')
+    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number.parseInt(d, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, h: string) => String.fromCodePoint(Number.parseInt(h, 16)))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Match an `<img ... src="URL">` — g1 = the raw URL. */
+const IMG_SRC_RE = /<img\b[^>]*?\bsrc="([^"]+)"/i;
+
+/** Decode the `&amp;` that HTML escapes into `src`/`href` URLs (e.g. a CDN image
+ *  `?&amp;uuid=…`), so the stored URL is a valid, directly-usable address. */
+function decodeUrlEntities(url: string): string {
+  return url.replace(/&(?:amp|#0*38);/gi, "&");
+}
+
+/** The first `<img>` src URL in an HTML fragment (entity-decoded), or undefined. */
+function firstImageSrc(fragment: string): string | undefined {
+  const src = fragment.match(IMG_SRC_RE)?.[1];
+  return src ? decodeUrlEntities(src) : undefined;
+}
+
+/** The first `<title>` element's decoded text in an HTML document, or "". */
+export function extractHtmlTitle(html: string): string {
+  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return m ? htmlText(m[1] ?? "") : "";
+}
 
 /** The `/`-split, non-empty path segments BELOW a (trailing-slashed) prefix. */
 function segmentsBelow(path: string, prefix: string): string[] {

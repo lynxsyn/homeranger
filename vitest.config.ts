@@ -126,12 +126,16 @@ export default defineConfig({
         // + the HTML helpers (html-extract.ts) are unit-covered; this adapter is
         // the operator-proven network shell over them (verify Serper shape live).
         "packages/backend-core/src/lib/discovery/serper-agent-discovery.provider.ts",
-        // Listing-site Firecrawl scrape adapter — web-scrape network I/O,
-        // dormant without FIRECRAWL_API_KEY + LISTING_SCRAPE_SITES. The interface
-        // + the deterministic fake + the dedup/upsert service are unit-covered;
-        // the real adapter is operator-proven (same rationale as the discovery
-        // + Resend/r2 adapters above).
-        "packages/backend-core/src/lib/listing-scrape/firecrawl-listing-scrape.provider.ts",
+        // Shared in-process page fetcher (SSRF-hardened) used by the Serper
+        // discovery + listing-scrape providers — network I/O. The security
+        // decision (isPrivateIp in lib/http/ssrf-guard.ts) is pure + unit-tested.
+        "packages/backend-core/src/lib/http/page-fetch.ts",
+        // Listing-site in-process scrape adapter — HTTP fetch network I/O (via
+        // the shared lib/http/page-fetch), dormant without LISTING_SCRAPE_SITES.
+        // The interface + the deterministic fake + the dedup/upsert service +
+        // the PURE HTML parsers (listing-search.ts) are unit-covered; this real
+        // adapter is the operator-proven network shell over them.
+        "packages/backend-core/src/lib/listing-scrape/fetch-listing-scrape.provider.ts",
         // Listing-site scrape processor handler — BullMQ job IO + worker-error
         // mapping, proven by the live worker consuming a real queue. Same
         // processor-IO rationale as worker.ts above; the service it delegates to

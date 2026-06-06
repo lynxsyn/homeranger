@@ -304,20 +304,21 @@ describe("isListingUrl — shared rejections", () => {
 });
 
 describe("extractListingLinks — uklandandfarms index page", () => {
-  const INDEX_MARKDOWN = `
-# Properties for sale in North Wales
-
-- [Country house, Conwy](https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/83440_chs250018/)
-- [Smallholding, Mold](/rural-property-for-sale/wales/north-wales/sychdyn_mold_flintshire-nm7holkr/)
-- [Land, Glyn Ceiriog](https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/glyn_ceiriog-34141009/)
-- [Back to the index](https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/)
-- [Our agents](https://www.uklandandfarms.co.uk/agent/)
-- [Some other site](https://www.rightmove.co.uk/property/123)
-- [Duplicate](https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/83440_chs250018/)
+  const INDEX_HTML = `
+<h1>Properties for sale in North Wales</h1>
+<ul>
+  <li><a href="https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/83440_chs250018/">Country house, Conwy</a></li>
+  <li><a href="/rural-property-for-sale/wales/north-wales/sychdyn_mold_flintshire-nm7holkr/">Smallholding, Mold</a></li>
+  <li><a href="https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/glyn_ceiriog-34141009/">Land, Glyn Ceiriog</a></li>
+  <li><a href="https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/">Back to the index</a></li>
+  <li><a href="https://www.uklandandfarms.co.uk/agent/">Our agents</a></li>
+  <li><a href="https://www.rightmove.co.uk/property/123">Some other site</a></li>
+  <li><a href="https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/83440_chs250018/">Duplicate</a></li>
+</ul>
 `;
 
   it("harvests + absolutises + filters detail links, deduped, stable order", () => {
-    expect(extractListingLinks("uklandandfarms", INDEX_MARKDOWN)).toEqual([
+    expect(extractListingLinks("uklandandfarms", INDEX_HTML)).toEqual([
       "https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/83440_chs250018/",
       "https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/sychdyn_mold_flintshire-nm7holkr/",
       "https://www.uklandandfarms.co.uk/rural-property-for-sale/wales/north-wales/glyn_ceiriog-34141009/",
@@ -333,34 +334,30 @@ describe("extractListingLinks — uklandandfarms index page", () => {
 });
 
 describe("parseAuctionHubListings — auctionhouse regional hub", () => {
-  // The REAL hub shape (captured live): each lot is a markdown IMAGE link that
-  // spans two lines, the address on the line right before the closing `](url)`.
-  // The image-alt prefix ("...Wales - <ADDRESS>") and the trailing address line
-  // both carry the address; the parser keys off the address-before-`](LOTURL)`.
-  const HUB_MARKDOWN = `
-# Auction House Wales — current lots
-
-[![Property for Auction in Wales - 23 Deganwy Avenue, Llandudno, Conwy, LL30 2YB](https://cdn.eigpropertyauctions.co.uk/abc/image)\\
-23 Deganwy Avenue, Llandudno, Conwy, LL30 2YB](https://online.auctionhouse.co.uk/lot/redirect/346219 "View property details")
-
-[![Property for Auction in Wales - 5 Ty Isa Road, Llandudno, Conwy, LL30 2PL](https://cdn.eigpropertyauctions.co.uk/def/image)\\
-5 Ty Isa Road, Llandudno, Conwy, LL30 2PL](https://online.auctionhouse.co.uk/lot/redirect/347676 "View property details")
-
-[![Property for Auction in Wales - Inglewood Celyn Avenue, Penmaenmawr, Conwy, LL34 6LR](https://cdn.eigpropertyauctions.co.uk/ghi/image)\\
-Inglewood Celyn Avenue, Penmaenmawr, Conwy, LL34 6LR](https://online.auctionhouse.co.uk/lot/redirect/346740 "View property details")
-
-[![Property for Auction in Wales - 18 Bryn Castell, Abergele, Conwy, LL22 8QA](https://cdn.eigpropertyauctions.co.uk/jkl/image)\\
-18 Bryn Castell, Abergele, Conwy, LL22 8QA](https://wales.auctionhouse.co.uk/lot/redirect/348421 "View property details")
-
-[![Property for Auction in Wales - A lot with no postcode at all](https://cdn.eigpropertyauctions.co.uk/mno/image)\\
-A lot with no postcode at all](https://online.auctionhouse.co.uk/lot/redirect/999000 "View property details")
-
-[![Property for Auction in Wales - 23 Deganwy Avenue, Llandudno, Conwy, LL30 2YB](https://cdn.eigpropertyauctions.co.uk/abc/image)\\
-23 Deganwy Avenue, Llandudno, Conwy, LL30 2YB](https://online.auctionhouse.co.uk/lot/redirect/346219 "View property details")
+  // The REAL hub shape (captured live): each lot card is a single <a> wrapping
+  // the lot image (<img class="lot-image">) and the address (<p class="…
+  // grid-address">). The img `alt` ALSO carries the address — the parser must
+  // read the <p>, never the alt. Last two cards: a no-postcode lot + a duplicate.
+  const ahLot = (id: string, addr: string, img: string, sub = "online"): string =>
+    `<a href="https://${sub}.auctionhouse.co.uk/lot/redirect/${id}" class="home-lot-wrapper-link" title="View property details">` +
+    `<div class="image-wrapper"><img src="${img}" class="lot-image" alt="Property for Auction in Wales - ${addr}"/>` +
+    `<div class="image-sticker">Lot 1</div></div>` +
+    `<div class="summary-info-wrapper"><p class="fw-bold blue-text">House</p>` +
+    `<p class="fw-medium blue-text grid-address">${addr}</p></div></a>`;
+  const HUB_HTML = `
+<h1>Auction House Wales — current lots</h1>
+<div class="row row-search-results-grid">
+${ahLot("346219", "23 Deganwy Avenue, Llandudno, Conwy, LL30 2YB", "https://cdn.eigpropertyauctions.co.uk/abc/image")}
+${ahLot("347676", "5 Ty Isa Road, Llandudno, Conwy, LL30 2PL", "https://cdn.eigpropertyauctions.co.uk/def/image")}
+${ahLot("346740", "Inglewood Celyn Avenue, Penmaenmawr, Conwy, LL34 6LR", "https://cdn.eigpropertyauctions.co.uk/ghi/image")}
+${ahLot("348421", "18 Bryn Castell, Abergele, Conwy, LL22 8QA", "https://cdn.eigpropertyauctions.co.uk/jkl/image", "wales")}
+${ahLot("999000", "A lot with no postcode at all", "https://cdn.eigpropertyauctions.co.uk/mno/image")}
+${ahLot("346219", "23 Deganwy Avenue, Llandudno, Conwy, LL30 2YB", "https://cdn.eigpropertyauctions.co.uk/abc/image")}
+</div>
 `;
 
-  it("parses the live two-line image-link lots (address + postcode + lot URL + image)", () => {
-    expect(parseAuctionHubListings(HUB_MARKDOWN)).toEqual([
+  it("parses the live lot cards (address + postcode + lot URL + image)", () => {
+    expect(parseAuctionHubListings(HUB_HTML)).toEqual([
       {
         externalId: "auctionhouse-346219",
         sourceUrl: "https://online.auctionhouse.co.uk/lot/redirect/346219",
@@ -393,7 +390,7 @@ A lot with no postcode at all](https://online.auctionhouse.co.uk/lot/redirect/99
   });
 
   it("extracts the Deganwy lot exactly (postcode, sourceUrl, externalId)", () => {
-    const out = parseAuctionHubListings(HUB_MARKDOWN);
+    const out = parseAuctionHubListings(HUB_HTML);
     const deganwy = out.find((l) => l.externalId === "auctionhouse-346219");
     expect(deganwy).toBeDefined();
     expect(deganwy!.postcode).toBe("LL30 2YB");
@@ -402,49 +399,34 @@ A lot with no postcode at all](https://online.auctionhouse.co.uk/lot/redirect/99
     );
   });
 
-  it("skips a lot whose link text has no postcode", () => {
-    const out = parseAuctionHubListings(HUB_MARKDOWN);
+  it("skips a lot whose card has no postcode", () => {
+    const out = parseAuctionHubListings(HUB_HTML);
     expect(out.some((l) => l.sourceUrl.endsWith("/999000"))).toBe(false);
   });
 
   it("dedups a lot that appears twice (first seen wins, by id)", () => {
-    const out = parseAuctionHubListings(HUB_MARKDOWN);
+    const out = parseAuctionHubListings(HUB_HTML);
     expect(out.filter((l) => l.externalId === "auctionhouse-346219")).toHaveLength(
       1,
     );
   });
 
-  it("captures only the trailing address line, not the image-alt prefix", () => {
-    // The address-before-`](url)` is bounded to not cross a `]` or newline, so the
-    // captured address is the clean trailing line — not the "...Wales - " alt text.
-    const out = parseAuctionHubListings(HUB_MARKDOWN);
+  it("reads the address from the grid-address <p>, not the img alt", () => {
+    // The img `alt` also carries the address (prefixed "Property for Auction in
+    // Wales - …"); the parser must use the <p class="…grid-address"> text.
+    const out = parseAuctionHubListings(HUB_HTML);
     expect(out[0]!.addressRaw).toBe("23 Deganwy Avenue, Llandudno, Conwy, LL30 2YB");
     expect(out[0]!.addressRaw).not.toContain("Property for Auction");
-  });
-
-  it("sanitises a single-line collapsed lot (image artifact stripped from address)", () => {
-    // If Firecrawl ever collapses the lot onto ONE line (no newline before the
-    // address), the captured text begins with the image URL's `...)` + the `\\`
-    // hard-break — the sanitiser strips it so the stored address is clean.
-    const md =
-      "[![alt](https://cdn.eigpropertyauctions.co.uk/x/image)\\7 Bodnant Road, Llandudno, Conwy, LL30 1AA](https://online.auctionhouse.co.uk/lot/redirect/350001)";
-    expect(parseAuctionHubListings(md)).toEqual([
-      {
-        externalId: "auctionhouse-350001",
-        sourceUrl: "https://online.auctionhouse.co.uk/lot/redirect/350001",
-        addressRaw: "7 Bodnant Road, Llandudno, Conwy, LL30 1AA",
-        postcode: "LL30 1AA",
-        imageUrl: "https://cdn.eigpropertyauctions.co.uk/x/image",
-      },
-    ]);
   });
 
   it("omits imageUrl when the lot's image host is not an allowlisted source", () => {
     // A lot whose image is on some random CDN is still parsed, but with NO
     // imageUrl (we only hotlink from the source sites' own image hosts).
-    const md =
-      "[![alt](https://evil.example/tracker.gif)\\9 Foo Road, Conwy, LL30 2YB](https://online.auctionhouse.co.uk/lot/redirect/355000)";
-    expect(parseAuctionHubListings(md)).toEqual([
+    const html =
+      '<a href="https://online.auctionhouse.co.uk/lot/redirect/355000" class="home-lot-wrapper-link">' +
+      '<img src="https://evil.example/tracker.jpg" class="lot-image"/>' +
+      '<p class="grid-address">9 Foo Road, Conwy, LL30 2YB</p></a>';
+    expect(parseAuctionHubListings(html)).toEqual([
       {
         externalId: "auctionhouse-355000",
         sourceUrl: "https://online.auctionhouse.co.uk/lot/redirect/355000",
@@ -454,45 +436,56 @@ A lot with no postcode at all](https://online.auctionhouse.co.uk/lot/redirect/99
     ]);
   });
 
-  it("returns [] for empty markdown or a hub with no lot links", () => {
+  it("returns [] for empty HTML or a hub with no lot cards", () => {
     expect(parseAuctionHubListings("")).toEqual([]);
     expect(
       parseAuctionHubListings(
-        "[Wales hub](https://www.auctionhouse.co.uk/wales) LL30 2YB",
+        '<a href="https://www.auctionhouse.co.uk/wales">Wales hub</a> LL30 2YB',
       ),
     ).toEqual([]);
   });
 
-  it("ignores a /print-lot/ or off-subdomain link even with an address", () => {
-    const md = `
-[![alt](https://cdn/x)\\
-1 Foo Street, Conwy, LL30 2YB](https://online.auctionhouse.co.uk/print-lot/redirect/1)
-[![alt](https://cdn/y)\\
-2 Bar Street, Conwy, LL30 2YB](https://www.auctionhouse.co.uk/lot/redirect/2)
-`;
-    expect(parseAuctionHubListings(md)).toEqual([]);
+  it("ignores a /print-lot/ or off-subdomain (www) lot card even with an address", () => {
+    const html =
+      '<a href="https://online.auctionhouse.co.uk/print-lot/redirect/1" class="home-lot-wrapper-link">' +
+      '<p class="grid-address">1 Foo Street, Conwy, LL30 2YB</p></a>' +
+      '<a href="https://www.auctionhouse.co.uk/lot/redirect/2" class="home-lot-wrapper-link">' +
+      '<p class="grid-address">2 Bar Street, Conwy, LL30 2YB</p></a>';
+    expect(parseAuctionHubListings(html)).toEqual([]);
   });
 });
 
-describe("extractImageUrl — detail page markdown", () => {
-  it("returns the first hotlinkable image URL in the markdown", () => {
-    const md = `
-# A farm
-![hero](https://www.uklandandfarms.co.uk/images/property/farm-1.jpg)
-Some prose.
-![second](https://www.uklandandfarms.co.uk/images/property/farm-2.jpg)
+describe("extractImageUrl — detail page HTML", () => {
+  it("returns the first hotlinkable <img> URL in the HTML", () => {
+    const html = `
+<h1>A farm</h1>
+<img src="https://www.uklandandfarms.co.uk/images/property/farm-1.jpg" alt="hero"/>
+<p>Some prose.</p>
+<img src="https://www.uklandandfarms.co.uk/images/property/farm-2.jpg" alt="second"/>
 `;
-    expect(extractImageUrl(md)).toBe(
+    expect(extractImageUrl(html)).toBe(
       "https://www.uklandandfarms.co.uk/images/property/farm-1.jpg",
     );
   });
 
-  it("skips a data/base64 placeholder and returns the next real image", () => {
-    const md = `
-![placeholder](<Base64-Image-Removed>)
-![real](https://www.uklandandfarms.co.uk/images/property/farm-9.jpg)
-`;
-    expect(extractImageUrl(md)).toBe(
+  it("resolves a root-relative src against the page base + decodes &amp; (uklandandfarms)", () => {
+    // uklandandfarms references property photos as root-relative /media paths and
+    // precedes them with decorative .gif chrome; with the base URL the real photo
+    // resolves to an on-host absolute URL, and the .gif chrome is skipped.
+    const html =
+      '<img src="/media/viewing.gif"/>' +
+      '<img src="/media/properties/man_123.jpg?w=800&amp;h=600"/>';
+    expect(
+      extractImageUrl(html, "https://www.uklandandfarms.co.uk/search/detail.aspx?PropertyRef=X"),
+    ).toBe("https://www.uklandandfarms.co.uk/media/properties/man_123.jpg?w=800&h=600");
+  });
+
+  it("skips a base64 placeholder + decorative .gif and returns the next real image", () => {
+    const html =
+      '<img src="<Base64-Image-Removed>"/>' +
+      '<img src="https://www.uklandandfarms.co.uk/media/icons/ico_home.gif"/>' +
+      '<img src="https://www.uklandandfarms.co.uk/images/property/farm-9.jpg"/>';
+    expect(extractImageUrl(html)).toBe(
       "https://www.uklandandfarms.co.uk/images/property/farm-9.jpg",
     );
   });
@@ -501,8 +494,10 @@ Some prose.
     expect(extractImageUrl("")).toBeUndefined();
     expect(extractImageUrl("just prose, no images")).toBeUndefined();
     expect(
-      extractImageUrl("![x](https://evil.example/tracker.gif)"),
+      extractImageUrl('<img src="https://evil.example/tracker.png"/>'),
     ).toBeUndefined();
+    // A relative src with NO base cannot be resolved → skipped.
+    expect(extractImageUrl('<img src="/media/properties/x.jpg"/>')).toBeUndefined();
   });
 });
 
@@ -539,6 +534,11 @@ describe("isHotlinkableImageUrl", () => {
       isHotlinkableImageUrl("http://www.uklandandfarms.co.uk/img/x.jpg"),
     ).toBe(false); // not https
     expect(isHotlinkableImageUrl("https://evil.example/tracker.gif")).toBe(false);
+    // On-allowlist .gif is ALSO rejected — listing photos are jpg/png/webp, gifs
+    // are decorative UI chrome (uklandandfarms /media/viewing.gif + icons).
+    expect(
+      isHotlinkableImageUrl("https://www.uklandandfarms.co.uk/media/viewing.gif"),
+    ).toBe(false);
     expect(isHotlinkableImageUrl("<Base64-Image-Removed>")).toBe(false);
     expect(isHotlinkableImageUrl("not a url")).toBe(false);
     expect(
@@ -550,53 +550,33 @@ describe("isHotlinkableImageUrl", () => {
 });
 
 describe("parseUklfDetail", () => {
-  // A faithful trim of a LIVE uklandandfarms detail page (captured 2026-06-05).
-  // The markdown opens with the site NAV (`[Home](…)`) and a selling-AGENT
-  // contact card carrying the AGENT'S OWN office postcode (SY4 5NQ, Shropshire),
-  // followed by the property's H1 carrying the PROPERTY postcode (CH7 6ES). The
-  // page <title> is `<address>, <postcode> - UKLAF`. This is exactly the shape
-  // that made the old firstLine()/first-postcode extraction capture the nav +
-  // the agent's office, pruning every real North-Wales listing by outcode.
-  const DETAIL_MD = [
-    `- [Home](https://www.uklandandfarms.co.uk/ "")`,
-    `- [Property search](https://www.uklandandfarms.co.uk/search/ "Search")`,
-    ``,
-    `### Mortgage calculator`,
-    ``,
-    `Property value:?`,
-    ``,
-    `[![Atchams](https://www.uklandandfarms.co.uk/media/agents/t_x.png)](https://www.uklandandfarms.co.uk/exit.aspx?url=https://www.atchams.co.uk)`,
-    ``,
-    `**Atchams**`,
-    ``,
-    `Holly Farm`,
-    ``,
-    `Wolverley`,
-    ``,
-    `Shropshire`,
-    ``,
-    `SY4 5NQ`,
-    ``,
-    `**Tel:**`,
-    ``,
-    `« Back`,
-    ``,
-    `# 104.6 acres, Sychdyn, Mold, Flintshire, North Wales, CH7 6ES    For Sale -   Guide Price £1,500,000`,
-    ``,
-    `Farm with house and range of outbuildings.`,
-    ``,
-    `![photo](https://www.uklandandfarms.co.uk/media/properties/thb_x.jpg)`,
+  // A faithful trim of a LIVE uklandandfarms detail page (captured 2026-06-06).
+  // The HTML opens with the site NAV (`<a>Home</a>`) and a selling-AGENT contact
+  // card carrying the AGENT'S OWN office postcode (SY4 5NQ, Shropshire), followed
+  // by the property's <h1> carrying the PROPERTY postcode (CH7 6ES) + the guide
+  // price. The page <title> is `<address>, <postcode> - UKLAF`. This is exactly
+  // the shape that made the old firstLine()/first-postcode extraction capture the
+  // nav + the agent's office, pruning every real North-Wales listing by outcode.
+  const DETAIL_HTML = [
+    `<nav><a href="https://www.uklandandfarms.co.uk/">Home</a>`,
+    `<a href="https://www.uklandandfarms.co.uk/search/">Property search</a></nav>`,
+    `<div class="mortgage"><h3>Mortgage calculator</h3><p>Property value:?</p></div>`,
+    `<div class="agent-card"><strong>Atchams</strong><p>Holly Farm</p>`,
+    `<p>Wolverley</p><p>Shropshire</p><p>SY4 5NQ</p><p>Tel:</p></div>`,
+    `<h1>104.6 acres, Sychdyn, Mold, Flintshire, North Wales, CH7 6ES &nbsp; For Sale - &nbsp; Guide Price £1,500,000</h1>`,
+    `<p>Farm with house and range of outbuildings.</p>`,
+    `<img src="https://www.uklandandfarms.co.uk/media/properties/thb_x.jpg"/>`,
   ].join("\n");
   const DETAIL_TITLE =
     "\n\t104.6 acres, Sychdyn, Mold, Flintshire, North Wales, CH7 6ES - UKLAF\n";
 
   it("extracts the PROPERTY postcode from the title, never the agent's office", () => {
-    const parsed = parseUklfDetail(DETAIL_MD, DETAIL_TITLE);
+    const parsed = parseUklfDetail(DETAIL_HTML, DETAIL_TITLE);
     expect(parsed?.postcode).toBe("CH7 6ES"); // the property, NOT SY4 5NQ
   });
 
-  it("extracts the property address (not the nav `[Home]` link)", () => {
-    const parsed = parseUklfDetail(DETAIL_MD, DETAIL_TITLE);
+  it("extracts the property address (not the nav `Home` link)", () => {
+    const parsed = parseUklfDetail(DETAIL_HTML, DETAIL_TITLE);
     expect(parsed?.addressRaw).toBe(
       "104.6 acres, Sychdyn, Mold, Flintshire, North Wales, CH7 6ES",
     );
@@ -604,13 +584,13 @@ describe("parseUklfDetail", () => {
   });
 
   it("extracts the guide price as integer pence", () => {
-    expect(parseUklfDetail(DETAIL_MD, DETAIL_TITLE)?.pricePence).toBe(
+    expect(parseUklfDetail(DETAIL_HTML, DETAIL_TITLE)?.pricePence).toBe(
       150_000_000,
     );
   });
 
-  it("falls back to the postcode-bearing H1 when the title is missing", () => {
-    const parsed = parseUklfDetail(DETAIL_MD, undefined);
+  it("falls back to the postcode-bearing <h1> when the title is missing", () => {
+    const parsed = parseUklfDetail(DETAIL_HTML, undefined);
     expect(parsed?.postcode).toBe("CH7 6ES"); // still the property, not SY4
     expect(parsed?.addressRaw).toBe(
       "104.6 acres, Sychdyn, Mold, Flintshire, North Wales, CH7 6ES",
@@ -619,7 +599,7 @@ describe("parseUklfDetail", () => {
 
   it("returns an address without a postcode when none is present", () => {
     const parsed = parseUklfDetail(
-      "# Land at Cae Glas, Llanrwst, North Wales    For Sale",
+      "<h1>Land at Cae Glas, Llanrwst, North Wales &nbsp; For Sale</h1>",
       "Land at Cae Glas, Llanrwst, North Wales - UKLAF",
     );
     expect(parsed?.addressRaw).toBe("Land at Cae Glas, Llanrwst, North Wales");
@@ -631,19 +611,17 @@ describe("parseUklfDetail", () => {
     expect(parseUklfDetail("just some body text, no heading", "")).toBeNull();
   });
 
-  it("takes the price from the H1, not an earlier mortgage-calculator figure", () => {
-    // The mortgage calculator renders a £ value BEFORE the property H1; the old
+  it("takes the price from the <h1>, not an earlier mortgage-calculator figure", () => {
+    // The mortgage calculator renders a £ value BEFORE the property <h1>; the old
     // full-body first-£ fallback would have captured £250,000 instead of the
-    // £1,500,000 guide price.
-    const md = [
-      `### Mortgage calculator`,
-      ``,
-      `Property value: £250,000`,
-      `Monthly repayment from £1,200`,
-      ``,
-      `# 104.6 acres, Sychdyn, Mold, Flintshire, North Wales, CH7 6ES    For Sale -   Guide Price £1,500,000`,
+    // £1,500,000 guide price. The H1-first scan + the LABEL-required body
+    // fallback both avoid the calculator value.
+    const html = [
+      `<div class="mortgage"><h3>Mortgage calculator</h3>`,
+      `<p>Property value: £250,000</p><p>Monthly repayment from £1,200</p></div>`,
+      `<h1>104.6 acres, Sychdyn, Mold, Flintshire, North Wales, CH7 6ES For Sale - Guide Price £1,500,000</h1>`,
     ].join("\n");
-    expect(parseUklfDetail(md, DETAIL_TITLE)?.pricePence).toBe(150_000_000);
+    expect(parseUklfDetail(html, DETAIL_TITLE)?.pricePence).toBe(150_000_000);
   });
 
   it("rejects a brand-only / generic site title as an address", () => {
@@ -711,23 +689,22 @@ describe("pughauctions (national auction catalogue)", () => {
     ]);
   });
 
-  // A faithful trim of a LIVE Pugh auction-EVENT page (captured 2026-06-05): an
-  // image link to the lot, a "View Property" link, then the ADDRESS as its own
-  // link ending in the PROPERTY postcode, then the guide price.
-  const EVENT_MD = [
-    `[![Land at Bent Street](https://asta.btgeddisonspropertyauctions.com/sdl_data/x/land.jpg?u=1)](https://www.pugh-auctions.com/property/202603121543sq_aidl)`,
-    ``,
-    `[View Property](https://www.pugh-auctions.com/property/202603121543sq_aidl)`,
-    ``,
-    `Multi-Lot Timed Auction`,
-    ``,
-    `[Land at Bent Street & Elm Street, Newsome, Huddersfield, West Yorkshire HD4 6NX](https://www.pugh-auctions.com/property/202603121543sq_aidl)`,
-    ``,
-    `Guide Price: £130,000 plus`,
+  // A faithful trim of a LIVE Pugh auction-EVENT page (captured 2026-06-06): each
+  // lot is an IMAGE link to the lot (<a><img></a>), then the ADDRESS as its own
+  // link ending in the PROPERTY postcode (with a trailing <br>), then the guide
+  // price as plain text using the &pound; HTML entity.
+  const EVENT_HTML = [
+    `<div class="lot-card">`,
+    `<a href="https://www.pugh-auctions.com/property/202603121543sq_aidl" class="block"><img src="https://asta.btgeddisonspropertyauctions.com/sdl_data/x/land.jpg?u=1" alt="Land at Bent Street"/></a>`,
+    `<a href="https://www.pugh-auctions.com/property/202603121543sq_aidl" class="block">View Property</a>`,
+    `<p>Multi-Lot Timed Auction</p>`,
+    `<a href="https://www.pugh-auctions.com/property/202603121543sq_aidl" class="block">Land at Bent Street &amp; Elm Street, Newsome, Huddersfield, West Yorkshire HD4 6NX<br></a>`,
+    `<p class="text-secondary"><span>Guide Price: &pound;130,000 plus</span></p>`,
+    `</div>`,
   ].join("\n");
 
   it("parses a lot inline: property address+postcode+price+image, ignoring the image/View links", () => {
-    const lots = parsePughLots(EVENT_MD);
+    const lots = parsePughLots(EVENT_HTML);
     expect(lots).toHaveLength(1);
     expect(lots[0]).toEqual({
       externalId: "pughauctions-202603121543sq_aidl",
@@ -742,17 +719,17 @@ describe("pughauctions (national auction catalogue)", () => {
   });
 
   it("dedups a lot that appears twice (first seen wins)", () => {
-    expect(parsePughLots(`${EVENT_MD}\n\n${EVENT_MD}`)).toHaveLength(1);
+    expect(parsePughLots(`${EVENT_HTML}\n\n${EVENT_HTML}`)).toHaveLength(1);
   });
 
   it("skips a lot link whose text carries no postcode", () => {
-    const md = `[View Property](https://www.pugh-auctions.com/property/202601010000sq_zzzz)`;
-    expect(parsePughLots(md)).toEqual([]);
+    const html = `<a href="https://www.pugh-auctions.com/property/202601010000sq_zzzz" class="block">View Property</a>`;
+    expect(parsePughLots(html)).toEqual([]);
   });
 
   it("omits the price when the event page has no guide price", () => {
-    const md = `[Land at Foo, Leeds, West Yorkshire LS1 1AA](https://www.pugh-auctions.com/property/202601010000sq_abcd)`;
-    const lots = parsePughLots(md);
+    const html = `<a href="https://www.pugh-auctions.com/property/202601010000sq_abcd" class="block">Land at Foo, Leeds, West Yorkshire LS1 1AA</a>`;
+    const lots = parsePughLots(html);
     expect(lots).toHaveLength(1);
     expect(lots[0]!.pricePence).toBeUndefined();
     expect(lots[0]!.postcode).toBe("LS1 1AA");
