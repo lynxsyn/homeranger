@@ -31,6 +31,18 @@ import type { ListingScrapeSite } from "./listing-scrape.provider.js";
 
 /** A full UK postcode — capture groups split outcode + incode for normalising. */
 const POSTCODE_RE = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
+/**
+ * A Google-Maps geocode link's postcode — a `q=<postcode>` query param on a
+ * `maps.google.*` / `maps.apple.*` URL specifically (NOT any `q=` on the page: a
+ * tracker / analytics link could carry the AGENT's office postcode in its own
+ * `q=`, so the host is required). The outcode + incode may be separated by a
+ * space, `+`, or `%20`; the param separator may be a raw `&`/`?` or an HTML-
+ * entity-encoded `&amp;`. On a uklandandfarms detail page this pins the
+ * PROPERTY'S mapped location, never the selling agent's office. g1 = outcode,
+ * g2 = incode.
+ */
+const MAPS_GEOCODE_POSTCODE_RE =
+  /maps\.(?:google|apple)\.[a-z.]+[^"'<\s]*?(?:[?&]|&amp;)q=([A-Z]{1,2}\d[A-Z\d]?)(?:%20|\+|\s)*(\d[A-Z]{2})\b/i;
 /** A £-prefixed price (with optional thousands separators) — group 1 = digits. */
 const PRICE_RE = /£\s*([\d,]+)/;
 /**
@@ -583,7 +595,12 @@ export function parseUklfDetail(
   if (!heading) {
     return null;
   }
-  const postcode = firstPostcode(heading);
+  // Heading first; when the heading names the place but carries no postcode (a
+  // common uklandandfarms shape — e.g. "507 acres, Abergele, Conwy" with the
+  // postcode only in the body), recover the PROPERTY postcode from the body so
+  // the listing isn't pruned by the outcode filter. uklfBodyPostcode never picks
+  // the selling agent's office postcode.
+  const postcode = firstPostcode(heading) ?? uklfBodyPostcode(markdown ?? "");
   const addressRaw = uklfAddressFromHeading(heading);
   if (!addressRaw || addressRaw.length > 300) {
     return null;
@@ -601,6 +618,47 @@ export function parseUklfDetail(
     ...(postcode ? { postcode } : {}),
     ...(pricePence !== undefined ? { pricePence } : {}),
   };
+}
+
+/**
+ * Recover the PROPERTY postcode from a uklandandfarms detail page BODY — used by
+ * parseUklfDetail when the heading (title/<h1>) names the place but carries no
+ * postcode. The body repeats the property's postcode (Council-Tax bands, EPC, a
+ * Directions line, a Google-Maps geocode link); the selling AGENT'S office
+ * postcode appears ONCE in a contact card. Ranked so the agent's is never chosen:
+ *   1. the Google-Maps geocode link (?q=<postcode>) — the property's mapped
+ *      location, present on every live detail page, never the agent office; else
+ *   2. the STRICT most-frequent postcode in the body (the property dominates the
+ *      agent's lone contact-card mention); a tie for the top is undecidable.
+ * Returns a normalised "OUT IN" postcode, or null when neither signal is decisive
+ * (no guess → parseUklfDetail drops the listing rather than mis-place it under the
+ * agent's office outcode). Pure + UNIT-TESTED.
+ */
+export function uklfBodyPostcode(html: string): string | null {
+  if (!html) {
+    return null;
+  }
+  // 1) Google-Maps geocode link — strongest, property-specific signal.
+  const maps = html.match(MAPS_GEOCODE_POSTCODE_RE);
+  if (maps) {
+    return `${maps[1]!.toUpperCase()} ${maps[2]!.toUpperCase()}`;
+  }
+  // 2) The most-frequent body postcode (the property dominates the agent's lone
+  //    contact-card mention). A TIE for the top count is undecidable → null, so an
+  //    ambiguous page is dropped rather than mis-placed under the agent's office.
+  //    The regex is inlined (a fresh /g literal per call) to avoid sharing a
+  //    stateful module-level lastIndex.
+  const counts = new Map<string, number>();
+  for (const m of html.matchAll(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/gi)) {
+    const pc = `${m[1]!.toUpperCase()} ${m[2]!.toUpperCase()}`;
+    counts.set(pc, (counts.get(pc) ?? 0) + 1);
+  }
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const top = ranked[0];
+  if (!top) {
+    return null;
+  }
+  return top[1] > (ranked[1]?.[1] ?? 0) ? top[0] : null;
 }
 
 /**

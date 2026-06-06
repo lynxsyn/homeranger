@@ -18,6 +18,7 @@ import {
   parseUklfDetail,
   siteCoverage,
   siteRegionIndexUrls,
+  uklfBodyPostcode,
 } from "./listing-search.js";
 
 describe("siteRegionIndexUrls", () => {
@@ -637,6 +638,94 @@ describe("parseUklfDetail", () => {
         "Country properties, land & Farms for sale or rent - UKLAF",
       ),
     ).toBeNull();
+  });
+
+  // A faithful trim of a LIVE detail page whose heading names the place but has
+  // NO postcode (Abergele, Conwy; captured 2026-06-06). The PROPERTY postcode
+  // (LL22 8YR) is in the BODY many times + a Google-Maps geocode link; the
+  // selling AGENT'S Chester office (CH1 1QU) appears once in a contact card.
+  // Without the body-postcode recall this real £4.5M Conwy listing was dropped
+  // (no postcode in the heading → outcode filter pruned it).
+  const NO_HEADING_PC_HTML = [
+    `<nav><a href="https://www.uklandandfarms.co.uk/">Home</a></nav>`,
+    `<div class="agent-card"><strong>Fisher German</strong><p>Wrexham Road</p>`,
+    `<p>Chester</p><p>Cheshire</p><p>CH1 1QU</p></div>`,
+    `<h1>507.33 acres, Abergele, Conwy, North Wales For Sale - Guide Price £4,500,000</h1>`,
+    `<p><b>Council Tax</b> Conwy Borough Council</p>`,
+    `<p>Garthewin Hall, LL22 8YR - Band I</p><p>The Flat, LL22 8YR - Band D</p>`,
+    `<p><b>Directions</b> Postcode LL22 8YR</p>`,
+    `<li><a href="https://maps.google.co.uk/maps?f=q&geocode=&q=LL22 8YR">Map</a></li>`,
+    `<img src="https://www.uklandandfarms.co.uk/media/properties/thb_y.jpg"/>`,
+  ].join("\n");
+  const NO_HEADING_PC_TITLE =
+    "507.33 acres, Abergele, Conwy, North Wales - UKLandandFarms.co.uk";
+
+  it("recovers the PROPERTY postcode from the body when the heading has none, never the agent's office", () => {
+    const parsed = parseUklfDetail(NO_HEADING_PC_HTML, NO_HEADING_PC_TITLE);
+    expect(parsed?.postcode).toBe("LL22 8YR"); // the property, NOT CH1 1QU
+    expect(parsed?.addressRaw).toBe("507.33 acres, Abergele, Conwy, North Wales");
+    expect(parsed?.pricePence).toBe(450_000_000);
+  });
+
+  it("still prefers the heading postcode over the body when present", () => {
+    // Regression guard: a heading WITH a postcode must not be overridden by a
+    // (different) body postcode — the body recall is a fallback only.
+    const parsed = parseUklfDetail(DETAIL_HTML, DETAIL_TITLE);
+    expect(parsed?.postcode).toBe("CH7 6ES"); // heading wins; body fallback unused
+  });
+});
+
+describe("uklfBodyPostcode", () => {
+  it("prefers the Google-Maps geocode link (the property's mapped location)", () => {
+    // Even though CH1 appears in the body, the geocode link pins the property.
+    const html = [
+      `<div class="agent"><p>Chester</p><p>CH1 1QU</p></div>`,
+      `<a href="https://maps.google.co.uk/maps?f=q&geocode=&q=LL22 8YR">Map</a>`,
+    ].join("\n");
+    expect(uklfBodyPostcode(html)).toBe("LL22 8YR");
+  });
+
+  it("parses a maps-link geocode postcode regardless of + / %20 / space separators", () => {
+    const mapsHref = (q: string) =>
+      `<a href="https://maps.google.co.uk/maps?q=${q}">x</a>`;
+    expect(uklfBodyPostcode(mapsHref("LL30+2YB"))).toBe("LL30 2YB");
+    expect(uklfBodyPostcode(mapsHref("LL30%202YB"))).toBe("LL30 2YB");
+    expect(uklfBodyPostcode(mapsHref("LL30 2YB"))).toBe("LL30 2YB");
+  });
+
+  it("ignores a q=<postcode> in a NON-maps URL (tracker) and finds the maps link", () => {
+    // The exact mis-placement guard: a tracker carrying the agent's CH1 in its
+    // own q= must NOT win over the property's maps geocode.
+    const html = [
+      `<a href="https://track.example.com/?ref=uklf&q=CH1+1QU">click</a>`,
+      `<a href="https://maps.google.co.uk/maps?z=1&q=LL22+8YR">Map</a>`,
+    ].join("\n");
+    expect(uklfBodyPostcode(html)).toBe("LL22 8YR");
+  });
+
+  it("accepts an HTML-entity-encoded &amp; before the maps q= param", () => {
+    expect(
+      uklfBodyPostcode(
+        `<a href="https://maps.google.co.uk/maps?z=1&amp;q=LL22+8YR">Map</a>`,
+      ),
+    ).toBe("LL22 8YR");
+  });
+
+  it("falls back to the single most-frequent postcode when there is no map link", () => {
+    const html = [
+      `<p>Chester office CH1 1QU</p>`, // agent, once
+      `<p>LL15 1UL band E</p><p>LL15 1UL band D</p>`, // property, twice
+    ].join("\n");
+    expect(uklfBodyPostcode(html)).toBe("LL15 1UL");
+  });
+
+  it("returns null on a frequency tie (ambiguous → never guess the agent's)", () => {
+    expect(uklfBodyPostcode("one CH1 1QU and one LL22 8YR")).toBeNull();
+  });
+
+  it("returns null when the body carries no postcode", () => {
+    expect(uklfBodyPostcode("no postcode here")).toBeNull();
+    expect(uklfBodyPostcode("")).toBeNull();
   });
 });
 
