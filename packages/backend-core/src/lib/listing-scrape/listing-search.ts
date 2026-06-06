@@ -1,7 +1,7 @@
 /**
  * Pure listing-search helpers — UNIT-COVERED, NOT coverage-excluded. These carry
  * the whole REGION-TARGETING + URL-classification logic for the listing scrape;
- * the Firecrawl provider (firecrawl-listing-scrape.provider.ts) is a thin,
+ * the listing-scrape provider (fetch-listing-scrape.provider.ts) is a thin,
  * operator-proven network shell around them. Mirrors discovery-queries.ts (the
  * discovery-recall counterpart).
  *
