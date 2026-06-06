@@ -607,6 +607,43 @@ describe("searchesRouter.reviewDrafts", () => {
     ]);
   });
 
+  it("pages through the WHOLE patch, not just the first page (list clamps to 100)", async () => {
+    const fake = injectRepo();
+    vi.spyOn(fake, "getById").mockResolvedValue(makeSearch({ outcodes: ["LL30"] }));
+    injectProfile();
+    injectGuard(async () => {}); // every agent eligible
+
+    // The patch is larger than one page: list() returns a FULL first page (with a
+    // nextCursor) then the tail. A single un-paged call would silently drop the
+    // tail — those agents could then never be approved.
+    const page1 = Array.from({ length: 100 }, (_, i) =>
+      makeAgent({ id: `agent-${i}`, email: `a${i}@conwy-estates.co.uk` }),
+    );
+    const page2 = [
+      makeAgent({ id: "agent-tail-1", email: "tail1@conwy-estates.co.uk" }),
+      makeAgent({ id: "agent-tail-2", email: "tail2@conwy-estates.co.uk" }),
+    ];
+    const repo = new AgentRepository();
+    const listSpy = vi
+      .spyOn(repo, "list")
+      .mockResolvedValueOnce({ items: page1, nextCursor: "cursor-1" })
+      .mockResolvedValueOnce({ items: page2, nextCursor: null });
+    _setSearchAgentRepositoryForTesting(repo);
+
+    const result = await authedCaller.searches.reviewDrafts({
+      id: "00000000-0000-7000-8000-000000000001",
+    });
+
+    // All 102 agents in the patch are reviewable — including the tail.
+    expect(result.agents).toHaveLength(102);
+    expect(result.agents.map((a) => a.email)).toContain("tail2@conwy-estates.co.uk");
+    // It paged via the cursor rather than a single unbounded (clamped) call.
+    expect(listSpy).toHaveBeenCalledTimes(2);
+    expect(listSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cursor: "cursor-1" }),
+    );
+  });
+
   it("signs + paces the reviewed draft from the buyer profile (Settings)", async () => {
     const fake = injectRepo();
     vi.spyOn(fake, "getById").mockResolvedValue(
