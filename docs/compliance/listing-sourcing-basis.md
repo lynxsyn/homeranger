@@ -87,8 +87,9 @@ retention, and an operator-triggered / scheduled-not-continuous cadence. This is
 - **Provenance**: store the source URL + site listing id (`ListingSourceRecord`),
   idempotent on `(sourceType, externalId)` so a re-scrape updates rather than
   duplicates.
-- **Dormant by default**: disabled unless `FIRECRAWL_API_KEY` is set AND the site
-  is listed in `LISTING_SCRAPE_SITES`. Operator-triggered or scheduled, never a
+- **Dormant by default**: disabled unless the site is listed in
+  `LISTING_SCRAPE_SITES` (no Firecrawl API key required — the in-process fetcher
+  needs no third-party credential). Operator-triggered or scheduled, never a
   continuous crawl.
 - **No outreach** is ever sent to a scraped site, its agents, or its vendors; these
   sites are a data source only.

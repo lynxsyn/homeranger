@@ -91,7 +91,7 @@ import {
   FakeListingScrapeProvider,
   type ListingScrapeProvider,
 } from "@homeranger/backend-core/lib/listing-scrape/listing-scrape.provider";
-import { FirecrawlListingScrapeProvider } from "@homeranger/backend-core/lib/listing-scrape/firecrawl-listing-scrape.provider";
+import { FetchListingScrapeProvider } from "@homeranger/backend-core/lib/listing-scrape/fetch-listing-scrape.provider";
 import { getListingScrapeService } from "@homeranger/backend-core/services/listing-scrape.service";
 import { RealResendHydrator } from "./resend-hydrator.js";
 import { makeInboundHandler } from "./inbound-handler.js";
@@ -226,16 +226,16 @@ const agentDiscoveryService = getAgentDiscoveryService({
   classifier: agentClassifier,
 });
 
-// ── Wire listing-site scrape (real Firecrawl vs LISTING_SCRAPE_FAKE seam) ────
-// LISTING_SCRAPE_FAKE=1 swaps the web-scrape vendor for the deterministic,
-// network-free fake (E2E/CI never scrape or spend). The real provider is dormant
-// without FIRECRAWL_API_KEY + LISTING_SCRAPE_SITES — only constructed when
-// LISTING_SCRAPE_FAKE !== "1". The same analyze enqueuer used by the inbound
-// pipeline hands scraped listings to the M5 analysis path.
+// ── Wire listing-site scrape (in-process fetch vs LISTING_SCRAPE_FAKE seam) ───
+// LISTING_SCRAPE_FAKE=1 swaps the scraper for the deterministic, network-free
+// fake (E2E/CI never scrape). The real provider fetches the sites in-process
+// (no Firecrawl, no credits) and is dormant until LISTING_SCRAPE_SITES enables a
+// site. The same analyze enqueuer used by the inbound pipeline hands scraped
+// listings to the M5 analysis path.
 const listingScrapeProvider: ListingScrapeProvider =
   process.env.LISTING_SCRAPE_FAKE === "1"
     ? new FakeListingScrapeProvider()
-    : new FirecrawlListingScrapeProvider();
+    : new FetchListingScrapeProvider();
 const listingScrapeService = getListingScrapeService({
   provider: listingScrapeProvider,
   enqueueAnalyze: async (listingId: string) => {
