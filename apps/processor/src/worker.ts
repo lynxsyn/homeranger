@@ -27,7 +27,11 @@
 import http from "node:http";
 import { prisma } from "@homeranger/backend-core/lib/prisma";
 import { BullMQQueueClient } from "@homeranger/backend-core/lib/queue/queue-client";
-import { QUEUE_NAMES } from "@homeranger/backend-core/lib/queue/queue-config";
+import {
+  QUEUE_NAMES,
+  outreachSendLimiter,
+  outreachFollowupLimiter,
+} from "@homeranger/backend-core/lib/queue/queue-config";
 import {
   closeRedisConnection,
   getRedisConnection,
@@ -282,17 +286,22 @@ queueClient.registerProcessor(
 );
 
 // ── M6 outreach consumers ────────────────────────────────────────────────────
+// Both send paths draw on Resend's 5 req/s account budget. They use SPLIT
+// per-queue limiters (outreachSendLimiter + outreachFollowupLimiter) whose
+// combined max == resendTotalSendsPerSecond <= 5 — so both queues can burst
+// simultaneously without exceeding the cap. BullMQ enforces each limiter via a
+// Redis key per queue name (bull:<queue>:limiter), so it holds across replicas
+// automatically. lockDuration extends the 30s default for the Resend round-trip.
 queueClient.registerProcessor(
   QUEUE_NAMES.send,
   makeOutreachSendHandler({ outreachService }),
-  // The SMTP/Resend round-trip can exceed the 30s default lock — extend it.
-  { lockDuration: 60_000 },
+  { lockDuration: 60_000, limiter: outreachSendLimiter() },
 );
 
 queueClient.registerProcessor(
   QUEUE_NAMES.followup,
   makeOutreachFollowupHandler({ outreachService }),
-  { lockDuration: 60_000 },
+  { lockDuration: 60_000, limiter: outreachFollowupLimiter() },
 );
 
 // Cadence scan (scheduler-driven): list awaiting_reply threads past the

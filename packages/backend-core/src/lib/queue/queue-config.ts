@@ -269,3 +269,74 @@ export const RETRY_POLICIES: Record<QueueName, RetryPolicy> = {
     backoff: { type: "exponential", delay: 10_000 },
   },
 };
+
+/**
+ * Resend hard-caps outbound sends at 5 requests/second on this account, across
+ * ALL outbound calls. A batch approve used to enqueue every send at once and —
+ * with worker concurrency but NO limiter — burst past that cap, so Resend
+ * returned `rate_limit_exceeded` and (after the retries thundered back together)
+ * real sends were lost terminally. The limiters below are the root-cause fix.
+ */
+export const RESEND_HARD_CAP_PER_SECOND = 5;
+
+/**
+ * Default TOTAL send rate across BOTH Resend-backed queues — one below the hard
+ * cap so timing jitter never tips a flat-out second over 5.
+ */
+const RESEND_DEFAULT_TOTAL_PER_SECOND = 4;
+
+/**
+ * The follow-up queue's fixed slice of the shared budget. outreach:followup is a
+ * low-volume background path (a daily cadence scan fans out one job per due
+ * thread); reserving it a small constant keeps a fan-out from bursting while
+ * leaving the rest of the budget to the bursty interactive outreach:send path.
+ */
+const FOLLOWUP_SENDS_PER_SECOND = 1;
+
+/**
+ * The TOTAL Resend send budget (jobs/second) shared across outreach:send +
+ * outreach:followup, from RESEND_MAX_SENDS_PER_SECOND. A valid override is
+ * clamped to [2, RESEND_HARD_CAP_PER_SECOND] (>=2 so each queue keeps >=1/s
+ * after the split); garbage / non-positive falls back to the default. Pure (env
+ * injected) so it is unit-covered — queue-config.ts is NOT coverage-excluded
+ * (worker.ts, which consumes this, is).
+ */
+export function resendTotalSendsPerSecond(
+  env: { RESEND_MAX_SENDS_PER_SECOND?: string } = process.env,
+): number {
+  const raw = Number.parseInt(env.RESEND_MAX_SENDS_PER_SECOND ?? "", 10);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return RESEND_DEFAULT_TOTAL_PER_SECOND;
+  }
+  return Math.min(Math.max(raw, 2), RESEND_HARD_CAP_PER_SECOND);
+}
+
+/**
+ * BullMQ worker `limiter` for outreach:send — the bursty interactive approve
+ * path gets the bulk of the shared budget (total minus the follow-up slice). The
+ * limiter caps job STARTS (initial AND retries, so a backed-off batch can't
+ * thunder-herd into a fresh 429) per 1s window. BullMQ enforces it via a Redis
+ * key per QUEUE NAME (bull:<queue>:limiter), so it already holds across multiple
+ * processor replicas — no extra shared-state layer is needed to scale out.
+ *
+ * The two Resend queues use SEPARATE limiter keys, so their budgets are split
+ * (here + outreachFollowupLimiter) rather than shared — send + followup sums to
+ * `resendTotalSendsPerSecond` <= the hard cap even when both queues run flat out
+ * (e.g. an approve coinciding with the daily follow-up scan).
+ */
+export function outreachSendLimiter(
+  env: { RESEND_MAX_SENDS_PER_SECOND?: string } = process.env,
+): { max: number; duration: number } {
+  return {
+    max: resendTotalSendsPerSecond(env) - FOLLOWUP_SENDS_PER_SECOND,
+    duration: 1000,
+  };
+}
+
+/**
+ * BullMQ worker `limiter` for outreach:followup — the fixed background slice of
+ * the shared Resend budget (see outreachSendLimiter for the split rationale).
+ */
+export function outreachFollowupLimiter(): { max: number; duration: number } {
+  return { max: FOLLOWUP_SENDS_PER_SECOND, duration: 1000 };
+}
