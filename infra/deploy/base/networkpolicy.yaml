@@ -167,10 +167,15 @@ spec:
       ports:
         - port: 6379
           protocol: TCP
-    # External HTTPS: Resend email, Voyage embeddings, Anthropic API.
+    # External HTTPS: Resend email, Voyage embeddings, Anthropic API, the Serper
+    # SERP API, and HTTPS agency contact-page fetches (Serper discovery).
     # Hostname matching is impossible in k8s NetworkPolicy; broad 443 egress.
+    # Port 80 is also allowed: many UK agency sites serve/redirect via plain HTTP,
+    # so the in-process discovery fetcher needs it to reach those contact pages.
     - ports:
         - port: 443
+          protocol: TCP
+        - port: 80
           protocol: TCP
 ---
 # homeranger-postgres: ingress from api, scheduler, processor only.
