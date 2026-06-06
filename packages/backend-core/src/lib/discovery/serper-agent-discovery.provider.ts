@@ -24,7 +24,7 @@
  * worker). The RECALL logic (query fan-out, email extraction, agency-name
  * derivation, dedup) lives in the PURE, unit-tested discovery-queries.ts +
  * html-extract.ts; this file is the thin, operator-proven network shell over them
- * (coverage-excluded I/O, mirroring firecrawl-agent-discovery.provider.ts).
+ * (coverage-excluded network I/O, like the listing-scrape provider).
  *
  * VERIFY THE SERPER SHAPE LIVE — verified 2026-06-06: POST /search {q,gl,num} with
  * header X-API-KEY → {organic:[{title,link,snippet}], credits}. If the live shape

@@ -1,7 +1,7 @@
 /**
  * ListingScrapeProvider — the swappable seam that scrapes public UK listing
  * sites (uklandandfarms.co.uk + auctionhouse.co.uk + pugh-auctions.com) for
- * properties to LINK OUT to. The real impl (firecrawl-listing-scrape.provider.ts)
+ * properties to LINK OUT to. The real impl (fetch-listing-scrape.provider.ts)
  * does the network
  * scrape; this module owns the interface + types + the deterministic, network-
  * free fake the worker uses under LISTING_SCRAPE_FAKE=1 (E2E/CI never hit the

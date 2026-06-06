@@ -84,7 +84,6 @@ import {
   FakeAgentDiscoveryProvider,
   type AgentDiscoveryProvider,
 } from "@homeranger/backend-core/lib/discovery/agent-discovery.provider";
-import { FirecrawlAgentDiscoveryProvider } from "@homeranger/backend-core/lib/discovery/firecrawl-agent-discovery.provider";
 import { SerperAgentDiscoveryProvider } from "@homeranger/backend-core/lib/discovery/serper-agent-discovery.provider";
 import { getAgentDiscoveryService } from "@homeranger/backend-core/services/agent-discovery.service";
 import {
@@ -200,19 +199,15 @@ const emailProvider: EmailProvider = useFakeOutreach
 // the body from that search's brief (draftSearchEmail) instead of the generic draft.
 const outreachService = getOutreachService({ emailProvider, searchRepository });
 
-// ── Wire M7 agent discovery (Serper | Firecrawl | DISCOVERY_FAKE seam) ───────
+// ── Wire M7 agent discovery (Serper vs DISCOVERY_FAKE seam) ──────────────────
 // DISCOVERY_FAKE=1 swaps the web search/fetch vendor for the deterministic,
-// network-free fake (E2E/CI never scrape or spend). Otherwise DISCOVERY_PROVIDER
-// selects the real adapter: "serper" → Serper SERP + in-process HTTP fetch (the
-// post-Firecrawl default, dormant without SERPER_API_KEY); anything else →
-// Firecrawl (legacy, dormant without FIRECRAWL_API_KEY). Both are construction-
-// safe, so the worker boots regardless of which keys are set.
+// network-free fake (E2E/CI never scrape or spend). Otherwise the real adapter
+// is the Serper SERP + in-process HTTP fetcher (construction-safe; dormant
+// without SERPER_API_KEY). Firecrawl was decommissioned 2026-06-06.
 const agentDiscoveryProvider: AgentDiscoveryProvider =
   process.env.DISCOVERY_FAKE === "1"
     ? new FakeAgentDiscoveryProvider()
-    : process.env.DISCOVERY_PROVIDER === "serper"
-      ? new SerperAgentDiscoveryProvider()
-      : new FirecrawlAgentDiscoveryProvider();
+    : new SerperAgentDiscoveryProvider();
 // The agent quality classifier (auto-drop confident non-agency junk at
 // discovery). Folded under the ANALYSIS_FAKE umbrella exactly like the match
 // scorer; CLASSIFY_FAKE=1 overrides for a per-provider fake. CI/E2E run

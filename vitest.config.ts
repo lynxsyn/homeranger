@@ -116,11 +116,6 @@ export default defineConfig({
         // health server). Proven by the leader-lock unit test + live. Same
         // rationale as apps/processor/src/worker.ts + apps/api/src/main.ts.
         "apps/scheduler/src/scheduler.ts",
-        // M7 Firecrawl discovery adapter — web search/scrape network I/O,
-        // dormant without FIRECRAWL_API_KEY. The interface + the deterministic
-        // fake + the classification/upsert service are unit-covered; the real
-        // adapter is operator-proven (same rationale as the Resend/r2 adapters).
-        "packages/backend-core/src/lib/discovery/firecrawl-agent-discovery.provider.ts",
         // Serper SERP + in-process HTTP-fetch discovery adapter — network I/O,
         // dormant without SERPER_API_KEY. The recall logic (discovery-queries.ts)
         // + the HTML helpers (html-extract.ts) are unit-covered; this adapter is

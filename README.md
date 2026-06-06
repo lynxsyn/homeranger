@@ -63,7 +63,7 @@ pnpm dev:scheduler              # cron scheduler
 pnpm dev:web                    # Vite SPA (http://localhost:5173)
 ```
 
-**Test seams.** The worker and AI/email/discovery layers sit behind env-gated fakes so a full local loop needs **no paid API keys**: set `RESEND_FAKE=1 EXTRACTION_FAKE=1 ANALYSIS_FAKE=1 OUTREACH_FAKE=1 DISCOVERY_FAKE=1` (see [`.env.example`](.env.example) and the testing notes in [`CLAUDE.md`](CLAUDE.md)). Real keys (`ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `RESEND_API_KEY`, `FIRECRAWL_API_KEY`, R2) are only needed to exercise the real providers.
+**Test seams.** The worker and AI/email/discovery layers sit behind env-gated fakes so a full local loop needs **no paid API keys**: set `RESEND_FAKE=1 EXTRACTION_FAKE=1 ANALYSIS_FAKE=1 OUTREACH_FAKE=1 DISCOVERY_FAKE=1` (see [`.env.example`](.env.example) and the testing notes in [`CLAUDE.md`](CLAUDE.md)). Real keys (`ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `RESEND_API_KEY`, `SERPER_API_KEY`, R2) are only needed to exercise the real providers.
 
 > Auth note: setting `SUPABASE_URL` locally turns **off** the dev auth bypass and requires a real Supabase sign-in; leave it unset for the bypass (the operator identity). The bypass is fail-closed in production (the API refuses to start if `SUPABASE_URL` is missing).
 
