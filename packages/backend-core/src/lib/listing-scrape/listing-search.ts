@@ -319,6 +319,50 @@ const SITE_BASE_ORIGIN: Record<ListingScrapeSite, string> = {
  */
 const LINK_TOKEN_RE = /(?:https?:\/\/[^\s"'()<>[\]]+|\/[^\s"'()<>[\]]+)/gi;
 
+/**
+ * The absolute uklandandfarms paginated SEARCH endpoint, lifted from a region
+ * INDEX page's ASP.NET WebForms `<form action="…/Search/SearchResult.aspx?…">`.
+ * The pretty index URL only renders page 1 and 404s on a `?PageIndex` query, but
+ * the form posts to SearchResult.aspx, which DOES page over a plain GET — so we
+ * read the endpoint off the page itself (never hardcode the Region/County/
+ * PropertyType params) and walk it with withPageIndex. The action is `&amp;`-
+ * decoded and resolved absolute against the page URL. Returns null when the page
+ * carries no such form (→ the provider keeps page 1 only — never worse than the
+ * pre-pagination behaviour). Pure.
+ */
+export function uklfSearchEndpoint(html: string, pageUrl: string): string | null {
+  if (!html) {
+    return null;
+  }
+  const m = html.match(
+    /<form\b[^>]*\baction=("|')([^"']*\/Search\/SearchResult\.aspx[^"']*)\1/i,
+  );
+  if (!m) {
+    return null;
+  }
+  try {
+    return new URL(decodeUrlEntities(m[2] ?? ""), pageUrl).toString();
+  } catch {
+    return null; // unresolvable action — fall back to page 1 only
+  }
+}
+
+/**
+ * Return `url` with its `PageIndex` query param set to `pageIndex` (replacing any
+ * existing value, appending when absent) — the per-page URL for walking a
+ * uklandandfarms search endpoint. Returns the input unchanged when it is not a
+ * parseable URL. Pure.
+ */
+export function withPageIndex(url: string, pageIndex: number): string {
+  try {
+    const u = new URL(url);
+    u.searchParams.set("PageIndex", String(pageIndex));
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 /** One lot parsed directly out of an auction HUB / event page's markdown. */
 export interface ParsedHubListing {
   externalId: string;

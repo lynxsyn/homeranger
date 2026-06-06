@@ -53,6 +53,8 @@ import {
   parsePughLots,
   parseUklfDetail,
   siteRegionIndexUrls,
+  uklfSearchEndpoint,
+  withPageIndex,
 } from "./listing-search.js";
 
 /** robots.txt Crawl-delay (ms) per site — auctionhouse asks for 5s; others none. */
@@ -62,8 +64,20 @@ const CRAWL_DELAY_MS: Record<ListingScrapeSite, number> = {
   pughauctions: 0,
 };
 
-/** Default cap on region INDEX/event pages expanded per scrape (bounds work). */
-const DEFAULT_MAX_LISTING_INDEX = 2;
+/**
+ * Default cap on listings KEPT per scrape (bounds detail fetches + DB writes). A
+ * single region (e.g. North Wales) carries ~50 uklandandfarms listings + ~80
+ * auctionhouse lots, so 25 silently truncated most of the catalogue; 150 pulls a
+ * region whole with headroom. Override with LISTING_SCRAPE_LIMIT.
+ */
+const DEFAULT_LISTING_LIMIT = 150;
+/**
+ * Default cap on region INDEX / search / event PAGES walked per scrape (bounds
+ * work). uklandandfarms paginates a region across ~7 pages, so 2 only ever saw
+ * the newest ~20 listings; 15 covers a region (the walk stops early once a page
+ * adds no new listings). Override with LISTING_SCRAPE_MAX_INDEX.
+ */
+const DEFAULT_MAX_LISTING_INDEX = 15;
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(raw ?? "", 10);
@@ -76,7 +90,10 @@ export class FetchListingScrapeProvider implements ListingScrapeProvider {
   private readonly enabledSites: ReadonlySet<ListingScrapeSite>;
 
   constructor() {
-    this.limit = parsePositiveInt(process.env.LISTING_SCRAPE_LIMIT, 25);
+    this.limit = parsePositiveInt(
+      process.env.LISTING_SCRAPE_LIMIT,
+      DEFAULT_LISTING_LIMIT,
+    );
     this.maxIndex = parsePositiveInt(
       process.env.LISTING_SCRAPE_MAX_INDEX,
       DEFAULT_MAX_LISTING_INDEX,
@@ -251,32 +268,60 @@ export class FetchListingScrapeProvider implements ListingScrapeProvider {
     const delayMs = CRAWL_DELAY_MS.uklandandfarms;
     let requestsMade = 0;
 
+    // 1) Harvest detail URLs across the region index's PAGES. Page 1 is the pretty
+    //    index URL; pages 2..maxIndex are walked over the ASP.NET SearchResult.aspx
+    //    endpoint the index's <form> posts to (the pretty URL 404s on ?PageIndex).
+    //    Stop a base's walk as soon as a page adds NO new detail links — past the
+    //    last real page uklandandfarms repeats a single featured lot, so "0 new"
+    //    is the reliable end-of-catalogue signal (and guards a PageIndex-ignoring
+    //    endpoint from looping to maxIndex).
     const detailUrls = new Set<string>();
-    let indexFetches = 0;
     for (const indexUrl of indexUrls) {
-      if (detailUrls.size >= this.limit || indexFetches >= this.maxIndex) {
+      if (detailUrls.size >= this.limit) {
         break;
       }
       if (delayMs > 0 && requestsMade > 0) {
         await sleep(delayMs);
       }
       requestsMade += 1;
-      indexFetches += 1;
-      let html: string;
+      let firstHtml: string;
       try {
-        html = await this.fetchHtml(indexUrl);
+        firstHtml = await this.fetchHtml(indexUrl);
       } catch (error) {
         warnScrapeFailure("listing-scrape.index.failed", "uklandandfarms", indexUrl, error);
         continue;
       }
-      for (const detailUrl of extractListingLinks("uklandandfarms", html)) {
-        detailUrls.add(detailUrl);
+      this.collectUklfDetailLinks(firstHtml, detailUrls);
+
+      const endpoint = uklfSearchEndpoint(firstHtml, indexUrl);
+      if (!endpoint) {
+        continue; // no pager on the page → page 1 only (graceful fallback)
+      }
+      for (let page = 2; page <= this.maxIndex; page += 1) {
         if (detailUrls.size >= this.limit) {
           break;
+        }
+        if (delayMs > 0) {
+          await sleep(delayMs);
+        }
+        requestsMade += 1;
+        const pageUrl = withPageIndex(endpoint, page);
+        let html: string;
+        try {
+          html = await this.fetchHtml(pageUrl);
+        } catch (error) {
+          warnScrapeFailure("listing-scrape.index.failed", "uklandandfarms", pageUrl, error);
+          break; // a failed page ends this base's walk (best-effort)
+        }
+        const before = detailUrls.size;
+        this.collectUklfDetailLinks(html, detailUrls);
+        if (detailUrls.size === before) {
+          break; // no NEW listings on this page → end of the catalogue
         }
       }
     }
 
+    // 2) Fetch + parse each detail page, keeping only the target outcodes.
     const results: ScrapedListing[] = [];
     for (const url of detailUrls) {
       if (results.length >= this.limit) {
@@ -303,6 +348,17 @@ export class FetchListingScrapeProvider implements ListingScrapeProvider {
       results.push(scraped);
     }
     return results;
+  }
+
+  /** Harvest uklandandfarms detail URLs from one index page into the dedup set,
+   *  bounded by the listing limit. */
+  private collectUklfDetailLinks(html: string, detailUrls: Set<string>): void {
+    for (const detailUrl of extractListingLinks("uklandandfarms", html)) {
+      if (detailUrls.size >= this.limit) {
+        break;
+      }
+      detailUrls.add(detailUrl);
+    }
   }
 
   /** Fetch one page's HTML via the shared SSRF-hardened fetcher (throws on non-OK). */
