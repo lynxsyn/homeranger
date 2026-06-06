@@ -82,7 +82,8 @@ async function tick(): Promise<void> {
       );
       // Fieldless payload — the processor resolves the target outcodes from
       // active operator searches + loops every ENABLED site (the scheduler has
-      // NO DB). Dormant until the operator sets LISTING_SCRAPE_SITES + a key.
+      // NO DB). Dormant until the operator sets LISTING_SCRAPE_SITES (no key —
+      // the in-process fetcher needs no third-party credential).
       await queueClient.upsertScheduledJob(
         QUEUE_NAMES.scrapeListings,
         SCRAPE_LISTINGS_SCHEDULER_ID,

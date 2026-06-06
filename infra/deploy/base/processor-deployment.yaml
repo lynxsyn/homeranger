@@ -297,7 +297,7 @@ spec:
             # once a Search covers its English/Welsh auction stock. Optional spend
             # caps (code defaults, not wired): LISTING_SCRAPE_LIMIT (25),
             # LISTING_SCRAPE_MAX_INDEX (2 = region-index/event pages),
-            # SCRAPE_LISTINGS_EVERY_MS (24h). Requires FIRECRAWL_API_KEY (already set).
+            # SCRAPE_LISTINGS_EVERY_MS (24h). NO API key — in-process HTTP fetch.
             - name: LISTING_SCRAPE_SITES
               value: "uklandandfarms,auctionhouse,pughauctions"
           resources:
