@@ -1,7 +1,7 @@
 /**
  * AgentDiscoveryProvider — the swappable seam that finds estate agents in a UK
- * region (M7). The real impl (firecrawl-agent-discovery.provider.ts) does web
- * search/extract; this module owns the interface + types + the deterministic,
+ * region (M7). The real impl (serper-agent-discovery.provider.ts) does the SERP
+ * search + an in-process page fetch; this module owns the interface + types + the deterministic,
  * network-free fake the worker uses under DISCOVERY_FAKE=1 (E2E/CI never hit the
  * network or spend). Mirrors the EmailProvider seam from M6.
  *

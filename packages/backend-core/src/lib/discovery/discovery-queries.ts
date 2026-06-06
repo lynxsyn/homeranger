@@ -1,8 +1,8 @@
 /**
  * Pure discovery-recall helpers (M7 recall improvement) — UNIT-COVERED, NOT
- * coverage-excluded. These carry the whole recall logic; the Firecrawl provider
- * (firecrawl-agent-discovery.provider.ts) is a thin, operator-proven network
- * shell around them.
+ * coverage-excluded. These carry the whole recall logic; the discovery provider
+ * (serper-agent-discovery.provider.ts) is a thin, operator-proven network shell
+ * around them.
  *
  * Why a separate module: the original provider did ONE generic search query
  * ("estate agents in {region}, UK") + regex-extracted emails from the returned
@@ -25,7 +25,7 @@ const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 /** A sane upper bound on a real email length — longer matches are page noise. */
 const MAX_EMAIL_LENGTH = 254; // RFC 5321 practical address limit
 
-/** Default cap on the query fan-out (keeps Firecrawl spend bounded). */
+/** Default cap on the query fan-out (keeps SERP-credit spend bounded). */
 export const DEFAULT_MAX_QUERIES = 6;
 
 /**
@@ -40,7 +40,7 @@ export const PAGE_TEXT_MAX = 2000;
  * Bound a fetched page's markdown to a classifier-sized snippet: trim, then slice
  * to `max` chars. Returns "" for empty/whitespace input so the caller can OMIT
  * pageText entirely (an empty snippet adds no signal and just dilutes the prompt).
- * Pure — the Firecrawl provider (coverage-excluded I/O shell) calls this so the
+ * Pure — the discovery provider (coverage-excluded I/O shell) calls this so the
  * bounding stays unit-tested here.
  */
 export function boundedPageText(

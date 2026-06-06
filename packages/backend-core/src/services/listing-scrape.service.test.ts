@@ -229,7 +229,7 @@ describe("ListingScrapeService.runScrape", () => {
   });
 
   it("maps a config provider error to retryable=false", async () => {
-    const boom = Object.assign(new Error("FIRECRAWL_API_KEY not set"), {
+    const boom = Object.assign(new Error("listing scrape site not enabled"), {
       retryable: false,
     });
     const h = makeHarness({

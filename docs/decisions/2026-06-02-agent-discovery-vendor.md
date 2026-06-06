@@ -1,9 +1,21 @@
 ---
 decision_id: 2026-06-02-agent-discovery-vendor
-status: accepted
+status: superseded
 date: 2026-06-02
 supersedes: none
+superseded_by: 2026-06-06 Serper + in-process fetch (see note below)
 ---
+
+> **SUPERSEDED 2026-06-06.** Firecrawl has been **decommissioned**. The
+> swappable interface this ADR introduced did its job: agent **discovery** now
+> uses a Serper.dev SERP API + an in-process HTTP fetch
+> (`serper-agent-discovery.provider.ts`), and listing/auction **scraping** uses
+> an in-process HTTP fetch (`fetch-listing-scrape.provider.ts`) — both over the
+> shared SSRF-hardened `lib/http/page-fetch.ts`, with no Firecrawl credits and no
+> headless browser. Rationale: the 2026-06-06 adversarial architecture review
+> (Firecrawl-cloud cost; SearXNG's silent-failure rejected; Crawl4AI/WaterCrawl/
+> BrowserPilot rejected as too heavy). `FIRECRAWL_API_KEY` is removed. The
+> historical decision below is retained for context.
 
 # Decision: Agent discovery vendor = Firecrawl (behind a swappable interface)
 

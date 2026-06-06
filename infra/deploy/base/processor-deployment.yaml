@@ -235,51 +235,17 @@ spec:
             # deployed — no app.homeranger.app link survives the apex cutover.
             - name: UNSUBSCRIBE_BASE_URL
               value: https://homeranger.app/api/outreach/unsubscribe
-            # M7/M8 agent discovery. FIRECRAWL_API_KEY powers the real
-            # FirecrawlAgentDiscoveryProvider (web search → estate-agent emails).
-            # optional:true + the provider is construction-safe (boots without
-            # it; discover() throws retryable:false → drops the job) so discovery
-            # stays dormant until the operator adds the key, then activates with
-            # no redeploy. Search launches query Firecrawl by the search's PLACE
-            # NAME (v0.13.0), so real launches now find agents UK-wide.
-            # RECALL tunables (code defaults; set as env literals here to
-            # override — like DISCOVERY_SEARCH_LIMIT they are intentionally not
-            # wired by default). The provider fans out across DISCOVERY_MAX_QUERIES
-            # targeted searches (default 6, each capped at DISCOVERY_SEARCH_LIMIT,
-            # default 20) and recovers non-plaintext emails via structured
-            # contact-page extraction: DISCOVERY_CONTACT_EXTRACT (default on; set
-            # "0" to DISABLE the extra Firecrawl spend) over at most
-            # DISCOVERY_CONTACT_EXTRACT_MAX pages (default 25). Worst-case spend
-            # per discover:agents job = MAX_QUERIES searches + CONTACT_EXTRACT_MAX
-            # scrapes (default 6 + 25 = 31 Firecrawl calls).
-            - name: FIRECRAWL_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: homeranger-secret
-                  key: FIRECRAWL_API_KEY
-                  optional: true
-            # COST CAP (2026-06): the per-contact-page structured extraction is the
-            # EXPENSIVE Firecrawl call (headless browser + LLM extraction, up to
-            # DISCOVERY_CONTACT_EXTRACT_MAX=25 per discover:agents job). Our own
-            # regex (extractEmails) already harvests emails from the search-result
-            # markdown, so this extra per-page scrape is largely redundant. Disable
-            # it to cap Firecrawl spend until the self-hosted scraper replacement
-            # lands; a search-launch-triggered discovery then costs only the ~6
-            # searches, not 6 + 25 calls. Remove this (or set "1") to re-enable.
-            - name: DISCOVERY_CONTACT_EXTRACT
-              value: "0"
-            # AGENT DISCOVERY provider (2026-06 review): "serper" => Serper SERP
-            # API + an in-process HTTP page fetch (global fetch + html-extract);
-            # the page fetch is FREE (no per-call credits) and uses our regex, so
-            # the expensive Firecrawl scrape+LLM-extract is gone. Anything else =>
-            # the legacy Firecrawl provider. Serper is dormant without
-            # SERPER_API_KEY (construction-safe; discover() drops the job, never
-            # the worker). The page fetch is gated by DISCOVERY_FETCH (default on;
-            # a SEPARATE knob from the Firecrawl DISCOVERY_CONTACT_EXTRACT above —
-            # do NOT disable it, the fetch is the load-bearing recall path and is
-            # free) over at most DISCOVERY_FETCH_MAX pages (default 25).
-            - name: DISCOVERY_PROVIDER
-              value: "serper"
+            # M7/M8 agent discovery — Serper SERP API + an in-process HTTP page
+            # fetch (global fetch + html-extract). The page fetch is FREE (no
+            # per-call credits) and our regex (extractEmails) harvests the emails;
+            # Firecrawl was decommissioned 2026-06-06 (no FIRECRAWL_API_KEY, no
+            # DISCOVERY_PROVIDER/DISCOVERY_CONTACT_EXTRACT). SERPER_API_KEY is
+            # optional:true + the provider is construction-safe, so the worker
+            # boots without it (discover() drops the job, never the worker) and
+            # discovery activates once the key is set. RECALL tunables (code
+            # defaults, not wired): DISCOVERY_MAX_QUERIES (6), DISCOVERY_SEARCH_LIMIT
+            # (10/query), DISCOVERY_FETCH (on), DISCOVERY_FETCH_MAX (25). 1 Serper
+            # credit per search (free <=2,500/month).
             - name: SERPER_API_KEY
               valueFrom:
                 secretKeyRef:
