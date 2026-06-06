@@ -43,7 +43,9 @@ import {
 import {
   agentRepository,
   type AgentRepository,
+  type AgentRecord,
 } from "../repositories/agent.repository.js";
+import { MAX_PAGE_LIMIT } from "../lib/pagination/cursor.js";
 import {
   listingRepository,
   type ListingRepository,
@@ -115,6 +117,38 @@ export function _setSearchAgentRepositoryForTesting(
   repo: AgentRepository | null,
 ): void {
   searchAgentRepository = repo ?? agentRepository;
+}
+
+/**
+ * Every agent in the patch (covering any of `outcodes`), paged through the
+ * cursor. agentRepository.list clamps to MAX_PAGE_LIMIT (100), so a single call
+ * silently caps the review at the first 100 agents — the rest never appear in the
+ * review and so can never be approved (a 42-agent patch left ~22 permanently
+ * "queued"). Mirrors agents.router's collectAgents; the high page ceiling bounds a
+ * pathological loop far above any realistic single-operator patch.
+ */
+async function collectPatchAgents(outcodes: string[]): Promise<AgentRecord[]> {
+  const MAX_PAGES = 50; // 5000 agents — a safety ceiling, never reached in practice
+  const all: AgentRecord[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const result = await searchAgentRepository.list({
+      outcodes,
+      // Include opted-out agents so the review shows them as blocked (reason
+      // OPTED_OUT) rather than hiding them — reviewDrafts already surfaces every
+      // other block reason (PECR / suppressed / domain-cooldown), and the guard
+      // marks opt-outs ineligible. Matches agents.router's collectAgents.
+      includeOptedOut: true,
+      limit: MAX_PAGE_LIMIT,
+      ...(cursor ? { cursor } : {}),
+    });
+    all.push(...result.items);
+    if (!result.nextCursor) {
+      break;
+    }
+    cursor = result.nextCursor;
+  }
+  return all;
 }
 
 let searchListingRepository: ListingRepository = listingRepository;
@@ -426,11 +460,11 @@ export const searchesRouter = router({
       const profile = await reviewProfileRepository.getOrCreate(null);
       const sender = resolveSender(profile, currentSenderName());
       const draft = draftSearchEmail(search, sender);
-      const { items } = await searchAgentRepository.list({
-        outcodes: search.outcodes,
-      });
+      // Page the ENTIRE patch — a single list() call clamps to 100 and would hide
+      // (and so make un-approvable) every agent past the first page.
+      const patchAgents = await collectPatchAgents(search.outcodes);
       const agents: SearchReviewAgent[] = [];
-      for (const agent of items) {
+      for (const agent of patchAgents) {
         const guardAgent: AgentForGuard = {
           id: agent.id,
           email: agent.email,
