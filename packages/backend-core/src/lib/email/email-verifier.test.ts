@@ -4,9 +4,11 @@ import {
   FakeEmailVerifier,
   getEmailVerifier,
   mapNeverBounceResult,
+  mapZeroBounceResult,
 } from "./email-verifier.js";
 import { SmtpEmailVerifier } from "./smtp-email-verifier.js";
 import { NeverBounceEmailVerifier } from "./neverbounce-email-verifier.js";
+import { ZeroBounceEmailVerifier } from "./zerobounce-email-verifier.js";
 
 describe("classifyRcptReply", () => {
   it("maps 2xx to deliverable", () => {
@@ -102,6 +104,48 @@ describe("FakeEmailVerifier", () => {
   });
 });
 
+describe("mapZeroBounceResult", () => {
+  it("maps valid → deliverable; invalid + spamtrap → undeliverable", () => {
+    expect(mapZeroBounceResult("valid")).toBe("deliverable");
+    expect(mapZeroBounceResult("invalid", "mailbox_not_found")).toBe(
+      "undeliverable",
+    );
+    expect(mapZeroBounceResult("spamtrap", "")).toBe("undeliverable");
+  });
+
+  it("keeps a ROLE-BASED do_not_mail SENDABLE — it's the agency inbox we target", () => {
+    // Load-bearing: ZeroBounce flags info@/sales@ as do_not_mail/role_based, but
+    // those are exactly the addresses we want. They MUST NOT be blocked.
+    expect(mapZeroBounceResult("do_not_mail", "role_based")).toBe("unknown");
+    expect(mapZeroBounceResult("do_not_mail", "role_based_catch_all")).toBe(
+      "unknown",
+    );
+  });
+
+  it("blocks a genuinely toxic do_not_mail (disposable/toxic/suppression/trap)", () => {
+    expect(mapZeroBounceResult("do_not_mail", "disposable")).toBe(
+      "undeliverable",
+    );
+    expect(mapZeroBounceResult("do_not_mail", "toxic")).toBe("undeliverable");
+    expect(mapZeroBounceResult("do_not_mail", "global_suppression")).toBe(
+      "undeliverable",
+    );
+    expect(mapZeroBounceResult("do_not_mail", "possible_trap")).toBe(
+      "undeliverable",
+    );
+  });
+
+  it("treats catch-all / unknown / abuse / unrecognised as unknown (sendable)", () => {
+    expect(mapZeroBounceResult("catch-all", "")).toBe("unknown");
+    expect(mapZeroBounceResult("unknown", "")).toBe("unknown");
+    expect(mapZeroBounceResult("abuse", "")).toBe("unknown");
+    expect(mapZeroBounceResult("error", "")).toBe("unknown");
+    // mx_forward = the domain relays mail elsewhere (a routing config), NOT a
+    // dead mailbox — must stay sendable, same as role_based.
+    expect(mapZeroBounceResult("do_not_mail", "mx_forward")).toBe("unknown");
+  });
+});
+
 describe("getEmailVerifier", () => {
   const originalFake = process.env.EMAIL_VERIFY_FAKE;
   const originalProvider = process.env.EMAIL_VERIFY_PROVIDER;
@@ -121,6 +165,12 @@ describe("getEmailVerifier", () => {
     process.env.EMAIL_VERIFY_FAKE = "1";
     process.env.EMAIL_VERIFY_PROVIDER = "neverbounce";
     expect(getEmailVerifier()).toBeInstanceOf(FakeEmailVerifier);
+  });
+
+  it("returns the ZeroBounce verifier when EMAIL_VERIFY_PROVIDER=zerobounce", () => {
+    delete process.env.EMAIL_VERIFY_FAKE;
+    process.env.EMAIL_VERIFY_PROVIDER = "zerobounce";
+    expect(getEmailVerifier()).toBeInstanceOf(ZeroBounceEmailVerifier);
   });
 
   it("returns the NeverBounce verifier when EMAIL_VERIFY_PROVIDER=neverbounce", () => {

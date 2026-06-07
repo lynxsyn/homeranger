@@ -12,6 +12,7 @@
  */
 import { SmtpEmailVerifier } from "./smtp-email-verifier.js";
 import { NeverBounceEmailVerifier } from "./neverbounce-email-verifier.js";
+import { ZeroBounceEmailVerifier } from "./zerobounce-email-verifier.js";
 
 /**
  * `deliverable` — the MX accepted the recipient (2xx). `undeliverable` — a
@@ -136,12 +137,51 @@ export function mapNeverBounceResult(result: string): EmailDeliverability {
 }
 
 /**
- * Select the verifier:
+ * Map a ZeroBounce v2 (status, sub_status) to our verdict. ZeroBounce probes
+ * from reputable IPs and resolves more catch-alls than NeverBounce.
+ *
+ * CRUCIAL for homeranger: ZeroBounce flags AGENCY ROLE INBOXES (info@, sales@,
+ * enquiries@) as status `do_not_mail` / sub_status `role_based` — but those are
+ * EXACTLY the addresses we target, so a role-based result MUST stay sendable,
+ * never blocked. We only flag `do_not_mail` undeliverable for the genuinely
+ * toxic sub-statuses (disposable / toxic / global_suppression / possible_traps).
+ *   valid                                    ⇒ deliverable
+ *   invalid | spamtrap                       ⇒ undeliverable (dead / reputation harm)
+ *   do_not_mail + toxic-substatus            ⇒ undeliverable
+ *   do_not_mail + role_based / mx_forward / other ⇒ unknown (a role inbox we WANT,
+ *       or a mail-relay routing config — neither is a dead mailbox)
+ *   catch-all | unknown | abuse | other      ⇒ unknown (sendable; never block on a maybe)
+ * Conservative: only CONFIDENT dead/toxic blocks; real bounce + complaint
+ * suppression stay the backstop.
+ */
+export function mapZeroBounceResult(
+  status: string,
+  subStatus = "",
+): EmailDeliverability {
+  switch (status) {
+    case "valid":
+      return "deliverable";
+    case "invalid":
+    case "spamtrap":
+      return "undeliverable";
+    case "do_not_mail":
+      return /disposable|toxic|global_suppression|possible_trap/.test(subStatus)
+        ? "undeliverable"
+        : "unknown";
+    default:
+      // catch-all, unknown, abuse, error, or anything unrecognised → sendable.
+      return "unknown";
+  }
+}
+
+/**
+ * Select the verifier (HTTPS API providers probe from reputable IPs, so they
+ * work where our in-house SMTP probe can't — this cluster IP is Spamhaus-PBL-
+ * listed, so Outlook/Mimecast policy-block a direct probe):
  *   EMAIL_VERIFY_FAKE=1                 ⇒ deterministic fake (unit/integration/E2E)
- *   EMAIL_VERIFY_PROVIDER=neverbounce   ⇒ the paid NeverBounce API over HTTPS —
- *       the RELIABLE path: it probes from reputable IPs, so it works where our
- *       in-house SMTP probe cannot (this cluster IP is Spamhaus-PBL-listed, so
- *       Outlook/Mimecast policy-block our direct probe).
+ *   EMAIL_VERIFY_PROVIDER=zerobounce    ⇒ ZeroBounce v2 (best catch-all resolution
+ *       + a recurring free tier — the default for homeranger)
+ *   EMAIL_VERIFY_PROVIDER=neverbounce   ⇒ NeverBounce v4 (kept as a fallback)
  *   otherwise                           ⇒ the in-house SMTP probe (safe, but it
  *       returns mostly `unknown` from this IP — see smtp-email-verifier.ts).
  */
@@ -149,7 +189,11 @@ export function getEmailVerifier(): EmailVerifier {
   if (process.env.EMAIL_VERIFY_FAKE === "1") {
     return new FakeEmailVerifier();
   }
-  if ((process.env.EMAIL_VERIFY_PROVIDER ?? "").toLowerCase() === "neverbounce") {
+  const provider = (process.env.EMAIL_VERIFY_PROVIDER ?? "").toLowerCase();
+  if (provider === "zerobounce") {
+    return new ZeroBounceEmailVerifier();
+  }
+  if (provider === "neverbounce") {
     return new NeverBounceEmailVerifier();
   }
   return new SmtpEmailVerifier();
