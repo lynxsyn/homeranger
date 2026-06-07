@@ -1,33 +1,61 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  classifyRcptCode,
+  classifyRcptReply,
   FakeEmailVerifier,
   getEmailVerifier,
 } from "./email-verifier.js";
 import { SmtpEmailVerifier } from "./smtp-email-verifier.js";
 
-describe("classifyRcptCode", () => {
+describe("classifyRcptReply", () => {
   it("maps 2xx to deliverable", () => {
-    expect(classifyRcptCode(250)).toBe("deliverable");
-    expect(classifyRcptCode(200)).toBe("deliverable");
-    expect(classifyRcptCode(251)).toBe("deliverable");
+    expect(classifyRcptReply(250, "2.1.5 Recipient OK")).toBe("deliverable");
+    expect(classifyRcptReply(200, "")).toBe("deliverable");
+    expect(classifyRcptReply(251, "User not local; will forward")).toBe(
+      "deliverable",
+    );
   });
 
-  it("maps permanent mailbox rejects to undeliverable", () => {
-    for (const code of [550, 551, 553, 554]) {
-      expect(classifyRcptCode(code)).toBe("undeliverable");
-    }
+  it("flags a genuine non-existent mailbox as undeliverable", () => {
+    expect(classifyRcptReply(550, "5.1.1 <a@x>: user unknown")).toBe(
+      "undeliverable",
+    );
+    expect(classifyRcptReply(550, "No such user here")).toBe("undeliverable");
+    expect(
+      classifyRcptReply(550, "5.1.1 Recipient address rejected: User unknown"),
+    ).toBe("undeliverable");
+    expect(classifyRcptReply(550, "mailbox unavailable")).toBe("undeliverable");
+    expect(classifyRcptReply(550, "Invalid recipient")).toBe("undeliverable");
   });
 
-  it("treats 552 (mailbox full) and 4xx temp failures as unknown", () => {
-    expect(classifyRcptCode(552)).toBe("unknown");
-    expect(classifyRcptCode(450)).toBe("unknown");
-    expect(classifyRcptCode(421)).toBe("unknown");
+  it("treats a policy / IP / reputation block as unknown, NOT undeliverable", () => {
+    // The real Spamhaus-PBL rejection our cluster IP gets from Outlook/Mimecast.
+    expect(
+      classifyRcptReply(
+        550,
+        "5.7.1 Service unavailable, Client host [95.148.83.103] blocked using Spamhaus",
+      ),
+    ).toBe("unknown");
+    expect(
+      classifyRcptReply(550, "zen.mimecast.org Listed by PBL, see ..."),
+    ).toBe("unknown");
+    expect(classifyRcptReply(554, "5.7.1 Access denied")).toBe("unknown");
+    expect(classifyRcptReply(550, "5.7.606 Banned sending IP")).toBe("unknown");
+  });
+
+  it("treats temp/greylist (4xx), 552 mailbox-full, and ambiguous 5xx as unknown", () => {
+    expect(classifyRcptReply(450, "4.2.0 Greylisted, try again later")).toBe(
+      "unknown",
+    );
+    expect(classifyRcptReply(421, "Service not available")).toBe("unknown");
+    expect(classifyRcptReply(552, "5.2.2 Mailbox full")).toBe("unknown");
+    expect(classifyRcptReply(550, "Service temporarily unavailable")).toBe(
+      "unknown",
+    );
   });
 
   it("treats a missing or non-finite code as unknown", () => {
-    expect(classifyRcptCode(null)).toBe("unknown");
-    expect(classifyRcptCode(Number.NaN)).toBe("unknown");
+    expect(classifyRcptReply(null, "")).toBe("unknown");
+    expect(classifyRcptReply(Number.NaN, "")).toBe("unknown");
   });
 });
 

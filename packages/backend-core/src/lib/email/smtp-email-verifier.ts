@@ -14,7 +14,7 @@ import net from "node:net";
 import { resolveMx } from "node:dns/promises";
 import { emailDomain } from "./email-domain.js";
 import {
-  classifyRcptCode,
+  classifyRcptReply,
   type EmailDeliverability,
   type EmailVerifier,
 } from "./email-verifier.js";
@@ -71,7 +71,9 @@ export class SmtpEmailVerifier implements EmailVerifier {
       socket.setTimeout(this.timeoutMs);
 
       let buf = "";
-      let onReply: ((code: number | null) => void) | null = null;
+      let onReply:
+        | ((reply: { code: number | null; text: string }) => void)
+        | null = null;
       let finished = false;
 
       const finish = (verdict: EmailDeliverability): void => {
@@ -88,7 +90,11 @@ export class SmtpEmailVerifier implements EmailVerifier {
         resolve(verdict);
       };
 
-      const nextReply = (): Promise<number | null> =>
+      // Resolve with the reply's basic code AND its full text (all lines of the
+      // reply joined) — classifyRcptReply needs the text + enhanced status to
+      // tell a policy/IP block (5.7.x / "spamhaus") from a dead mailbox (5.1.x).
+      let replyText = "";
+      const nextReply = (): Promise<{ code: number | null; text: string }> =>
         new Promise((res) => {
           onReply = res;
         });
@@ -99,13 +105,16 @@ export class SmtpEmailVerifier implements EmailVerifier {
         while ((nl = buf.indexOf("\n")) !== -1) {
           const line = buf.slice(0, nl).replace(/\r$/, "");
           buf = buf.slice(nl + 1);
+          replyText = replyText ? `${replyText} ${line}` : line;
           // "NNN-text" is a continuation; "NNN text" (or bare "NNN") is final.
           const match = /^(\d{3})([ -]?)/.exec(line);
           if (match && match[2] !== "-") {
             const code = Number(match[1]);
+            const text = replyText;
+            replyText = "";
             const cb = onReply;
             onReply = null;
-            cb?.(Number.isFinite(code) ? code : null);
+            cb?.({ code: Number.isFinite(code) ? code : null, text });
           }
         }
       });
@@ -115,22 +124,22 @@ export class SmtpEmailVerifier implements EmailVerifier {
 
       void (async () => {
         const greeting = await nextReply();
-        if (greeting === null || greeting >= 400) {
+        if (greeting.code === null || greeting.code >= 400) {
           return finish("unknown");
         }
         socket.write(`EHLO ${this.heloName}\r\n`);
         const ehlo = await nextReply();
-        if (ehlo === null || ehlo >= 400) {
+        if (ehlo.code === null || ehlo.code >= 400) {
           return finish("unknown");
         }
         socket.write(`MAIL FROM:<${this.mailFrom}>\r\n`);
         const mailFrom = await nextReply();
-        if (mailFrom === null || mailFrom >= 400) {
+        if (mailFrom.code === null || mailFrom.code >= 400) {
           return finish("unknown");
         }
         socket.write(`RCPT TO:<${target}>\r\n`);
         const rcpt = await nextReply();
-        return finish(classifyRcptCode(rcpt));
+        return finish(classifyRcptReply(rcpt.code, rcpt.text));
       })();
     });
   }

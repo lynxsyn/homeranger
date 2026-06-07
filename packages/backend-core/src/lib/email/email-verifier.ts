@@ -14,11 +14,12 @@ import { SmtpEmailVerifier } from "./smtp-email-verifier.js";
 
 /**
  * `deliverable` — the MX accepted the recipient (2xx). `undeliverable` — a
- * permanent mailbox reject (550/551/553/554). `unknown` — anything we cannot
- * confidently call dead: a catch-all domain (2xx for everything, indistinguish-
- * able and therefore treated as deliverable-and-sendable), a 4xx greylist/temp
- * failure, no MX, a timeout, or port 25 blocked. Only `undeliverable` is blocked
- * at send time; `unknown` stays sendable (we never exclude on a maybe).
+ * permanent reject that names a NON-EXISTENT MAILBOX (see classifyRcptReply).
+ * `unknown` — everything we cannot confidently call dead: a catch-all domain
+ * (2xx for everything), a policy/IP/reputation block (e.g. our probe IP on the
+ * Spamhaus PBL — the mailbox is likely fine), a 4xx greylist/temp failure, an
+ * ambiguous bare 5xx, no MX, a timeout, or port 25 blocked. Only `undeliverable`
+ * is blocked at send time; `unknown` stays sendable (we never exclude on a maybe).
  */
 export type EmailDeliverability = "unknown" | "deliverable" | "undeliverable";
 
@@ -32,22 +33,60 @@ export interface EmailVerifier {
 }
 
 /**
- * Map an SMTP RCPT-TO reply code to a deliverability verdict. 2xx ⇒ accepted ⇒
- * deliverable (a catch-all domain also lands here — sendable, which is the
- * intended treatment). 550/551/553/554 ⇒ permanent mailbox reject ⇒
- * undeliverable. Everything else — 4xx greylist/temp, 552 (mailbox full, not a
- * non-existent user), or a missing code — is `unknown` (still sendable).
+ * Map an SMTP RCPT-TO reply (basic code + full text) to a deliverability verdict.
+ *
+ * 2xx ⇒ deliverable. For a 5xx we MUST split a MAILBOX rejection (the user does
+ * not exist — safe to flag undeliverable) from a POLICY/IP rejection (the
+ * recipient server blocked OUR probe IP — the mailbox may be perfectly live).
+ * This matters because a self-hosted probe IP is routinely Spamhaus-PBL-listed,
+ * so Outlook/Mimecast answer `550 5.7.1 ... blocked using Spamhaus` for VALID
+ * mailboxes — a real send from Resend's reputable IP still delivers. Treating
+ * that as dead would wrongly suppress most agencies (observed: 69% false vs ~30%
+ * real bounce). So:
+ *   - policy/IP/reputation 5xx (enhanced 5.7.x, or spamhaus/blocklist/policy/
+ *     rate-limit/temporary text) ⇒ unknown (sendable; real send still delivers)
+ *   - mailbox-nonexistence 5xx (enhanced 5.1.x addressing class, or "user
+ *     unknown" / "no such user" / "mailbox unavailable|not found|does not exist"
+ *     / "recipient|address rejected" / "invalid recipient" / "no mailbox") ⇒
+ *     undeliverable
+ *   - anything else (ambiguous bare 5xx, 4xx greylist/temp, no code) ⇒ unknown
+ * Conservative by design: when in doubt return `unknown` and let the real
+ * bounce → SuppressionEntry path be the authoritative dead-address gate.
  */
-export function classifyRcptCode(code: number | null): EmailDeliverability {
-  if (code === null || !Number.isFinite(code)) {
-    return "unknown";
-  }
-  if (code >= 200 && code < 300) {
+export function classifyRcptReply(
+  code: number | null,
+  text = "",
+): EmailDeliverability {
+  if (code !== null && Number.isFinite(code) && code >= 200 && code < 300) {
     return "deliverable";
   }
-  if (code === 550 || code === 551 || code === 553 || code === 554) {
+  // 4xx greylist/temp, no code, or any non-permanent reply → can't decide.
+  if (code === null || !Number.isFinite(code) || code < 500) {
+    return "unknown";
+  }
+  const t = text.toLowerCase();
+  const enhanced = /\b5\.(\d+)\.\d+\b/.exec(text);
+  const klass = enhanced ? Number(enhanced[1]) : null;
+  // Policy / IP / reputation reject — checked FIRST (a 5.7.x "rejected" is a
+  // block, not a dead mailbox). NOT a deliverability signal → stay sendable.
+  if (
+    klass === 7 ||
+    /spamhaus|block ?list|black ?list|\bpbl\b|\brbl\b|\bdnsbl\b|reputation|policy|access denied|not allowed|rate ?limit|too many|temporar|greylist|gray ?list|deferred|try again/.test(
+      t,
+    )
+  ) {
+    return "unknown";
+  }
+  // Mailbox does not exist — the only case safe to flag undeliverable.
+  if (
+    klass === 1 ||
+    /user unknown|unknown user|no such user|no such recipient|user not found|recipient not found|mailbox (unavailable|not found|does ?n.?t exist|is disabled|disabled)|(recipient|address)[^.]*reject|invalid (recipient|mailbox|address)|no mailbox|does ?not exist|account (is )?(disabled|unavailable)/.test(
+      t,
+    )
+  ) {
     return "undeliverable";
   }
+  // Ambiguous permanent failure → conservative; rely on real-bounce suppression.
   return "unknown";
 }
 
