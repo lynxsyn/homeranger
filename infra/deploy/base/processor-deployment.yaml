@@ -266,6 +266,21 @@ spec:
             # SCRAPE_LISTINGS_EVERY_MS (24h). NO API key — in-process HTTP fetch.
             - name: LISTING_SCRAPE_SITES
               value: "uklandandfarms,auctionhouse,pughauctions"
+            # Email deliverability verification at discovery. NeverBounce probes
+            # from reputable IPs over HTTPS (:443) — the reliable path; the
+            # in-house SMTP probe is policy-blocked from this Spamhaus-PBL cluster
+            # IP. EMAIL_VERIFY_PROVIDER=neverbounce activates it; NEVERBOUNCE_API_KEY
+            # is optional:true so the worker boots WITHOUT it — the verifier
+            # fail-opens to "unknown" (= sendable) until the operator adds the key
+            # to the SOPS secret. (EMAIL_VERIFY_FAKE is E2E/CI-only — never set here.)
+            - name: EMAIL_VERIFY_PROVIDER
+              value: neverbounce
+            - name: NEVERBOUNCE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: homeranger-secret
+                  key: NEVERBOUNCE_API_KEY
+                  optional: true
           resources:
             requests:
               cpu: 50m

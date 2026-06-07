@@ -117,6 +117,10 @@ export default defineConfig({
         // env-gated fake (email-verifier.ts) are unit-covered; this is the
         // network shell over them (same rationale as mailbox-adapter.ts).
         "packages/backend-core/src/lib/email/smtp-email-verifier.ts",
+        // NeverBounce verification adapter — HTTPS network I/O. The pure
+        // result→verdict map (mapNeverBounceResult) is unit-covered; this is the
+        // fetch shell over it (same rationale as smtp-email-verifier.ts).
+        "packages/backend-core/src/lib/email/neverbounce-email-verifier.ts",
         // M6 scheduler — side-effecting bootstrap (Redis + leader-lock loop +
         // health server). Proven by the leader-lock unit test + live. Same
         // rationale as apps/processor/src/worker.ts + apps/api/src/main.ts.
