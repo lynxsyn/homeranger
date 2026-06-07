@@ -11,6 +11,7 @@
  * the coverage-excluded smtp-email-verifier.ts (a network adapter).
  */
 import { SmtpEmailVerifier } from "./smtp-email-verifier.js";
+import { NeverBounceEmailVerifier } from "./neverbounce-email-verifier.js";
 
 /**
  * `deliverable` — the MX accepted the recipient (2xx). `undeliverable` — a
@@ -110,13 +111,46 @@ export class FakeEmailVerifier implements EmailVerifier {
 }
 
 /**
- * Select the verifier. EMAIL_VERIFY_FAKE=1 ⇒ the deterministic fake (tests/CI,
- * and prod until the operator is ready to probe); otherwise the real SMTP
- * verifier. Mirrors the other env-gated fake seams (RESEND_FAKE, DISCOVERY_FAKE…).
+ * Map a NeverBounce v4 `result` to our verdict. NeverBounce probes from its OWN
+ * reputable IPs, so (unlike our Spamhaus-PBL-listed cluster IP) it reliably
+ * reaches recipient mailboxes. `valid` ⇒ deliverable; `invalid` ⇒ a confident
+ * dead mailbox ⇒ undeliverable. Everything else — `catchall` (can't confirm),
+ * `disposable`, `unknown` — stays sendable (`unknown`): never block on a maybe.
+ *
+ * NOTE: NeverBounce's OWN default guidance flags `disposable` as undeliverable
+ * (its "safe to send" set is valid+catchall+unknown). We DELIBERATELY diverge —
+ * a legitimate UK estate agency is vanishingly unlikely to use a throwaway inbox,
+ * so if the classifier misfires on a real business address we stay sendable
+ * rather than silently suppress it (fail-open, same rationale as catchall/unknown).
+ * Real bounce → SuppressionEntry remains the final backstop.
+ */
+export function mapNeverBounceResult(result: string): EmailDeliverability {
+  switch (result) {
+    case "valid":
+      return "deliverable";
+    case "invalid":
+      return "undeliverable";
+    default:
+      return "unknown";
+  }
+}
+
+/**
+ * Select the verifier:
+ *   EMAIL_VERIFY_FAKE=1                 ⇒ deterministic fake (unit/integration/E2E)
+ *   EMAIL_VERIFY_PROVIDER=neverbounce   ⇒ the paid NeverBounce API over HTTPS —
+ *       the RELIABLE path: it probes from reputable IPs, so it works where our
+ *       in-house SMTP probe cannot (this cluster IP is Spamhaus-PBL-listed, so
+ *       Outlook/Mimecast policy-block our direct probe).
+ *   otherwise                           ⇒ the in-house SMTP probe (safe, but it
+ *       returns mostly `unknown` from this IP — see smtp-email-verifier.ts).
  */
 export function getEmailVerifier(): EmailVerifier {
   if (process.env.EMAIL_VERIFY_FAKE === "1") {
     return new FakeEmailVerifier();
+  }
+  if ((process.env.EMAIL_VERIFY_PROVIDER ?? "").toLowerCase() === "neverbounce") {
+    return new NeverBounceEmailVerifier();
   }
   return new SmtpEmailVerifier();
 }

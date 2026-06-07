@@ -3,8 +3,10 @@ import {
   classifyRcptReply,
   FakeEmailVerifier,
   getEmailVerifier,
+  mapNeverBounceResult,
 } from "./email-verifier.js";
 import { SmtpEmailVerifier } from "./smtp-email-verifier.js";
+import { NeverBounceEmailVerifier } from "./neverbounce-email-verifier.js";
 
 describe("classifyRcptReply", () => {
   it("maps 2xx to deliverable", () => {
@@ -66,6 +68,20 @@ describe("classifyRcptReply", () => {
   });
 });
 
+describe("mapNeverBounceResult", () => {
+  it("maps valid → deliverable and invalid → undeliverable", () => {
+    expect(mapNeverBounceResult("valid")).toBe("deliverable");
+    expect(mapNeverBounceResult("invalid")).toBe("undeliverable");
+  });
+
+  it("treats catchall / disposable / unknown / unrecognised as unknown (sendable)", () => {
+    expect(mapNeverBounceResult("catchall")).toBe("unknown");
+    expect(mapNeverBounceResult("disposable")).toBe("unknown");
+    expect(mapNeverBounceResult("unknown")).toBe("unknown");
+    expect(mapNeverBounceResult("")).toBe("unknown");
+  });
+});
+
 describe("FakeEmailVerifier", () => {
   const verifier = new FakeEmailVerifier();
 
@@ -87,22 +103,35 @@ describe("FakeEmailVerifier", () => {
 });
 
 describe("getEmailVerifier", () => {
-  const original = process.env.EMAIL_VERIFY_FAKE;
-  afterEach(() => {
-    if (original === undefined) {
-      delete process.env.EMAIL_VERIFY_FAKE;
+  const originalFake = process.env.EMAIL_VERIFY_FAKE;
+  const originalProvider = process.env.EMAIL_VERIFY_PROVIDER;
+  const restore = (name: string, value: string | undefined): void => {
+    if (value === undefined) {
+      delete process.env[name];
     } else {
-      process.env.EMAIL_VERIFY_FAKE = original;
+      process.env[name] = value;
     }
+  };
+  afterEach(() => {
+    restore("EMAIL_VERIFY_FAKE", originalFake);
+    restore("EMAIL_VERIFY_PROVIDER", originalProvider);
   });
 
-  it("returns the fake when EMAIL_VERIFY_FAKE=1", () => {
+  it("returns the fake when EMAIL_VERIFY_FAKE=1 (wins over provider)", () => {
     process.env.EMAIL_VERIFY_FAKE = "1";
+    process.env.EMAIL_VERIFY_PROVIDER = "neverbounce";
     expect(getEmailVerifier()).toBeInstanceOf(FakeEmailVerifier);
   });
 
-  it("returns the real SMTP verifier otherwise", () => {
+  it("returns the NeverBounce verifier when EMAIL_VERIFY_PROVIDER=neverbounce", () => {
     delete process.env.EMAIL_VERIFY_FAKE;
+    process.env.EMAIL_VERIFY_PROVIDER = "neverbounce";
+    expect(getEmailVerifier()).toBeInstanceOf(NeverBounceEmailVerifier);
+  });
+
+  it("falls back to the SMTP verifier when neither flag is set", () => {
+    delete process.env.EMAIL_VERIFY_FAKE;
+    delete process.env.EMAIL_VERIFY_PROVIDER;
     expect(getEmailVerifier()).toBeInstanceOf(SmtpEmailVerifier);
   });
 });
