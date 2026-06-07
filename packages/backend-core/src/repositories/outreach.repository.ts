@@ -183,7 +183,7 @@ export class OutreachRepository {
 
   /**
    * Attempted outbound sends since a cutoff — the DENOMINATOR for the M6
-   * circuit-breaker (gate 4). Counts persisted outbound messages (a send is
+   * circuit-breaker (gate 6). Counts persisted outbound messages (a send is
    * persisted only after the provider accepted it), so the rate is
    * bounced/complained events ÷ this count.
    */

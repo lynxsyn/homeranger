@@ -172,10 +172,15 @@ spec:
     # Hostname matching is impossible in k8s NetworkPolicy; broad 443 egress.
     # Port 80 is also allowed: many UK agency sites serve/redirect via plain HTTP,
     # so the in-process discovery fetcher needs it to reach those contact pages.
+    # Port 25 (SMTP) is the deliverability probe: discovery does an MX + RCPT
+    # check (no message sent) so a dead mailbox is flagged undeliverable and never
+    # bounced. The upstream allows outbound 25; only this default-deny did not.
     - ports:
         - port: 443
           protocol: TCP
         - port: 80
+          protocol: TCP
+        - port: 25
           protocol: TCP
 ---
 # homeranger-postgres: ingress from api, scheduler, processor only.

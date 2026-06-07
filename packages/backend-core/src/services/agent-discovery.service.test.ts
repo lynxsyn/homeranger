@@ -192,6 +192,35 @@ describe("AgentDiscoveryService.discoverRegion", () => {
     });
   });
 
+  it("records a deliverable verdict for a good mailbox", async () => {
+    const h = makeHarness({
+      agents: [{ email: "info@goodagency.co.uk", agencyName: "Good Agency" }],
+    });
+    await h.service.discoverRegion("Conwy County");
+    expect(h.upsertByEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ emailVerifyStatus: "deliverable" }),
+    );
+  });
+
+  it("flags a confirmed-undeliverable mailbox but STILL upserts it (keep + flag)", async () => {
+    // The fake verifier (EMAIL_VERIFY_FAKE) returns `undeliverable` for a
+    // bounce/dead local-part. A known-dead scraped address is recorded WITH the
+    // flag (operator-visible, ComplianceGuard-blocked) rather than dropped — so
+    // the discovery counters are unchanged (it still counts as upserted).
+    const h = makeHarness({
+      agents: [{ email: "bounce@deadagency.co.uk", agencyName: "Dead Agency" }],
+    });
+    const result = await h.service.discoverRegion("Conwy County");
+    expect(h.upsertByEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "bounce@deadagency.co.uk",
+        emailVerifyStatus: "undeliverable",
+      }),
+    );
+    expect(result.upserted).toBe(1);
+    expect(result.skipped).toBe(0);
+  });
+
   it("skips already-suppressed emails (never re-sourced)", async () => {
     const h = makeHarness({
       agents: [

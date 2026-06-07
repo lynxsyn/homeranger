@@ -13,20 +13,21 @@
  * send blocked by an earlier gate never burns a token):
  *   1. PECR — mailboxType must be corporate_subscriber (individual/unknown ⇒ no
  *      lawful basis to send at all). 2. agent opt-out. 3. global suppression.
- *   4. per-domain cooldown (one agency = one cold approach per window).
- *   5. circuit breaker (bounce/complaint rate over the rolling window).
- *   6. manual kill-switch. 7. warm-up daily cap (token bucket; fail-closed).
+ *   4. email undeliverable (discovery's SMTP probe confirmed the mailbox dead).
+ *   5. per-domain cooldown (one agency = one cold approach per window).
+ *   6. circuit breaker (bounce/complaint rate over the rolling window).
+ *   7. manual kill-switch. 8. warm-up daily cap (token bucket; fail-closed).
  *
  * `reserve`: the worker send path calls with reserve:true (CONSUMES a token,
  * authoritative); the router precheck calls with reserve:false (PEEKS, never
- * mutates) — it still evaluates gates 1-5 so a permanently-blocked agent gets a
+ * mutates) — it still evaluates gates 1-6 so a permanently-blocked agent gets a
  * FORBIDDEN, not a misleading retryable TOO_MANY_REQUESTS.
  *
  * Observability/PII rule: every block logs `{scope:"outreach.blocked.<code>",
  * agentId}` (uuid + code ONLY — never email/body/token) and increments
  * complianceBlockedTotal{reason:<code>}.
  */
-import type { MailboxType } from "@prisma/client";
+import type { EmailVerifyStatus, MailboxType } from "@prisma/client";
 import {
   suppressionEntryRepository,
   type SuppressionEntryRepository,
@@ -59,6 +60,7 @@ export type ComplianceCode =
   | "PECR_NON_CORPORATE"
   | "OPTED_OUT"
   | "SUPPRESSED"
+  | "EMAIL_UNDELIVERABLE"
   | "DOMAIN_RECENTLY_CONTACTED"
   | "CIRCUIT_OPEN"
   | "KILL_SWITCH"
@@ -103,6 +105,7 @@ export interface AgentForGuard {
   email: string;
   mailboxType: MailboxType;
   optedOut: boolean;
+  emailVerifyStatus: EmailVerifyStatus;
 }
 
 export interface AssertCanSendOptions {
@@ -225,7 +228,21 @@ export class DefaultComplianceGuard implements ComplianceGuard {
       });
     }
 
-    // Gate 4 — per-domain cooldown. One agency (email domain) gets at most one
+    // Gate 4 — email undeliverable. Discovery's SMTP probe (MX + RCPT, no
+    // message sent) confirmed this mailbox is dead (a 550-class permanent
+    // reject). Block so we never re-bounce it — protecting the sender reputation
+    // that a ~30% bounce rate on scraped info@/contact@ addresses was eroding.
+    // `deliverable` and `unknown` (catch-all / temp / probe blocked) BOTH pass —
+    // we only ever block a CONFIRMED-dead address. Non-retryable, like suppression.
+    if (agent.emailVerifyStatus === "undeliverable") {
+      this.block(agent.id, "EMAIL_UNDELIVERABLE", {
+        retryable: false,
+        trpcCode: "FORBIDDEN",
+        message: "email address is undeliverable (hard bounce)",
+      });
+    }
+
+    // Gate 5 — per-domain cooldown. One agency (email domain) gets at most one
     // cold approach per window, even across the several mailboxes discovery may
     // surface for it. Peek-only (no token), so a domain-blocked send fails fast
     // without burning warm-up budget. Excludes the agent itself — re-contacting
@@ -251,10 +268,10 @@ export class DefaultComplianceGuard implements ComplianceGuard {
       }
     }
 
-    // Gate 5 — reputation circuit breaker (bounce/complaint rate over window).
+    // Gate 6 — reputation circuit breaker (bounce/complaint rate over window).
     await this.assertBreakerClosed(agent.id);
 
-    // Gate 6 — manual kill-switch (also reads the daily cap for gate 7).
+    // Gate 7 — manual kill-switch (also reads the daily cap for gate 8).
     const warmup = await this.warmupStateRepository.getOrCreate();
     if (warmup.killSwitch) {
       this.block(agent.id, "KILL_SWITCH", {
@@ -263,7 +280,7 @@ export class DefaultComplianceGuard implements ComplianceGuard {
       });
     }
 
-    // Gate 7 — warm-up daily cap (token bucket). LAST, so a send blocked above
+    // Gate 8 — warm-up daily cap (token bucket). LAST, so a send blocked above
     // never burns a token. reserve:true consumes (worker); false peeks (router).
     const token = await this.consumeToken({
       key: `outreach:warmup:${this.windowKey()}`,
@@ -310,7 +327,7 @@ export class DefaultComplianceGuard implements ComplianceGuard {
   }
 
   /**
-   * Gate 5. rate = events ÷ attempted sends over the trailing window. Each gate
+   * Gate 6. rate = events ÷ attempted sends over the trailing window. Each gate
    * is evaluated ONLY at/above its min-sample floor — below it the warm-up cap +
    * kill-switch are the safety net, not a hair-trigger statistical breaker (a
    * single bounce at n=2 is meaningless). Never divides by zero.

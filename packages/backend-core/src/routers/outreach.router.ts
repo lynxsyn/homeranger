@@ -86,6 +86,7 @@ export const outreachRouter = router({
         email: agent.email,
         mailboxType: agent.mailboxType,
         optedOut: agent.optedOut,
+        emailVerifyStatus: agent.emailVerifyStatus,
       };
       try {
         await complianceGuard.assertCanSend(guardAgent, { reserve: false });
@@ -103,7 +104,7 @@ export const outreachRouter = router({
     }),
 
   /**
-   * Global send kill-switch (ComplianceGuard gate 5). `get` reads the current
+   * Global send kill-switch (ComplianceGuard gate 7). `get` reads the current
    * WarmupState.killSwitch; `toggle` sets it. Flipping it ON halts ALL outbound
    * sends at once (the guard blocks every send with KILL_SWITCH) — the operator's
    * emergency brake. Idempotent on the value.

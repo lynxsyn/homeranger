@@ -25,6 +25,10 @@ import {
 import { resolveLocationToOutcodes } from "../lib/geo/uk-locations.js";
 import { emailDomain, emailLocalPart } from "../lib/email/email-domain.js";
 import {
+  getEmailVerifier,
+  type EmailVerifier,
+} from "../lib/email/email-verifier.js";
+import {
   isPortalEmail,
   isNonAgencyName,
 } from "../lib/discovery/discovery-queries.js";
@@ -213,6 +217,13 @@ export interface AgentDiscoveryDependencies {
    * auto-delete never fires without an explicitly wired classifier.
    */
   classifier?: AgentClassifier;
+  /**
+   * Email deliverability probe. Defaults to the env-gated verifier
+   * (EMAIL_VERIFY_FAKE=1 ⇒ deterministic fake). The chosen mailbox per agency is
+   * verified before upsert; a confident `undeliverable` is flagged so the
+   * ComplianceGuard never sends to it.
+   */
+  emailVerifier?: EmailVerifier;
 }
 
 export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
@@ -220,6 +231,7 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
   private readonly agentRepository: AgentRepository;
   private readonly suppressionEntryRepository: SuppressionEntryRepository;
   private readonly classifier: AgentClassifier | null;
+  private readonly emailVerifier: EmailVerifier;
 
   constructor(deps: AgentDiscoveryDependencies) {
     this.provider = deps.provider;
@@ -227,6 +239,7 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
     this.suppressionEntryRepository =
       deps.suppressionEntryRepository ?? defaultSuppressionEntryRepository;
     this.classifier = deps.classifier ?? null;
+    this.emailVerifier = deps.emailVerifier ?? getEmailVerifier();
   }
 
   async discoverRegion(regionName: string): Promise<AgentDiscoveryResult> {
@@ -389,22 +402,35 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
       byDomain.set(domain, group);
     }
 
-    // Collapse each agency domain to its single best mailbox.
+    // Collapse each agency domain to its single best mailbox, then VERIFY it.
+    // The probe (MX + SMTP RCPT, no message sent) marks a confident-dead mailbox
+    // `undeliverable` so the ComplianceGuard never bounces it; catch-all/timeout
+    // stays `unknown` (still sendable). The agent is upserted either way (the
+    // operator sees an undeliverable badge and can supply a better address), so
+    // the `discovered === upserted + skipped + collapsed + classifiedOut`
+    // invariant is unchanged.
+    let undeliverable = 0;
     for (const group of byDomain.values()) {
       const bestEmail = pickBestEmail(
         group.map((g) => g.email),
         region,
       );
       const chosen = group.find((g) => g.email === bestEmail) ?? group[0]!;
+      const emailVerifyStatus = await this.emailVerifier.verify(chosen.email);
       await this.agentRepository.upsertByEmail({
         email: chosen.email,
         agencyName: chosen.agencyName,
         website: agentWebsite(chosen.email, chosen.websiteUrl),
         mailboxType: "corporate_subscriber",
         coveredOutcodes: outcodes,
+        emailVerifyStatus,
+        emailVerifiedAt: new Date(),
       });
       upserted += 1;
       collapsed += group.length - 1;
+      if (emailVerifyStatus === "undeliverable") {
+        undeliverable += 1;
+      }
     }
 
     console.info(
@@ -417,6 +443,7 @@ export class DefaultAgentDiscoveryService implements AgentDiscoveryService {
         skipped,
         collapsed,
         classifiedOut,
+        undeliverable,
       }),
     );
     return {

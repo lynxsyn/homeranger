@@ -89,6 +89,40 @@ describe("agentRepository.upsertByEmail website round-trip", () => {
   });
 });
 
+describe("agentRepository email deliverability round-trip", () => {
+  it("defaults unknown, carries a verdict on upsert, and setEmailVerifyStatus updates it", async () => {
+    // A bare upsert leaves the column at its schema default (sendable).
+    const created = await agentRepository.upsertByEmail({
+      email: "test-verify@agency.example",
+      agencyName: "Verify Agency",
+    });
+    expect(created.emailVerifyStatus).toBe("unknown");
+    expect(created.emailVerifiedAt).toBeNull();
+
+    // The discovery path upserts WITH a verdict.
+    const when = new Date();
+    const flagged = await agentRepository.upsertByEmail({
+      email: "test-verify@agency.example",
+      agencyName: "Verify Agency",
+      emailVerifyStatus: "undeliverable",
+      emailVerifiedAt: when,
+    });
+    expect(flagged.emailVerifyStatus).toBe("undeliverable");
+    expect(flagged.emailVerifiedAt?.getTime()).toBe(when.getTime());
+
+    // The backfill path (setEmailVerifyStatus) updates it in place.
+    await agentRepository.setEmailVerifyStatus(
+      created.id,
+      "deliverable",
+      new Date(),
+    );
+    const reread = await agentRepository.findByEmail(
+      "test-verify@agency.example",
+    );
+    expect(reread?.emailVerifyStatus).toBe("deliverable");
+  });
+});
+
 describe("agentRepository.wasDomainContactedSince (per-domain cooldown)", () => {
   it("finds a recently-contacted sibling mailbox, excluding self, stale, and other domains", async () => {
     const now = new Date();

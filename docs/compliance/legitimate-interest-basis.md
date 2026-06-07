@@ -43,9 +43,11 @@ by the `ComplianceGuard` and the honoured opt-out:
 | Corporate-only (PECR reg. 22) | Gate 1 — `mailboxType === corporate_subscriber`; individual/unknown ⇒ never sent. |
 | Honoured objection / opt-out | Gate 2 — `Agent.optedOut`; set by one-click unsubscribe + inbound STOP. |
 | Global do-not-contact | Gate 3 — `SuppressionEntry` (unsubscribe / hard-bounce / complaint / manual). |
-| Reputation circuit breaker | Gate 4 — halts sends if bounce > 2% or complaint > 0.1% over the rolling window (min-sample guarded). |
-| Manual kill-switch | Gate 5 — operator can halt ALL sends instantly. |
-| Volume warm-up cap | Gate 6 — per-day token bucket, fail-closed. |
+| Deliverability verification | Gate 4 — discovery's SMTP probe (MX + RCPT TO, no message sent) flags a confirmed-dead mailbox `undeliverable`; never sent, so we do not repeatedly hard-bounce a dead address. |
+| One approach per agency | Gate 5 — per-domain cooldown: at most one cold approach per email domain per `DOMAIN_COOLDOWN_DAYS` (default 30), across every mailbox discovery surfaces for it. |
+| Reputation circuit breaker | Gate 6 — halts sends if bounce > 2% or complaint > 0.1% over the rolling window (min-sample guarded). |
+| Manual kill-switch | Gate 7 — operator can halt ALL sends instantly. |
+| Volume warm-up cap | Gate 8 — per-day token bucket, fail-closed. |
 | One-click unsubscribe | RFC 8058 `List-Unsubscribe` + `List-Unsubscribe-Post`, HMAC-token, idempotent — writes `SuppressionEntry(unsubscribe)` + opts the agent out + closes the thread. |
 | Right to object honoured immediately | A suppression / opt-out short-circuits every future send (gates 2 & 3), permanently. |
 

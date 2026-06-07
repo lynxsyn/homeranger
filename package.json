@@ -24,7 +24,8 @@
     "dev:scheduler": "pnpm --filter @homeranger/scheduler dev",
     "dev:web": "pnpm --filter @homeranger/web dev",
     "smoke:read": "tsx scripts/email-smoke-read.ts",
-    "smoke:inspect": "tsx scripts/email-smoke-inspect.ts"
+    "smoke:inspect": "tsx scripts/email-smoke-inspect.ts",
+    "verify:agents": "tsx scripts/verify-existing-agents.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

@@ -3,7 +3,7 @@
  * cap gradually as the sending domain ages, and reconciles `sentToday` from
  * DURABLE state (actual outbound count for the day) so transient token-bucket
  * consume drift self-heals daily rather than accumulating (DD2 / review fix).
- * The breaker rates are computed live by the ComplianceGuard per send (gate 4);
+ * The breaker rates are computed live by the ComplianceGuard per send (gate 6);
  * this job owns only the cap ramp + the window counter the M7 dashboard reads.
  *
  * Variant-A module singleton (all deps default to prod repositories).

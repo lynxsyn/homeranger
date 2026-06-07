@@ -2,7 +2,7 @@
  * WarmupState repository — owns ALL Prisma access for the single-row
  * warm-up/send-governance state (daily cap ramp + manual kill-switch). M2
  * authored the MODEL; M6 needs the repository because the ComplianceGuard reads
- * the kill-switch (gate 5) + the daily cap (gate 6) and the warmup:recalc job
+ * the kill-switch (gate 7) + the daily cap (gate 8) and the warmup:recalc job
  * ramps the cap + reconciles sentToday.
  *
  * Single-row: there is no unique constraint forcing one row, so getOrCreate
