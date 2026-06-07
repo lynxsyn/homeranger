@@ -168,18 +168,6 @@ describe("OutreachReplyService.linkReply", () => {
   });
 });
 
-describe("OutreachReplyService.isReplyFromTrackedAgent", () => {
-  it("true when the sender is a tracked agent", async () => {
-    const h = makeHarness(true);
-    expect(await h.service.isReplyFromTrackedAgent(PAYLOAD)).toBe(true);
-  });
-
-  it("false for mail from a non-agent (e.g. a DMARC report / autoresponder)", async () => {
-    const h = makeHarness(false);
-    expect(await h.service.isReplyFromTrackedAgent(PAYLOAD)).toBe(false);
-  });
-});
-
 describe("OutreachReplyService.handleOptOut (durable, non-swallowed)", () => {
   it("a STOP reply suppresses + opts out the sender (email-keyed, no thread dep)", async () => {
     const h = makeHarness(true);

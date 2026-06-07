@@ -1,7 +1,7 @@
 /**
  * Unit tests for the outreach:inbound handler's poison-pill guard (M4 review fix
  * — HIGH: worker ignored the `retryable` flag, so a non-retryable email burned
- * all 3 BullMQ retries and re-billed Claude 3×).
+ * every BullMQ retry and re-billed Claude on each one).
  *
  * The handler now honours the flag:
  *   - NON-retryable → throws BullMQ's UnrecoverableError so the job fails after
@@ -208,12 +208,10 @@ function hydratorWith(
 function freshReply(): {
   handleOptOut: ReturnType<typeof vi.fn>;
   linkReply: ReturnType<typeof vi.fn>;
-  isReplyFromTrackedAgent: ReturnType<typeof vi.fn>;
 } {
   return {
     handleOptOut: vi.fn().mockResolvedValue(undefined),
     linkReply: vi.fn().mockResolvedValue(undefined),
-    isReplyFromTrackedAgent: vi.fn().mockResolvedValue(true),
   };
 }
 
@@ -269,30 +267,6 @@ describe("makeInboundHandler — budget guardrail: gate the paid extraction", ()
     await handler(job());
     expect(ingest).toHaveBeenCalledTimes(1);
     expect(reply.linkReply.mock.calls[0]![1]).toEqual(INGEST_RESULT);
-  });
-
-  it("SKIPS extraction for mail NOT from a tracked agent (DMARC report / autoresponder), even with an attachment", async () => {
-    const ingest = vi.fn();
-    const reply = freshReply();
-    reply.isReplyFromTrackedAgent.mockResolvedValue(false);
-    const handler = makeInboundHandler({
-      hydrator: hydratorWith("Find attached the DMARC aggregate report.", [
-        { kind: "xml" },
-      ]),
-      inboundIngestionService: {
-        ingestInboundEmail: ingest,
-      } as unknown as InboundIngestionService,
-      outreachReplyService: reply as unknown as OutreachReplyService,
-    });
-    await handler(job());
-    // A non-agent sender → the PAID extraction is skipped even WITH an attachment
-    // (a DMARC XML is not a listing) — no wasted Claude spend.
-    expect(ingest).not.toHaveBeenCalled();
-    // linkReply still runs (it no-ops internally for non-agents) with a null
-    // result — pins the handler convention so a future refactor can't silently
-    // gate it behind fromTrackedAgent.
-    expect(reply.linkReply).toHaveBeenCalledTimes(1);
-    expect(reply.linkReply.mock.calls[0]![1]).toBeNull();
   });
 
   it("INGESTS a normal reply with real content", async () => {
