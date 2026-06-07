@@ -40,6 +40,13 @@ describe("classifyRcptReply", () => {
     ).toBe("unknown");
     expect(classifyRcptReply(554, "5.7.1 Access denied")).toBe("unknown");
     expect(classifyRcptReply(550, "5.7.606 Banned sending IP")).toBe("unknown");
+    // Ordering invariant: a 5.7.x policy code whose text ALSO looks like a
+    // mailbox reject ("recipient address rejected") MUST resolve via the policy
+    // branch (which runs first) → unknown, never undeliverable. This is the
+    // exact false-positive shape the whole fix exists to prevent.
+    expect(classifyRcptReply(550, "5.7.1 Recipient address rejected")).toBe(
+      "unknown",
+    );
   });
 
   it("treats temp/greylist (4xx), 552 mailbox-full, and ambiguous 5xx as unknown", () => {

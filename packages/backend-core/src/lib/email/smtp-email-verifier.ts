@@ -2,7 +2,7 @@
  * Real SMTP deliverability probe (network adapter — coverage-excluded in
  * vitest.config.ts, like the other socket/provider shells). It does an MX lookup
  * then a turn-based SMTP conversation up to RCPT TO, reading the reply code and
- * mapping it via the pure classifyRcptCode. It NEVER sends DATA — no email is
+ * mapping it via the pure classifyRcptReply. It NEVER sends DATA — no email is
  * delivered, this only asks the recipient's mail server whether the mailbox
  * exists. Every failure path (no MX, connect refused, timeout, protocol error)
  * resolves to "unknown" so a probe outage never blocks legitimate outreach.
