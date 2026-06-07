@@ -31,7 +31,7 @@ of personal addresses.
 
 ## Why a curated set of distinct domains
 
-Compliance **gate 4** (per-domain cooldown) treats one email *domain* as one
+Compliance **gate 5** (per-domain cooldown) treats one email *domain* as one
 agency and blocks all-but-one cold send per `DOMAIN_COOLDOWN_DAYS` (default 30).
 So five aliases on one provider give you **one** sendable agent, not five. Pick
 one mailbox **per distinct domain** (the seed warns if two collide). The order
@@ -46,7 +46,7 @@ you@your-domain-b.tld     # no_reply
 you@your-domain-c.tld     # spare
 ```
 
-> `+tag` sub-addressing does **not** dodge gate 4 — it keys on the domain.
+> `+tag` sub-addressing does **not** dodge gate 5 — it keys on the domain.
 
 ## 1. Configure the mailboxes (kept out of git)
 

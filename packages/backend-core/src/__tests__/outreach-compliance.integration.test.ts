@@ -7,7 +7,7 @@
  * gate 3 can never be split by casing.
  *
  * These gates (PECR → opt-out → suppression) all short-circuit BEFORE the
- * warm-up token bucket (gate 6), so this suite needs Postgres only — no Redis
+ * warm-up token bucket (gate 8), so this suite needs Postgres only — no Redis
  * (the api-integration CI job has no redis service). The allowed/cap path is
  * proven by the E2E suite, which does run Redis.
  *
@@ -33,7 +33,7 @@ const UNSUB_EMAIL = `test-${TEST_PREFIX}-unsub@agency.test`;
 const MIXED_CASE_EMAIL = `test-${TEST_PREFIX}-Mixed@Agency.Test`;
 
 // This suite proves gates 1-3 (PECR / opt-out / suppression) against the real
-// DB. Stub the per-domain gate (gate 4) so it never issues a live findFirst —
+// DB. Stub the per-domain gate (gate 5) so it never issues a live findFirst —
 // keeping the harness deterministic and scoped to the consent gates it asserts.
 const guard = new DefaultComplianceGuard({
   agentRepository: {
@@ -47,6 +47,7 @@ function corporate(email: string): AgentForGuard {
     email,
     mailboxType: "corporate_subscriber",
     optedOut: false,
+    emailVerifyStatus: "deliverable",
   };
 }
 

@@ -1,6 +1,6 @@
 /**
  * Fixed-window token bucket on Redis — the warm-up daily-cap arm of the M6
- * ComplianceGuard (gate 6). A single atomic Lua script enforces the cap so two
+ * ComplianceGuard (gate 8). A single atomic Lua script enforces the cap so two
  * concurrent sends can never both slip past a cap of N.
  *
  * FAIL-CLOSED (load-bearing compliance property): if Redis is unreachable the

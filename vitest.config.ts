@@ -112,6 +112,11 @@ export default defineConfig({
         // deterministic fake (email-provider.ts) are unit-covered; the real
         // adapters are E2E/prod-proven (same rationale as r2.ts / the hydrator).
         "packages/backend-core/src/lib/email/mailbox-adapter.ts",
+        // Email deliverability SMTP probe — node:net/dns socket conversation
+        // (outbound :25). The pure reply→verdict map (classifyRcptCode) + the
+        // env-gated fake (email-verifier.ts) are unit-covered; this is the
+        // network shell over them (same rationale as mailbox-adapter.ts).
+        "packages/backend-core/src/lib/email/smtp-email-verifier.ts",
         // M6 scheduler — side-effecting bootstrap (Redis + leader-lock loop +
         // health server). Proven by the leader-lock unit test + live. Same
         // rationale as apps/processor/src/worker.ts + apps/api/src/main.ts.
@@ -189,6 +194,10 @@ export default defineConfig({
             "packages/backend-core/src/__tests__/**",
           ],
           environment: "node",
+          // The discovery service verifies email deliverability; the fake seam
+          // keeps unit tests off the network (no outbound :25). Tests asserting
+          // verification still inject a FakeEmailVerifier for specific verdicts.
+          env: { EMAIL_VERIFY_FAKE: "1" },
         },
       },
       {
@@ -204,6 +213,7 @@ export default defineConfig({
           environment: "node",
           testTimeout: 30_000,
           hookTimeout: 30_000,
+          env: { EMAIL_VERIFY_FAKE: "1" },
           globalSetup: ["packages/backend-core/src/test/setup-integration.ts"],
           // Single worker, no isolation: shared pgvector connection, deterministic
           // ordering for cleanup between specs (mirrors Doxus integration project).

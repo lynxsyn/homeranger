@@ -3,7 +3,7 @@
  * agents we discover and contact). Single-user: no tenant scoping. Mirrors the
  * Doxus optional-tx + cursor-pagination + explicit-select conventions.
  */
-import { Prisma, type MailboxType } from "@prisma/client";
+import { Prisma, type MailboxType, type EmailVerifyStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import {
   clampLimit,
@@ -23,6 +23,8 @@ const AGENT_SELECT = Prisma.validator<Prisma.AgentSelect>()({
   optedOut: true,
   coveredOutcodes: true,
   lastContactedAt: true,
+  emailVerifyStatus: true,
+  emailVerifiedAt: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -38,6 +40,9 @@ export interface UpsertAgentByEmailInput {
   website?: string | null;
   mailboxType?: MailboxType;
   coveredOutcodes?: string[];
+  /** Deliverability verdict + when it was probed (both set together at discovery). */
+  emailVerifyStatus?: EmailVerifyStatus;
+  emailVerifiedAt?: Date | null;
 }
 
 export interface ListAgentsInput {
@@ -81,6 +86,12 @@ export class AgentRepository {
         ...(input.website !== undefined ? { website: input.website } : {}),
         ...(input.mailboxType ? { mailboxType: input.mailboxType } : {}),
         coveredOutcodes: input.coveredOutcodes ?? [],
+        ...(input.emailVerifyStatus
+          ? { emailVerifyStatus: input.emailVerifyStatus }
+          : {}),
+        ...(input.emailVerifiedAt !== undefined
+          ? { emailVerifiedAt: input.emailVerifiedAt }
+          : {}),
       },
       update: {
         ...(input.agencyName !== undefined
@@ -90,6 +101,12 @@ export class AgentRepository {
         ...(input.mailboxType ? { mailboxType: input.mailboxType } : {}),
         ...(input.coveredOutcodes
           ? { coveredOutcodes: input.coveredOutcodes }
+          : {}),
+        ...(input.emailVerifyStatus
+          ? { emailVerifyStatus: input.emailVerifyStatus }
+          : {}),
+        ...(input.emailVerifiedAt !== undefined
+          ? { emailVerifiedAt: input.emailVerifiedAt }
           : {}),
       },
       select: AGENT_SELECT,
@@ -233,6 +250,31 @@ export class AgentRepository {
       data: { lastContactedAt: contactedAt },
       select: { id: true },
     });
+  }
+
+  /** Record an email deliverability verdict + when it was probed. */
+  async setEmailVerifyStatus(
+    id: string,
+    status: EmailVerifyStatus,
+    verifiedAt: Date,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db: PrismaLike = tx ?? prisma;
+    await db.agent.update({
+      where: { id },
+      data: { emailVerifyStatus: status, emailVerifiedAt: verifiedAt },
+      select: { id: true },
+    });
+  }
+
+  /**
+   * Every agent's id + email, for the one-off deliverability backfill that
+   * verifies the pre-existing pool (discovered before email verification
+   * existed). A tiny projection, unbounded by design (like findIdsByOutcodes) so
+   * it never silently clamps the backfill set at the page cap.
+   */
+  async findAllForVerification(): Promise<Array<{ id: string; email: string }>> {
+    return prisma.agent.findMany({ select: { id: true, email: true } });
   }
 
   /**

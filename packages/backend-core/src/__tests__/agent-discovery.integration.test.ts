@@ -100,6 +100,11 @@ describe.skipIf(process.env.VITEST_INTEGRATION !== "1")(
       // No scraped websiteUrl was supplied → the website is derived from the
       // email domain so the operator can click through to verify the agency.
       expect(corp?.website).toBe("https://conwyagents.test");
+      // The deliverability probe ran at discovery and round-tripped to the DB:
+      // the fake verifier (EMAIL_VERIFY_FAKE) returns `deliverable` for an
+      // ordinary local-part, and the verified-at timestamp is stamped.
+      expect(corp?.emailVerifyStatus).toBe("deliverable");
+      expect(corp?.emailVerifiedAt).not.toBeNull();
 
       const free = await db.agent.findUnique({ where: { email: FREE_EMAIL } });
       expect(free).toBeNull(); // free-mail dropped — never persisted

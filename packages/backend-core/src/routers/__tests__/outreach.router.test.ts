@@ -33,6 +33,8 @@ function agent(): AgentRecord {
     optedOut: false,
     coveredOutcodes: [],
     lastContactedAt: null,
+    emailVerifyStatus: "deliverable",
+    emailVerifiedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   } as AgentRecord;

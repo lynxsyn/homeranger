@@ -470,6 +470,7 @@ export const searchesRouter = router({
           email: agent.email,
           mailboxType: agent.mailboxType,
           optedOut: agent.optedOut,
+          emailVerifyStatus: agent.emailVerifyStatus,
         };
         try {
           await searchComplianceGuard.assertCanSend(guardAgent, {

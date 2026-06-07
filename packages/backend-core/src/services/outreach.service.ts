@@ -247,6 +247,7 @@ export class DefaultOutreachService implements OutreachService {
       email: agent.email,
       mailboxType: agent.mailboxType,
       optedOut: agent.optedOut,
+      emailVerifyStatus: agent.emailVerifyStatus,
     };
   }
 

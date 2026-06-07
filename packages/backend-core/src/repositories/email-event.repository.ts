@@ -96,7 +96,7 @@ export class EmailEventRepository {
 
   /**
    * Count events of one type since a cutoff — the NUMERATOR for the M6
-   * circuit-breaker (gate 4). Uses the `[eventType, occurredAt DESC]` index.
+   * circuit-breaker (gate 6). Uses the `[eventType, occurredAt DESC]` index.
    * The DENOMINATOR (attempted sends in the window) comes from
    * OutreachRepository.countOutboundSince, NOT from here.
    */

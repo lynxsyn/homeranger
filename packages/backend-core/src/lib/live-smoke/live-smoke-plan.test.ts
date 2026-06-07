@@ -115,7 +115,7 @@ describe("buildLiveSmokePlan", () => {
     }
   });
 
-  it("warns when two addresses share a domain (gate 4 cooldown collision)", () => {
+  it("warns when two addresses share a domain (gate 5 cooldown collision)", () => {
     const plan = buildLiveSmokePlan({
       LIVE_SMOKE_AGENT_EMAILS: "one@shared.example,two@shared.example",
     });

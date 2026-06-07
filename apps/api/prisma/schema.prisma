@@ -127,6 +127,18 @@ enum MailboxType {
   unknown
 }
 
+// Deliverability verdict for an agent's email, set by discovery's SMTP probe
+// (MX + RCPT, no message sent). `undeliverable` = a confident hard reject (550)
+// → the ComplianceGuard blocks the send so we never bounce it. `unknown` =
+// catch-all domain / temp failure / probe blocked → still sendable (we only
+// block CONFIRMED-dead addresses, to avoid excluding legitimate catch-all
+// agencies). `unknown` is also the pre-verification default.
+enum EmailVerifyStatus {
+  unknown
+  deliverable
+  undeliverable
+}
+
 // Suppression reasons — never email an address carrying any of these.
 enum SuppressionReason {
   unsubscribe
@@ -308,6 +320,10 @@ model Agent {
   optedOut        Boolean     @default(false)
   coveredOutcodes String[]    @default([])
   lastContactedAt DateTime?   @db.Timestamptz(6)
+  // Email deliverability — set by discovery's SMTP probe. `undeliverable` is
+  // blocked at the ComplianceGuard so a known-dead address is never re-sent.
+  emailVerifyStatus EmailVerifyStatus @default(unknown)
+  emailVerifiedAt   DateTime?         @db.Timestamptz(6)
   createdAt       DateTime    @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime    @updatedAt @db.Timestamptz(6)
 
@@ -396,7 +412,7 @@ model EmailEvent {
 // Single-row email warm-up + send-governance state — ramps the per-day send
 // cap so a new sending domain builds reputation gradually rather than blasting
 // from day one, and carries the manual kill-switch (M6 AC#6). `killSwitch=true`
-// halts ALL outbound sends immediately (ComplianceGuard gate 5), independent of
+// halts ALL outbound sends immediately (ComplianceGuard gate 7), independent of
 // the cap; surfaced + toggled by the M7 dashboard.
 model WarmupState {
   id            String   @id @default(uuid(7)) @db.Uuid

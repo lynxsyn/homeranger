@@ -142,6 +142,10 @@ export default defineConfig({
         // E2E can prove the launch loop — discover:agents → reviewed drafts →
         // approve → guarded send — end-to-end against real infra.
         DISCOVERY_FAKE: "1",
+        // Deterministic, network-free email deliverability (no outbound :25 SMTP
+        // probe). Discovery verifies each sourced address; the fake returns a
+        // stable verdict so the launch-loop E2E stays offline + fast.
+        EMAIL_VERIFY_FAKE: "1",
         NODE_ENV: "development",
       },
     },

@@ -30,6 +30,7 @@ function corporateAgent(overrides: Partial<AgentForGuard> = {}): AgentForGuard {
     email: "branch@agency.test",
     mailboxType: "corporate_subscriber",
     optedOut: false,
+    emailVerifyStatus: "deliverable",
     ...overrides,
   };
 }
@@ -150,7 +151,28 @@ describe("ComplianceGuard.assertCanSend — gates", () => {
     ).rejects.toMatchObject({ code: "SUPPRESSED", retryable: false });
   });
 
-  it("gate 4: blocks when another mailbox at the same agency domain was contacted recently", async () => {
+  it("gate 4: blocks a confirmed-undeliverable email (FORBIDDEN, non-retryable)", async () => {
+    const h = makeHarness();
+    await expect(
+      h.guard.assertCanSend(
+        corporateAgent({ emailVerifyStatus: "undeliverable" }),
+      ),
+    ).rejects.toMatchObject({
+      code: "EMAIL_UNDELIVERABLE",
+      trpcCode: "FORBIDDEN",
+      retryable: false,
+    });
+  });
+
+  it("gate 4: 'unknown' (catch-all / unprobed) is NOT blocked", async () => {
+    // We only ever block a CONFIRMED-dead address; unknown stays sendable.
+    const h = makeHarness();
+    await expect(
+      h.guard.assertCanSend(corporateAgent({ emailVerifyStatus: "unknown" })),
+    ).resolves.toBeUndefined();
+  });
+
+  it("gate 5: blocks when another mailbox at the same agency domain was contacted recently", async () => {
     const h = makeHarness({ domainContacted: true });
     await expect(
       h.guard.assertCanSend(
@@ -163,7 +185,7 @@ describe("ComplianceGuard.assertCanSend — gates", () => {
     });
   });
 
-  it("gate 4: queries the agent's domain, excludes the agent itself, within the cooldown window", async () => {
+  it("gate 5: queries the agent's domain, excludes the agent itself, within the cooldown window", async () => {
     const h = makeHarness();
     await h.guard.assertCanSend(
       corporateAgent({ id: "agent-9", email: "conwy@fletcherpoole.com" }),
@@ -176,49 +198,49 @@ describe("ComplianceGuard.assertCanSend — gates", () => {
     expect((since as Date).toISOString()).toBe("2026-05-03T12:00:00.000Z");
   });
 
-  it("gate 4: a clear agency domain passes (no other recent contact)", async () => {
+  it("gate 5: a clear agency domain passes (no other recent contact)", async () => {
     const h = makeHarness({ domainContacted: false });
     await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();
   });
 
-  it("gate 5: trips the breaker when bounce rate > 2% (>= min sample)", async () => {
+  it("gate 6: trips the breaker when bounce rate > 2% (>= min sample)", async () => {
     const h = makeHarness({ sends: 60, eventCounts: { bounced: 2 } }); // 3.3%
     await expect(
       h.guard.assertCanSend(corporateAgent()),
     ).rejects.toMatchObject({ code: "CIRCUIT_OPEN", trpcCode: "FORBIDDEN" });
   });
 
-  it("gate 5: trips the breaker when complaint rate > 0.1% (>= min sample)", async () => {
+  it("gate 6: trips the breaker when complaint rate > 0.1% (>= min sample)", async () => {
     const h = makeHarness({ sends: 60, eventCounts: { complained: 1 } }); // 1.67%
     await expect(
       h.guard.assertCanSend(corporateAgent()),
     ).rejects.toMatchObject({ code: "CIRCUIT_OPEN" });
   });
 
-  it("gate 5: recovers — bounce rate below 2% does NOT trip", async () => {
+  it("gate 6: recovers — bounce rate below 2% does NOT trip", async () => {
     const h = makeHarness({ sends: 60, eventCounts: { bounced: 1 } }); // 1.67%
     await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();
   });
 
-  it("gate 5: recovers — complaint rate below 0.1% does NOT trip", async () => {
+  it("gate 6: recovers — complaint rate below 0.1% does NOT trip", async () => {
     // 60 sends, 0 complaints (and 0 bounces) → both rates 0 → breaker closed.
     const h = makeHarness({ sends: 60, eventCounts: { complained: 0 } });
     await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();
   });
 
-  it("gate 5: does NOT trip on a tiny sample (below min-sample), even at 50% bounce", async () => {
+  it("gate 6: does NOT trip on a tiny sample (below min-sample), even at 50% bounce", async () => {
     const h = makeHarness({ sends: 2, eventCounts: { bounced: 1 } }); // 50% but n=2
     await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();
   });
 
-  it("gate 6: blocks when the manual kill-switch is set", async () => {
+  it("gate 7: blocks when the manual kill-switch is set", async () => {
     const h = makeHarness({ killSwitch: true });
     await expect(
       h.guard.assertCanSend(corporateAgent()),
     ).rejects.toMatchObject({ code: "KILL_SWITCH", trpcCode: "FORBIDDEN" });
   });
 
-  it("gate 7: warm-up cap exhausted → deferred with retryAfterSeconds (TOO_MANY_REQUESTS, retryable)", async () => {
+  it("gate 8: warm-up cap exhausted → deferred with retryAfterSeconds (TOO_MANY_REQUESTS, retryable)", async () => {
     const h = makeHarness({
       token: {
         allowed: false,
@@ -237,7 +259,7 @@ describe("ComplianceGuard.assertCanSend — gates", () => {
     });
   });
 
-  it("gate 7: Redis unavailable (fail-closed) → distinct RATE_LIMIT_UNAVAILABLE, retryable", async () => {
+  it("gate 8: Redis unavailable (fail-closed) → distinct RATE_LIMIT_UNAVAILABLE, retryable", async () => {
     const h = makeHarness({
       token: {
         allowed: false,

@@ -17,7 +17,7 @@
  *      eligible agents are pre-checked; Approve & send → an OUTBOUND
  *      OutreachMessage is persisted for an agent in the patch.
  *   2. Kill-switch — flip the global kill-switch ON first → Launch → review marks
- *      EVERY agent ineligible (gate 5), so "Approve & send" is disabled and NO
+ *      EVERY agent ineligible (gate 7), so "Approve & send" is disabled and NO
  *      OutreachMessage can be written. afterEach restores the switch OFF.
  *
  * Auth: dev-bypass (CF_ACCESS_* unset). The search is created via tRPC-over-HTTP
@@ -250,7 +250,7 @@ test("kill-switch halts the launch loop: every agent is ineligible and Approve i
     .poll(() => countAgentsForOutcode(OUTCODE), { timeout: 25_000 })
     .toBeGreaterThan(0);
 
-  // The agents render — but the kill-switch (gate 5) marks EVERY one ineligible,
+  // The agents render — but the kill-switch (gate 7) marks EVERY one ineligible,
   // so there are no eligible rows and Approve & send stays disabled. No send can
   // leave: the operator is blocked at the review gate.
   await expect

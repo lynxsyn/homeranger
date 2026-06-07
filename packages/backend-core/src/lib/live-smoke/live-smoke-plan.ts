@@ -13,7 +13,7 @@
  *   - coveredOutcodes = the search's synthetic outcode: searches.reviewDrafts
  *     lists agents BY OUTCODE, so the seeded inboxes show up in the search's
  *     review/approve flow with no Firecrawl discovery (dormant in prod) needed.
- *   - distinct domains: gate 4 (per-domain cooldown) treats one email domain as
+ *   - distinct domains: gate 5 (per-domain cooldown) treats one email domain as
  *     one agency and blocks all-but-one cold send per window — the planner warns
  *     when two inboxes collide so you pick distinct domains.
  *
@@ -175,7 +175,7 @@ export function buildLiveSmokePlan(env: LiveSmokeEnv): LiveSmokePlan {
     };
   });
 
-  // Gate 4 (per-domain cooldown) collapses one email domain to one "agency": a
+  // Gate 5 (per-domain cooldown) collapses one email domain to one "agency": a
   // second cold send to the same domain inside DOMAIN_COOLDOWN_DAYS is blocked.
   // Warn so the operator picks distinct domains (or sets DOMAIN_COOLDOWN_DAYS=0).
   const byDomain = new Map<string, string[]>();
@@ -192,7 +192,7 @@ export function buildLiveSmokePlan(env: LiveSmokeEnv): LiveSmokePlan {
       warnings.push(
         `${members.length} addresses share domain ${domain} (${members.join(
           ", ",
-        )}); the per-domain cooldown (compliance gate 4) blocks all but one cold send per DOMAIN_COOLDOWN_DAYS. Use distinct domains or set DOMAIN_COOLDOWN_DAYS=0 for the test.`,
+        )}); the per-domain cooldown (compliance gate 5) blocks all but one cold send per DOMAIN_COOLDOWN_DAYS. Use distinct domains or set DOMAIN_COOLDOWN_DAYS=0 for the test.`,
       );
     }
   }

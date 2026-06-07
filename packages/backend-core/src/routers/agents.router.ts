@@ -23,7 +23,11 @@
  * `outreachRepository` / `listingRepository` singletons (ESM live bindings), so
  * a unit test injects fakes via each repo's own `_setXRepositoryForTesting` seam.
  */
-import { Prisma, type OutreachThreadStatus } from "@prisma/client";
+import {
+  Prisma,
+  type OutreachThreadStatus,
+  type EmailVerifyStatus,
+} from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import {
   agentByIdInputSchema,
@@ -72,6 +76,12 @@ export interface AgentRow {
   /** Listings whose `agentEmail` === this agent's email. */
   homesCount: number;
   lastContactedAt: Date | null;
+  /**
+   * Email deliverability (discovery's SMTP probe). `undeliverable` rows are
+   * blocked at the ComplianceGuard and badged in the table so the operator can
+   * supply a better address; `unknown`/`deliverable` are sendable.
+   */
+  emailVerifyStatus: EmailVerifyStatus;
 }
 
 /** Aggregate metrics over the rows in scope (the four metric tiles). */
@@ -165,6 +175,7 @@ async function buildAgentRows(outcodes?: string[]): Promise<AgentRow[]> {
     status: deriveAgentStatus(agent.optedOut, statusByAgentId.get(agent.id)),
     homesCount: homesByEmail.get(agent.email) ?? 0,
     lastContactedAt: agent.lastContactedAt,
+    emailVerifyStatus: agent.emailVerifyStatus,
   }));
 }
 
