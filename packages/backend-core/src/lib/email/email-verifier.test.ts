@@ -130,7 +130,7 @@ describe("mapZeroBounceResult", () => {
     expect(mapZeroBounceResult("do_not_mail", "global_suppression")).toBe(
       "undeliverable",
     );
-    expect(mapZeroBounceResult("do_not_mail", "possible_traps")).toBe(
+    expect(mapZeroBounceResult("do_not_mail", "possible_trap")).toBe(
       "undeliverable",
     );
   });
@@ -140,6 +140,9 @@ describe("mapZeroBounceResult", () => {
     expect(mapZeroBounceResult("unknown", "")).toBe("unknown");
     expect(mapZeroBounceResult("abuse", "")).toBe("unknown");
     expect(mapZeroBounceResult("error", "")).toBe("unknown");
+    // mx_forward = the domain relays mail elsewhere (a routing config), NOT a
+    // dead mailbox — must stay sendable, same as role_based.
+    expect(mapZeroBounceResult("do_not_mail", "mx_forward")).toBe("unknown");
   });
 });
 

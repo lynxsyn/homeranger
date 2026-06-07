@@ -148,7 +148,8 @@ export function mapNeverBounceResult(result: string): EmailDeliverability {
  *   valid                                    ⇒ deliverable
  *   invalid | spamtrap                       ⇒ undeliverable (dead / reputation harm)
  *   do_not_mail + toxic-substatus            ⇒ undeliverable
- *   do_not_mail + role_based / anything else ⇒ unknown (a role inbox we WANT)
+ *   do_not_mail + role_based / mx_forward / other ⇒ unknown (a role inbox we WANT,
+ *       or a mail-relay routing config — neither is a dead mailbox)
  *   catch-all | unknown | abuse | other      ⇒ unknown (sendable; never block on a maybe)
  * Conservative: only CONFIDENT dead/toxic blocks; real bounce + complaint
  * suppression stay the backstop.
