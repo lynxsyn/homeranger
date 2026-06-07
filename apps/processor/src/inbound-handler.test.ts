@@ -288,6 +288,11 @@ describe("makeInboundHandler — budget guardrail: gate the paid extraction", ()
     // A non-agent sender → the PAID extraction is skipped even WITH an attachment
     // (a DMARC XML is not a listing) — no wasted Claude spend.
     expect(ingest).not.toHaveBeenCalled();
+    // linkReply still runs (it no-ops internally for non-agents) with a null
+    // result — pins the handler convention so a future refactor can't silently
+    // gate it behind fromTrackedAgent.
+    expect(reply.linkReply).toHaveBeenCalledTimes(1);
+    expect(reply.linkReply.mock.calls[0]![1]).toBeNull();
   });
 
   it("INGESTS a normal reply with real content", async () => {

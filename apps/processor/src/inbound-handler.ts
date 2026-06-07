@@ -115,8 +115,9 @@ export function makeInboundHandler(deps: InboundHandlerDeps) {
       // M6 AC#4 — link the reply to its OutreachThread (best-effort: a link blip
       // must NOT trigger a retry that re-bills Claude). Runs even when extraction
       // was skipped so an opt-out/empty reply is still recorded + the thread
-      // closed/advanced; a null result means no listing was parsed. Skipped when
-      // the sender isn't a tracked agent.
+      // closed/advanced; a null result means no listing was parsed. For a
+      // non-tracked sender linkReply is a no-op (it re-checks the sender identity
+      // internally), so no thread state is forged.
       if (deps.outreachReplyService) {
         try {
           await deps.outreachReplyService.linkReply(hydrated, result);
