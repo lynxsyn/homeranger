@@ -81,7 +81,17 @@ export function makeInboundHandler(deps: InboundHandlerDeps) {
         (isUnsubscribeIntent(hydrated.bodyText) ||
           extractReplyText(hydrated.bodyText) === "");
       const killSwitch = extractionKillSwitchOn();
-      const skipExtraction = killSwitch || nothingToExtract;
+      // Skip the PAID extraction for mail NOT from a tracked agent — DMARC
+      // aggregate reports, autoresponders, and other catch-all noise would
+      // otherwise bill Claude on their attachments (and linkReply no-ops for
+      // them anyway). Defaults to true when no reply service is wired (so we
+      // never over-skip a real reply on that basis).
+      const fromTrackedAgent =
+        (await deps.outreachReplyService?.isReplyFromTrackedAgent?.(
+          hydrated,
+        )) ?? true;
+      const skipExtraction =
+        killSwitch || nothingToExtract || !fromTrackedAgent;
 
       let result: IngestInboundEmailResult | null = null;
       if (skipExtraction) {
@@ -89,7 +99,11 @@ export function makeInboundHandler(deps: InboundHandlerDeps) {
           JSON.stringify({
             type: "info",
             scope: "inbound.extraction_skipped",
-            reason: killSwitch ? "kill_switch" : "nothing_to_extract",
+            reason: killSwitch
+              ? "kill_switch"
+              : !fromTrackedAgent
+                ? "not_tracked_agent"
+                : "nothing_to_extract",
             emailId: job.data.email_id,
           }),
         );

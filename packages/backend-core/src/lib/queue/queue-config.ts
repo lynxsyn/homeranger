@@ -217,8 +217,13 @@ export interface RetryPolicy {
  */
 export const RETRY_POLICIES: Record<QueueName, RetryPolicy> = {
   [QUEUE_NAMES.inbound]: {
-    attempts: 3,
-    backoff: { type: "exponential", delay: 5000 },
+    // 5 attempts (was 3) + longer backoff: a transient blip on the hydrate fetch
+    // to Resend must not drop a real agent reply — Resend ACKs the webhook on
+    // enqueue and never redelivers, so an exhausted inbound job loses the reply
+    // permanently. Hydrate runs BEFORE the paid extraction, so the extra retries
+    // re-fetch cheaply (no repeat Claude spend).
+    attempts: 5,
+    backoff: { type: "exponential", delay: 10_000 },
   },
   [QUEUE_NAMES.event]: { attempts: 5, backoff: { type: "fixed", delay: 2000 } },
   [QUEUE_NAMES.analyze]: {

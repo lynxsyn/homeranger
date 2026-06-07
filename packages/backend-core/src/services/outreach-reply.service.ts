@@ -76,6 +76,14 @@ export interface OutreachReplyService {
     payload: InboundEmailPayload,
     result: IngestInboundEmailResult | null,
   ): Promise<void>;
+  /**
+   * True when the reply's sender is a tracked agent. Lets the inbound handler
+   * skip the PAID Claude extraction for mail that is NOT from an agent (DMARC
+   * aggregate reports, autoresponders, etc. arriving on the catch-all) — which
+   * would otherwise bill the extractor on attachments we do not care about
+   * (linkReply already no-ops for non-agents).
+   */
+  isReplyFromTrackedAgent(payload: InboundEmailPayload): Promise<boolean>;
 }
 
 export interface OutreachReplyDependencies {
@@ -126,6 +134,14 @@ export class DefaultOutreachReplyService implements OutreachReplyService {
     // No PII in the log — the opt-out is keyed by email but never logged.
     console.info(
       JSON.stringify({ type: "info", scope: "outreach.reply.unsubscribed" }),
+    );
+  }
+
+  async isReplyFromTrackedAgent(
+    payload: InboundEmailPayload,
+  ): Promise<boolean> {
+    return (
+      (await this.agentRepository.findByEmail(payload.senderEmail)) !== null
     );
   }
 

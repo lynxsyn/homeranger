@@ -316,12 +316,6 @@ export class DefaultOutreachService implements OutreachService {
   ): Promise<SendOutreachResult> {
     const now = this.now();
     const emailConfig = this.resolveEmailConfig();
-    const resolvedThread =
-      thread ??
-      (await this.outreachRepository.findOrCreateOpenThreadByAgent({
-        agentId: agent.id,
-        subject: "Buyer enquiry: pre-market and upcoming listings",
-      }));
 
     const token = this.signToken(agent.email);
     const unsubscribeUrl = `${this.config.unsubscribeBaseUrl}?email=${encodeURIComponent(
@@ -354,6 +348,17 @@ export class DefaultOutreachService implements OutreachService {
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
       },
     });
+
+    // Create the thread only AFTER a confirmed send — a FAILED send must NOT
+    // leave an orphaned `active` thread (it would show forever as "queued" and
+    // never retry). findOrCreateOpenThreadByAgent reuses a thread that a prior
+    // (retried) attempt may already have created, so this stays retry-safe.
+    const resolvedThread =
+      thread ??
+      (await this.outreachRepository.findOrCreateOpenThreadByAgent({
+        agentId: agent.id,
+        subject: "Buyer enquiry: pre-market and upcoming listings",
+      }));
 
     const message = await this.outreachRepository.createOutboundMessage({
       threadId: resolvedThread.id,

@@ -208,10 +208,12 @@ function hydratorWith(
 function freshReply(): {
   handleOptOut: ReturnType<typeof vi.fn>;
   linkReply: ReturnType<typeof vi.fn>;
+  isReplyFromTrackedAgent: ReturnType<typeof vi.fn>;
 } {
   return {
     handleOptOut: vi.fn().mockResolvedValue(undefined),
     linkReply: vi.fn().mockResolvedValue(undefined),
+    isReplyFromTrackedAgent: vi.fn().mockResolvedValue(true),
   };
 }
 
@@ -267,6 +269,25 @@ describe("makeInboundHandler — budget guardrail: gate the paid extraction", ()
     await handler(job());
     expect(ingest).toHaveBeenCalledTimes(1);
     expect(reply.linkReply.mock.calls[0]![1]).toEqual(INGEST_RESULT);
+  });
+
+  it("SKIPS extraction for mail NOT from a tracked agent (DMARC report / autoresponder), even with an attachment", async () => {
+    const ingest = vi.fn();
+    const reply = freshReply();
+    reply.isReplyFromTrackedAgent.mockResolvedValue(false);
+    const handler = makeInboundHandler({
+      hydrator: hydratorWith("Find attached the DMARC aggregate report.", [
+        { kind: "xml" },
+      ]),
+      inboundIngestionService: {
+        ingestInboundEmail: ingest,
+      } as unknown as InboundIngestionService,
+      outreachReplyService: reply as unknown as OutreachReplyService,
+    });
+    await handler(job());
+    // A non-agent sender → the PAID extraction is skipped even WITH an attachment
+    // (a DMARC XML is not a listing) — no wasted Claude spend.
+    expect(ingest).not.toHaveBeenCalled();
   });
 
   it("INGESTS a normal reply with real content", async () => {
