@@ -6,9 +6,9 @@
  * Poison-pill guard (M4 review fix): the InboundIngestionService + the Claude
  * extraction provider throw typed errors carrying a `retryable` flag (false for
  * malformed JSON / 4xx / programming errors; true for 429/5xx/transient
- * R2/Resend). BullMQ retries EVERY thrown error up to `attempts:3` with backoff
- * — so a deterministically-failing email would burn all 3 retries AND re-bill
- * Claude 3×. We honour the flag here:
+ * R2/Resend). BullMQ retries EVERY thrown error up to the queue's configured
+ * `attempts` with backoff — so a deterministically-failing email would burn
+ * every retry AND re-bill Claude on each one. We honour the flag here:
  *   - NON-retryable → throw `UnrecoverableError` so BullMQ moves the job
  *     straight to `failed` WITHOUT consuming the remaining attempts and without
  *     re-hitting Claude; log it + increment `homeranger_inbound_dropped_total`.

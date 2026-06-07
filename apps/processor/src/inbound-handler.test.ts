@@ -1,7 +1,7 @@
 /**
  * Unit tests for the outreach:inbound handler's poison-pill guard (M4 review fix
  * — HIGH: worker ignored the `retryable` flag, so a non-retryable email burned
- * all 3 BullMQ retries and re-billed Claude 3×).
+ * every BullMQ retry and re-billed Claude on each one).
  *
  * The handler now honours the flag:
  *   - NON-retryable → throws BullMQ's UnrecoverableError so the job fails after

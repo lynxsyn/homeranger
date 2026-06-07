@@ -134,6 +134,18 @@ describe("OutreachService.sendOutreach", () => {
     expect(h.createOutboundMessage).not.toHaveBeenCalled();
   });
 
+  it("ORPHAN-SAFE: a FAILED send creates NO thread (no orphaned 'active' row that shows forever as queued)", async () => {
+    const h = makeHarness();
+    h.send.mockRejectedValueOnce(new Error("rate_limit_exceeded"));
+    await expect(
+      h.service.sendOutreach({ agentId: "agent-1" }),
+    ).rejects.toThrow();
+    // Thread is created only AFTER a confirmed send, so a send failure leaves no
+    // orphan thread (the old bug: thread created first → stuck 'active'/'queued').
+    expect(h.findOrCreateOpenThreadByAgent).not.toHaveBeenCalled();
+    expect(h.createOutboundMessage).not.toHaveBeenCalled();
+  });
+
   it("ALLOWED: drafts, sends with an Idempotency-Key + one-click headers, and persists an outbound message", async () => {
     const h = makeHarness();
     const result = await h.service.sendOutreach({ agentId: "agent-1" });
