@@ -38,6 +38,23 @@ export const inboundDroppedTotal: Counter<string> =
   });
 
 /**
+ * Count of inbound emails IGNORED by the recipient gate — addressed only to an
+ * infra/role local-part (dmarc@/postmaster@/mailer-daemon@/...), so not a real
+ * agent reply or listing-bearing email. Dropped BEFORE hydrate + Claude extract
+ * (it completes cleanly, not a poison-pill failure), so this counter is the only
+ * signal it happened — scraped via the processor /metrics.
+ */
+export const inboundIgnoredTotal: Counter<string> =
+  (queueMetricsRegistry.getSingleMetric("homeranger_inbound_ignored_total") as
+    | Counter<string>
+    | undefined) ??
+  new Counter({
+    name: "homeranger_inbound_ignored_total",
+    help: "Inbound emails ignored by the recipient gate (infra-only recipient)",
+    registers: [queueMetricsRegistry],
+  });
+
+/**
  * Count of jobs that exhausted their retries (terminal failure) per queue. A
  * full DLQ is out of M4 scope (M-future: a dead-letter queue + alerting belongs
  * with the M6 circuit breaker); a clear terminal-failure log+metric is the M4

@@ -125,7 +125,11 @@ export interface ComplianceGuardConfig {
   bounceRate: number;
   /** Trip complaint gate above this fraction (default 0.001 = 0.1%). */
   complaintRate: number;
-  /** Don't evaluate the bounce gate below this many sends in the window. */
+  /**
+   * Don't evaluate the bounce gate below this many sends in the window. Kept low
+   * (default 10) so a bad discovery batch trips the breaker at warm-up volume —
+   * the 40-send Conwy batch hard-bounced 25% but never reached the old 50 floor.
+   */
   bounceMinSample: number;
   /** Don't evaluate the complaint gate below this many sends in the window. */
   complaintMinSample: number;
@@ -151,7 +155,7 @@ export function getComplianceGuardConfig(): ComplianceGuardConfig {
   return {
     bounceRate: numEnv("BREAKER_BOUNCE_RATE", 0.02),
     complaintRate: numEnv("BREAKER_COMPLAINT_RATE", 0.001),
-    bounceMinSample: intEnv("BREAKER_BOUNCE_MIN_SAMPLE", 50),
+    bounceMinSample: intEnv("BREAKER_BOUNCE_MIN_SAMPLE", 10),
     complaintMinSample: intEnv("BREAKER_COMPLAINT_MIN_SAMPLE", 200),
     windowHours: numEnv("BREAKER_WINDOW_HOURS", 24),
     warmupWindowSeconds: intEnv("WARMUP_WINDOW_SECONDS", 86_400),

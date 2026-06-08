@@ -16,7 +16,11 @@
  *     conservative transient-safe default) → rethrow so the backoff retries run.
  */
 import { UnrecoverableError } from "bullmq";
-import { inboundDroppedTotal } from "@homeranger/backend-core/lib/queue/queue-metrics";
+import {
+  inboundDroppedTotal,
+  inboundIgnoredTotal,
+} from "@homeranger/backend-core/lib/queue/queue-metrics";
+import { hasDeliverableRecipient } from "@homeranger/backend-core/lib/inbound/inbound-recipient";
 import type { ResendHydrator } from "@homeranger/backend-core/lib/inbound/resend-hydrator";
 import type {
   InboundIngestionService,
@@ -58,6 +62,25 @@ export function makeInboundHandler(deps: InboundHandlerDeps) {
   return async function handleInbound(job: {
     data: InboundEmailJobPayload;
   }): Promise<void> {
+    // Recipient gate (runs BEFORE the paid hydrate + Claude extract): the apex
+    // MX routes ALL of homeranger.app's mail here, including DMARC RUA reports to
+    // dmarc@ and bounce/abuse notices to postmaster@/mailer-daemon@. Mail with no
+    // real-inbox recipient is never an agent reply or a listing — drop it cleanly
+    // (complete the job, no retry, no Claude call). Recipient-based, not a sender
+    // check: the product still ingests listings from non-agent senders.
+    if (!hasDeliverableRecipient(job.data.to)) {
+      inboundIgnoredTotal.inc();
+      console.info(
+        JSON.stringify({
+          type: "info",
+          scope: "inbound.ignored.infra_recipient",
+          emailId: job.data.email_id,
+          to: job.data.to,
+        }),
+      );
+      return;
+    }
+
     try {
       const hydrated = await deps.hydrator.hydrate(job.data);
       // M6 AC#5 — compliance opt-out FIRST, BEFORE billing Claude. A STOP/
