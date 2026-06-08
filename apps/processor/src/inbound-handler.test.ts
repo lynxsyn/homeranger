@@ -276,6 +276,41 @@ describe("makeInboundHandler — recipient gate (drop infra-only mail pre-hydrat
     expect(reply.handleOptOut).toHaveBeenCalledTimes(1);
     expect(reply.linkReply).toHaveBeenCalledTimes(1);
   });
+
+  it("does NOT drop mail whose only real inbox is on Cc (fail-open across To+Cc+Bcc)", async () => {
+    const hydrate = vi.fn().mockResolvedValue({
+      messageId: "email-cc-1",
+      receivedAt: new Date(),
+      recipientEmail: "dmarc@homeranger.app",
+      senderEmail: "agent@example.com",
+      senderName: null,
+      subject: null,
+      bodyText: "Here is a listing: 9 High St, Conwy, £400k",
+      bodyHtml: null,
+      spfVerdict: "pass" as const,
+      dkimVerdict: "pass" as const,
+      attachments: [],
+    });
+    const reply = freshReply();
+    const handler = makeInboundHandler({
+      hydrator: { hydrate } as unknown as ResendHydrator,
+      inboundIngestionService: ingestionOk(),
+      outreachReplyService: reply as unknown as OutreachReplyService,
+    });
+
+    await expect(
+      handler({
+        data: {
+          email_id: "email-cc-1",
+          from: "agent@example.com",
+          to: ["dmarc@homeranger.app"],
+          cc: ["bryan@homeranger.app"],
+          attachments: [],
+        },
+      }),
+    ).resolves.toBeUndefined();
+    expect(hydrate).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("makeInboundHandler — budget guardrail: gate the paid extraction", () => {

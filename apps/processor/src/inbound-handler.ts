@@ -67,8 +67,14 @@ export function makeInboundHandler(deps: InboundHandlerDeps) {
     // dmarc@ and bounce/abuse notices to postmaster@/mailer-daemon@. Mail with no
     // real-inbox recipient is never an agent reply or a listing — drop it cleanly
     // (complete the job, no retry, no Claude call). Recipient-based, not a sender
-    // check: the product still ingests listings from non-agent senders.
-    if (!hasDeliverableRecipient(job.data.to)) {
+    // check: the product still ingests listings from non-agent senders. Consider
+    // To + Cc + Bcc so a real inbox on any of them keeps the mail (fail-open).
+    const recipients = [
+      ...job.data.to,
+      ...(job.data.cc ?? []),
+      ...(job.data.bcc ?? []),
+    ];
+    if (!hasDeliverableRecipient(recipients)) {
       inboundIgnoredTotal.inc();
       console.info(
         JSON.stringify({

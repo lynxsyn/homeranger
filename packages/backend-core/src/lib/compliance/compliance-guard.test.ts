@@ -17,7 +17,7 @@ import type { AgentRepository } from "../../repositories/agent.repository.js";
 const CONFIG: ComplianceGuardConfig = {
   bounceRate: 0.02,
   complaintRate: 0.001,
-  bounceMinSample: 50,
+  bounceMinSample: 10, // mirrors the production default (lowered from 50)
   complaintMinSample: 50,
   windowHours: 24,
   warmupWindowSeconds: 86_400,
@@ -231,6 +231,15 @@ describe("ComplianceGuard.assertCanSend — gates", () => {
   it("gate 6: does NOT trip on a tiny sample (below min-sample), even at 50% bounce", async () => {
     const h = makeHarness({ sends: 2, eventCounts: { bounced: 1 } }); // 50% but n=2
     await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();
+  });
+
+  it("gate 6: trips at the lowered 10-send floor (1 bounce / 10 = 10% > 2%)", async () => {
+    // The motivating case: a bad warm-up batch must trip the breaker without
+    // first reaching the old 50-send floor (the Conwy batch bounced 25%/40).
+    const h = makeHarness({ sends: 10, eventCounts: { bounced: 1 } });
+    await expect(
+      h.guard.assertCanSend(corporateAgent()),
+    ).rejects.toMatchObject({ code: "CIRCUIT_OPEN", trpcCode: "FORBIDDEN" });
   });
 
   it("gate 7: blocks when the manual kill-switch is set", async () => {
