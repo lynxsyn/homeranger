@@ -11,7 +11,10 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { UnrecoverableError } from "bullmq";
 import { makeInboundHandler } from "./inbound-handler.js";
-import { inboundDroppedTotal } from "@homeranger/backend-core/lib/queue/queue-metrics";
+import {
+  inboundDroppedTotal,
+  inboundIgnoredTotal,
+} from "@homeranger/backend-core/lib/queue/queue-metrics";
 import type { ResendHydrator } from "@homeranger/backend-core/lib/inbound/resend-hydrator";
 import type {
   InboundIngestionService,
@@ -78,6 +81,25 @@ async function dropMetricValue(): Promise<number> {
     values: { value: number }[];
   };
   return json.values[0]?.value ?? 0;
+}
+
+async function ignoredMetricValue(): Promise<number> {
+  const json = (await inboundIgnoredTotal.get()) as {
+    values: { value: number }[];
+  };
+  return json.values[0]?.value ?? 0;
+}
+
+/** A job whose inbound recipient list is `to`. */
+function jobTo(to: string[]): { data: InboundEmailJobPayload } {
+  return {
+    data: {
+      email_id: "email-recipient-1",
+      from: "no-reply@dmarcreport.example.com",
+      to,
+      attachments: [],
+    },
+  };
 }
 
 describe("makeInboundHandler — retry classification", () => {
@@ -214,6 +236,82 @@ function freshReply(): {
     linkReply: vi.fn().mockResolvedValue(undefined),
   };
 }
+
+describe("makeInboundHandler — recipient gate (drop infra-only mail pre-hydration)", () => {
+  it("DROPS mail addressed only to dmarc@ before hydration (no Claude), ignored metric ++", async () => {
+    const hydrate = vi.fn();
+    const ingest = vi.fn();
+    const reply = freshReply();
+    const before = await ignoredMetricValue();
+    const handler = makeInboundHandler({
+      hydrator: { hydrate } as unknown as ResendHydrator,
+      inboundIngestionService: {
+        ingestInboundEmail: ingest,
+      } as unknown as InboundIngestionService,
+      outreachReplyService: reply as unknown as OutreachReplyService,
+    });
+
+    await expect(handler(jobTo(["dmarc@homeranger.app"]))).resolves.toBeUndefined();
+
+    // Nothing downstream runs: no hydrate, no Claude extract, no opt-out, no link.
+    expect(hydrate).not.toHaveBeenCalled();
+    expect(ingest).not.toHaveBeenCalled();
+    expect(reply.handleOptOut).not.toHaveBeenCalled();
+    expect(reply.linkReply).not.toHaveBeenCalled();
+    // It is NOT a poison-pill drop (no UnrecoverableError, completes cleanly).
+    expect(await ignoredMetricValue()).toBe(before + 1);
+  });
+
+  it("STILL processes mail when at least one recipient is a real inbox", async () => {
+    const reply = freshReply();
+    const handler = makeInboundHandler({
+      hydrator: hydratorWith("Yes, here is one: 12 Gay St, Bath, £625k"),
+      inboundIngestionService: ingestionOk(),
+      outreachReplyService: reply as unknown as OutreachReplyService,
+    });
+
+    await expect(
+      handler(jobTo(["dmarc@homeranger.app", "bryan@homeranger.app"])),
+    ).resolves.toBeUndefined();
+    expect(reply.handleOptOut).toHaveBeenCalledTimes(1);
+    expect(reply.linkReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT drop mail whose only real inbox is on Cc (fail-open across To+Cc+Bcc)", async () => {
+    const hydrate = vi.fn().mockResolvedValue({
+      messageId: "email-cc-1",
+      receivedAt: new Date(),
+      recipientEmail: "dmarc@homeranger.app",
+      senderEmail: "agent@example.com",
+      senderName: null,
+      subject: null,
+      bodyText: "Here is a listing: 9 High St, Conwy, £400k",
+      bodyHtml: null,
+      spfVerdict: "pass" as const,
+      dkimVerdict: "pass" as const,
+      attachments: [],
+    });
+    const reply = freshReply();
+    const handler = makeInboundHandler({
+      hydrator: { hydrate } as unknown as ResendHydrator,
+      inboundIngestionService: ingestionOk(),
+      outreachReplyService: reply as unknown as OutreachReplyService,
+    });
+
+    await expect(
+      handler({
+        data: {
+          email_id: "email-cc-1",
+          from: "agent@example.com",
+          to: ["dmarc@homeranger.app"],
+          cc: ["bryan@homeranger.app"],
+          attachments: [],
+        },
+      }),
+    ).resolves.toBeUndefined();
+    expect(hydrate).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("makeInboundHandler — budget guardrail: gate the paid extraction", () => {
   it("SKIPS extraction for an opt-out reply, but STILL records it (linkReply, null result)", async () => {

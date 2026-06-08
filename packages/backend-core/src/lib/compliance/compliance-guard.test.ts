@@ -17,7 +17,7 @@ import type { AgentRepository } from "../../repositories/agent.repository.js";
 const CONFIG: ComplianceGuardConfig = {
   bounceRate: 0.02,
   complaintRate: 0.001,
-  bounceMinSample: 50,
+  bounceMinSample: 10, // mirrors the production default (lowered from 50)
   complaintMinSample: 50,
   windowHours: 24,
   warmupWindowSeconds: 86_400,
@@ -233,6 +233,15 @@ describe("ComplianceGuard.assertCanSend — gates", () => {
     await expect(h.guard.assertCanSend(corporateAgent())).resolves.toBeUndefined();
   });
 
+  it("gate 6: trips at the lowered 10-send floor (1 bounce / 10 = 10% > 2%)", async () => {
+    // The motivating case: a bad warm-up batch must trip the breaker without
+    // first reaching the old 50-send floor (the Conwy batch bounced 25%/40).
+    const h = makeHarness({ sends: 10, eventCounts: { bounced: 1 } });
+    await expect(
+      h.guard.assertCanSend(corporateAgent()),
+    ).rejects.toMatchObject({ code: "CIRCUIT_OPEN", trpcCode: "FORBIDDEN" });
+  });
+
   it("gate 7: blocks when the manual kill-switch is set", async () => {
     const h = makeHarness({ killSwitch: true });
     await expect(
@@ -340,12 +349,14 @@ describe("ComplianceGuard.assertCanSend — ordering & side-effects", () => {
 describe("getComplianceGuardConfig", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("defaults to 2% bounce / 0.1% complaint with 50/200 min-samples", () => {
+  it("defaults to 2% bounce / 0.1% complaint with 10/200 min-samples", () => {
     const config = getComplianceGuardConfig();
     expect(config).toMatchObject({
       bounceRate: 0.02,
       complaintRate: 0.001,
-      bounceMinSample: 50,
+      // Lowered 50 -> 10 so a bad batch trips the breaker at low warm-up volume
+      // (the 40-send Conwy batch bounced 25% but never reached the old 50 floor).
+      bounceMinSample: 10,
       complaintMinSample: 200,
       windowHours: 24,
     });
