@@ -340,12 +340,14 @@ describe("ComplianceGuard.assertCanSend — ordering & side-effects", () => {
 describe("getComplianceGuardConfig", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("defaults to 2% bounce / 0.1% complaint with 50/200 min-samples", () => {
+  it("defaults to 2% bounce / 0.1% complaint with 10/200 min-samples", () => {
     const config = getComplianceGuardConfig();
     expect(config).toMatchObject({
       bounceRate: 0.02,
       complaintRate: 0.001,
-      bounceMinSample: 50,
+      // Lowered 50 -> 10 so a bad batch trips the breaker at low warm-up volume
+      // (the 40-send Conwy batch bounced 25% but never reached the old 50 floor).
+      bounceMinSample: 10,
       complaintMinSample: 200,
       windowHours: 24,
     });
