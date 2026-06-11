@@ -1,0 +1,217 @@
+# infra/deploy/overlays/platform — homeranger overlay for the Horizon platform cluster.
+#
+# Reconciled by Kustomization/homeranger in horizon-infra
+# (clusters/platform/tenants/homeranger/kustomization-cr.yaml,
+# path: ./infra/deploy/overlays/platform, targetNamespace: homeranger,
+# decryption: sops-age-homeranger, prune: true).
+#
+# Phase A5 (minimal footprint — development parked):
+#   - api:         1 replica  (serves UI + API for manual use / queries)
+#   - web:         1 replica  (serves SPA)
+#   - processor:   0 replicas (no email ingest — re-scale via PR when development resumes)
+#   - scheduler:   0 replicas (no outreach cadence while parked)
+#   - cloudflared: 2 replicas (keep tunnel HA; base default)
+#
+# Platform owns: Namespace, ResourceQuota, tenant-level NetworkPolicies.
+# This overlay owns: workload patches, replica counts, priorityClass, resources.
+#
+# namespace.yaml is EXCLUDED — the platform cluster creates and owns the
+# homeranger namespace via
+#   horizon-infra/clusters/platform/tenants/homeranger/namespace.yaml.
+# App-specific NetworkPolicies (networkpolicy.yaml from base) are INCLUDED —
+# they are workload-level policies, not the tenant-level deny-all/allow-intra
+# that the platform ships.
+#
+# storageClass: base already specifies storageClassName: longhorn for both the
+# postgres PVC (postgres-pvc-longhorn.yaml) and the redis PVC (redis.yaml).
+# Platform cluster also has longhorn — no storageClass patch needed.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+
+patches:
+  # ── Exclude namespace.yaml — platform owns the namespace ──────────────────
+  # The base declares a Namespace/homeranger; the platform cluster already owns
+  # this resource via horizon-infra tenants/homeranger/namespace.yaml.
+  # Use $patch: delete so Flux never tries to apply or diff it.
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: homeranger
+    target:
+      kind: Namespace
+      name: homeranger
+
+  # ── priorityClassName: best-effort on all Deployments ──────────────────────
+  # README.md contract: homeranger tenant uses best-effort on the platform cluster.
+  # Base sets platform-critical; patch all Deployments to best-effort.
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/priorityClassName
+        value: best-effort
+    target:
+      kind: Deployment
+
+  # ── Replica patches ─────────────────────────────────────────────────────────
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+      name: homeranger-api
+
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+      name: homeranger-web
+
+  # processor: 0 replicas — no email ingest/outreach while parked.
+  # Re-scale via PR when development resumes.
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 0
+    target:
+      kind: Deployment
+      name: homeranger-processor
+
+  # scheduler: 0 replicas — no outreach cadence while parked.
+  # Re-scale via PR when development resumes.
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 0
+    target:
+      kind: Deployment
+      name: homeranger-scheduler
+
+  # ── Resource patches (fit within 1CPU/2Gi req, 2CPU/4Gi lim quota) ─────────
+  # Budget accounting (active workloads; processor/scheduler at 0 replicas):
+  #   api:         req 200m/512Mi   lim 500m/1Gi
+  #   web:         req  50m/ 64Mi   lim 100m/128Mi
+  #   postgres:    req 250m/768Mi   lim 1000m/1.5Gi
+  #   redis:       req  50m/ 64Mi   lim 100m/128Mi
+  #   cloudflared: req  50m/128Mi   lim 300m/256Mi  (2 replicas × 25m/64Mi req, 150m/128Mi lim)
+  #   ─────────────────────────────────────────────────────────────────────────
+  #   TOTAL req:   600m / 1536Mi  (quota: 1000m / 2048Mi ✓)
+  #   TOTAL lim:  2000m / 3072Mi  (quota: 2000m / 4096Mi ✓)
+
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: homeranger-api
+        namespace: homeranger
+      spec:
+        template:
+          spec:
+            containers:
+              - name: api
+                resources:
+                  requests:
+                    cpu: 200m
+                    memory: 512Mi
+                  limits:
+                    cpu: 500m
+                    memory: 1Gi
+    target:
+      kind: Deployment
+      name: homeranger-api
+
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: homeranger-web
+        namespace: homeranger
+      spec:
+        template:
+          spec:
+            containers:
+              - name: web
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    cpu: 100m
+                    memory: 128Mi
+    target:
+      kind: Deployment
+      name: homeranger-web
+
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: homeranger-postgres
+        namespace: homeranger
+      spec:
+        template:
+          spec:
+            containers:
+              - name: postgres
+                resources:
+                  requests:
+                    cpu: 250m
+                    memory: 768Mi
+                  limits:
+                    cpu: 1000m
+                    memory: 1536Mi
+    target:
+      kind: Deployment
+      name: homeranger-postgres
+
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: homeranger-redis
+        namespace: homeranger
+      spec:
+        template:
+          spec:
+            containers:
+              - name: redis
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    cpu: 100m
+                    memory: 128Mi
+    target:
+      kind: Deployment
+      name: homeranger-redis
+
+  # cloudflared: reduce cpu limit to 150m per replica (2 replicas = 300m total)
+  # to stay within the 2000m limit budget. A tunnel daemon on parked traffic
+  # needs far less than the 250m base default.
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: cloudflared
+        namespace: homeranger
+      spec:
+        template:
+          spec:
+            containers:
+              - name: cloudflared
+                resources:
+                  requests:
+                    cpu: 25m
+                    memory: 64Mi
+                  limits:
+                    cpu: 150m
+                    memory: 128Mi
+    target:
+      kind: Deployment
+      name: cloudflared
