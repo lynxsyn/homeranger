@@ -5,12 +5,39 @@ runtime: its own namespace (`homeranger`), Postgres, Redis, secrets, GHCR images
 and a SEPARATE Flux GitRepository + Kustomization. Doxus's Flux config
 (`doxus-app/doxus-infra` `GitRepository/flux-system`) is never touched.
 
+## Platform cluster (A5)
+
+As of phase A5, homeranger is registered as a tenant on the **Horizon platform
+cluster** via
+[`horizon-infra/clusters/platform/tenants/homeranger/`](https://github.com/lynxsyn/horizon-infra/tree/main/clusters/platform/tenants/homeranger).
+The platform-managed objects (Namespace, ResourceQuota, tenant-level
+NetworkPolicies, GitRepository, Kustomization CR) all live there. This repo
+owns only the workload manifests under `infra/deploy/overlays/platform/`.
+
+**At cutover (A5):**
+
+- The `homeranger-source.yaml` imperative Flux objects previously applied to the
+  **PVE1 (media) cluster** — `GitRepository/homeranger` and
+  `Kustomization/homeranger` in `flux-system` — are **removed** from that
+  cluster. Run on the PVE1 context:
+  ```bash
+  kubectl delete kustomization homeranger -n flux-system
+  kubectl delete gitrepository homeranger -n flux-system
+  ```
+- The `infra/deploy/overlays/pve1` overlay remains in git for reference but is
+  no longer reconciled once the pve1 imperative objects are deleted.
+- The platform cluster's Kustomization CR (in horizon-infra) points at
+  `./infra/deploy/overlays/platform` and is the sole Flux reconciler going
+  forward.
+
 ## What lives here
 
-- `homeranger-source.yaml` — the `GitRepository/homeranger` + `Kustomization/homeranger`
-  registered in the `flux-system` namespace, pointing at
-  `ssh://git@github.com/lynxsyn/homeranger` path `./infra/deploy/overlays/pve1`,
-  decrypting with `sops-age-homeranger`.
+- `homeranger-source.yaml` — the **legacy** `GitRepository/homeranger` +
+  `Kustomization/homeranger` that was registered in `flux-system` on the PVE1
+  cluster, pointing at `ssh://git@github.com/lynxsyn/homeranger` path
+  `./infra/deploy/overlays/pve1`, decrypting with `sops-age-homeranger`.
+  **Kept for reference and break-glass only; the platform cluster registration
+  is in horizon-infra.**
 - `bootstrap-secrets.enc.yaml` — the recovery source for the two preconditions
   Flux needs before it can reconcile homeranger (Git deploy key + age key). This
   file is intentionally EXCLUDED from every `kustomization.yaml` resources list;
