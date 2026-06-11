@@ -2,6 +2,12 @@
 # secret-scan + typecheck/lint (check) + api-unit (coverage) + web-unit +
 # api-integration (real pgvector) + e2e (Playwright). Action SHAs pinned.
 #
+# aide-drift-check: scripts/check-aide-drift.sh is not wired as a CI job because
+# it requires the aide repo at ~/projects/aide (or AIDE_DIR_OVERRIDE pointing to
+# a checkout). In CI that checkout is absent, so the script exits 0 with a
+# warning — a no-op job. Run it locally or in a dedicated aide-sync workflow
+# that checks out aide at the pinned SHA and sets AIDE_DIR_OVERRIDE.
+#
 # The repo is PUBLIC, so GitHub-hosted Actions minutes are unmetered — there is
 # no reason to skip jobs by path or trim the matrix on push. Every job runs on
 # every event; the ci-gate job aggregates them into one required-checkable

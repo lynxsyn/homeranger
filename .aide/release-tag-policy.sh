@@ -1,31 +1,55 @@
 #!/usr/bin/env bash
-# homeranger release-tag policy. SELF-CONTAINED (no doxus-ops delegation).
+# synced-from: aide@f0452f88a2b90cb654b431ae75da3e026fc6ad43
+# drift-check: scripts/check-aide-drift.sh
 #
-# Doxus's .aide/release-tag-policy.sh is a thin shim that execs the canonical
-# at doxus-ops/scripts/release/release-tag-policy.sh. homeranger is a SINGLE
-# repo with its OWN overlay independent of doxus-ops, so the canonical logic
-# is inlined here verbatim (doxus-ops PR #531 body).
+# homeranger release-tag policy. SELF-CONTAINED (no ops-repo delegation).
+# Core body synced from aide release/release-tag-policy.sh; homeranger-specific
+# defaults (TAG_SEED, project context) applied via .aide/project.env below.
 #
 # Called by /aide:compound Step 4.5 with env: MERGE_SHA, SPEC_ID, SPEC_NAME,
-# optional BUMP_HINT (fix => PATCH). Emits the new vX.Y.Z tag on stdout, pushes
-# it to origin (which triggers .github/workflows/release.yml). Bump rules:
-#   MINOR  per spec merge (default)
-#   PATCH  for fix/chore follow-ups (BUMP_HINT=fix, or fix:/chore: subject)
-#   MAJOR  for breaking merges (feat!:/fix!: subject or BREAKING CHANGE: footer)
+# optional BUMP_HINT (fix => PATCH). Emits the new vX.Y.Z tag on stdout,
+# pushes it to origin (which triggers .github/workflows/release.yml).
+#
+# Bump rules (in priority order):
+#   MAJOR  — feat!:, fix!:, refactor(scope)!:, or BREAKING CHANGE: footer
+#   PATCH  — BUMP_HINT=fix, or fix:/chore: subject prefix
+#   MINOR  — everything else (default)
+#
+# Exit codes:
+#   0  — success; new tag printed on stdout
+#   1  — cannot parse latest tag as vX.Y.Z, or invalid MERGE_SHA
+#   2  — tag already exists (idempotent guard)
 
 set -euo pipefail
+
+# Source project.env for TAG_SEED and AIDE_PROJECT. Env vars already set in
+# the caller's environment take precedence — project.env is defaults only.
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_SCRIPT_DIR/project.env" ]]; then
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    [[ "$_line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${_line// }" ]] && continue
+    _var="${_line%%=*}"
+    if [[ -n "$_var" ]] && [[ "${_var}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      if [[ -z "${!_var+x}" ]]; then
+        # shellcheck disable=SC2163
+        export "$_line"
+      fi
+    fi
+  done < "$_SCRIPT_DIR/project.env"
+fi
 
 : "${MERGE_SHA:?MERGE_SHA is required}"
 : "${SPEC_ID:?SPEC_ID is required}"
 : "${SPEC_NAME:?SPEC_NAME is required}"
 
-# Globally-highest semver tag — never `git describe` (it walks HEAD ancestry
-# and can pick an older tag when a parallel merge took the newer one).
+TAG_SEED="${TAG_SEED:-v0.0.0}"
+
+# Fetch tags first so a stale local clone doesn't re-use a deployed tag.
 git fetch --tags --quiet origin 2>/dev/null || true
+
 LAST="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)"
-# Seed at v0.0.0 so the FIRST milestone (M1) becomes v0.1.0 — homeranger is a
-# pre-1.0 greenfield tool (matches the v0.1.0 / range >=0.1.0 image-automation seed).
-[ -z "$LAST" ] && LAST="v0.0.0"
+[ -z "$LAST" ] && LAST="$TAG_SEED"
 
 if [[ ! "$LAST" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
   echo "release-tag-policy: cannot parse latest tag '$LAST' as vX.Y.Z" >&2
@@ -36,10 +60,18 @@ MAJOR="${BASH_REMATCH[1]}"
 MINOR="${BASH_REMATCH[2]}"
 PATCH="${BASH_REMATCH[3]}"
 
-COMMIT_SUBJECT="$(git log -1 --format=%s "$MERGE_SHA" 2>/dev/null || echo '')"
-COMMIT_BODY="$(git log -1 --format=%b "$MERGE_SHA" 2>/dev/null || echo '')"
+# Decide bump kind. MERGE_SHA must resolve to a real commit — otherwise the
+# subject/body reads would silently come back empty and default to MINOR.
+git rev-parse -q --verify "$MERGE_SHA^{commit}" >/dev/null || {
+  echo "release-tag-policy: invalid MERGE_SHA '$MERGE_SHA' — not a commit in this repo" >&2
+  exit 1
+}
+COMMIT_SUBJECT="$(git log -1 --format=%s "$MERGE_SHA")"
+COMMIT_BODY="$(git log -1 --format=%b "$MERGE_SHA")"
 BUMP_KIND="minor"
 
+# Breaking change beats everything else. Conventional-commits signals.
+# Matches: "feat!: ...", "feat(scope)!: ...", "fix!: ...", "refactor(api)!: ..."
 CC_BREAKING_RE='^[a-zA-Z]+(\([^)]*\))?!:'
 CC_FIX_CHORE_RE='^(fix|chore)(\([^)]*\))?:'
 
