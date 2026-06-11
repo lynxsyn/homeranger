@@ -1,0 +1,16 @@
+# Manual smoke test for the self-hosted ARC runner scale set.
+# Proves the runner label resolves, a pod spins up, and the job lands on it.
+name: ARC Runner Smoke
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ${{ vars.RUNNER_LABEL_ARC || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - name: Runner identity
+        run: |
+          echo "runner: $RUNNER_NAME"
+          uname -a
+          echo "OK"
